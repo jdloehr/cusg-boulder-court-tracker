@@ -1,0 +1,67 @@
+name: Scheduled data pulls
+
+# Runs the docket-pull and news-monitor jobs on a schedule against the
+# production database, entirely on GitHub's free Actions minutes -- no
+# paid Render Cron Jobs add-on needed. Connects straight to the deployed
+# Postgres using its EXTERNAL connection string (Render dashboard -> the
+# database -> "External Database URL"), stored as a repo secret.
+#
+# Setup (see docs/DEPLOYMENT.md):
+#   1. Deploy the backend + Postgres via render.yaml first.
+#   2. Repo Settings -> Secrets and variables -> Actions -> New secret:
+#      DATABASE_URL = the Render Postgres "External Database URL"
+#   3. That's it -- this workflow runs on the schedule below, or trigger
+#      it manually from the Actions tab ("Run workflow") to test it.
+
+on:
+  schedule:
+    - cron: "0 11 * * *"   # docket pull: daily 11:00 UTC (~5am Boulder time)
+    - cron: "30 11 * * *"  # news monitor: daily 11:30 UTC, after the docket pull
+    - cron: "0 15 * * 1"   # weekly digest: Mondays 15:00 UTC (~8am Boulder time)
+  workflow_dispatch: {}     # manual "Run workflow" button for testing
+
+jobs:
+  docket_pull:
+    if: github.event.schedule == '0 11 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/run_docket_pull.py
+
+  news_monitor:
+    if: github.event.schedule == '30 11 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/run_news_monitor.py
+
+  weekly_digest:
+    if: github.event.schedule == '0 15 * * 1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -c "
+          from app.db import SessionLocal
+          from app.jobs.digest import run_weekly_digest
+          db = SessionLocal()
+          print(run_weekly_digest(db))
+          db.close()
+          "
