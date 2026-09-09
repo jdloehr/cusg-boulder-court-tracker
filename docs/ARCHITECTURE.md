@@ -141,6 +141,23 @@ the API, `npm run dev` for the frontend.
 
 ## Known limitations / next steps
 
+- **Adding a new enum value needs a manual Postgres migration in
+  production, or it 500s.** Real bug, caught live: adding
+  `CourtLocation.colorado_supreme_court` etc. to `app/models.py` and
+  deploying was not enough -- `Base.metadata.create_all()` (this project's
+  stand-in for a real migration tool) never runs `ALTER TYPE ... ADD
+  VALUE` on a Postgres enum type that already exists, so the *existing*
+  production database still only accepted the old set of values, and
+  `POST /api/subscriptions` with the new `new_recommendation` filter type
+  500'd until fixed by hand. Invisible in the test suite because it runs
+  against SQLite, which has no native enum type to drift. Run
+  `DATABASE_URL=<prod url> python scripts/check_enum_drift.py` after any
+  deploy that touches an enum -- it compares every Python enum in
+  `models.py` against the live Postgres types and prints the exact `ALTER
+  TYPE` statements to fix any gap. Adopting Alembic (or another real
+  migration tool) would make this automatic; deferred for this build's
+  scope, per the project's original "shouldn't need a migration tool at
+  CUSG's scale" framing, but this is the concrete cost of that choice.
 - **Multi-day trials list one line per day, everywhere** (list view,
   digest email, etc.), because the docket export genuinely lists them that
   way and each day is a real, distinct scheduled event (see

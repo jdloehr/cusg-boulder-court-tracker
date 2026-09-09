@@ -94,6 +94,20 @@ and GitHub can email you on workflow failures (repo Settings ->
 Notifications) -- that's Section 8's "alert an Editor on job failure"
 requirement, for free, without standing up Slack/PagerDuty.
 
+## After any future deploy that adds/changes an enum value
+
+Real bug hit during this build (see `docs/ARCHITECTURE.md`'s "Known
+limitations"): a new value on a Python enum in `app/models.py` doesn't
+retroactively reach an already-created Postgres enum type, and the
+symptom is a confusing CORS error in the browser (masking a real 500).
+After deploying any change that touches an enum, run this once against
+production and fix anything it reports before moving on:
+
+```bash
+cd backend
+DATABASE_URL=<Render Postgres External Database URL> python scripts/check_enum_drift.py
+```
+
 ## 5. What's still manual after this
 
 - **Email delivery** is still stubbed to logs (see README) -- the digest
