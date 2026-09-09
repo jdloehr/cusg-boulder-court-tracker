@@ -283,5 +283,13 @@ class PublishAppellateCandidateIn(BaseModel):
     date: date
     time: Optional[str] = None
     hearing_type_raw: str
+    # Real bug caught by hand-publishing real Colorado Supreme Court cases:
+    # this used to be hardcoded to `civil` for every appellate publish,
+    # which is simply wrong for a criminal appeal (the majority of the
+    # real September 2026 docket, for instance). CourtListener's search
+    # result doesn't reliably expose this, so it's the curator's call, not
+    # an auto-detected field -- same reasoning as case_category being a
+    # judgment call for the county docket's own ambiguous prefixes.
+    case_category: CaseCategory = CaseCategory.civil
     curated_blurb: Optional[str] = None
     source_url: str

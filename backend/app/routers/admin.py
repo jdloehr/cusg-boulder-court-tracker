@@ -299,7 +299,7 @@ def publish_appellate_candidate(payload: PublishAppellateCandidateIn, db: Sessio
     hearing = Hearing(
         source=HearingSource.federal_courtlistener,
         case_number=payload.docket_number,
-        case_category=CaseCategory.civil,
+        case_category=payload.case_category,
         party_names=json.dumps([payload.case_name]),
         hearing_type_raw=payload.hearing_type_raw,
         hearing_type_display=type_result.display,

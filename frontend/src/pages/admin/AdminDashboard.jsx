@@ -309,6 +309,12 @@ function AppellateSupplement({ admin }) {
       candidate.date_filed?.slice(0, 10) || ""
     );
     if (!date) return;
+    const caseCategory = prompt(
+      "Case category? (criminal, misdemeanor, traffic, civil, domestic_relations, probate, other) " +
+      "-- CourtListener doesn't reliably expose this, so it's your call.",
+      "civil"
+    );
+    if (!caseCategory) return;
     await api.publishAppellateCandidate({
       case_name: candidate.case_name,
       docket_number: candidate.docket_number || candidate.absolute_url,
@@ -316,6 +322,7 @@ function AppellateSupplement({ admin }) {
       court_note: candidate.court,
       date,
       hearing_type_raw: "Oral Argument",
+      case_category: caseCategory,
       curated_blurb: `${candidate.case_name} (${candidate.court}). See ${candidate.absolute_url}`,
       source_url: candidate.absolute_url,
     });
