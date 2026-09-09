@@ -63,6 +63,12 @@ class AttendanceOut(BaseModel):
 
 
 class AttendanceIn(BaseModel):
+    # No auth on this endpoint (see routers/justices.py) -- the caller says
+    # which justice's row they're setting rather than it being derived from
+    # a logged-in identity. Trust model: anyone can reach this, on the
+    # expectation that in practice only the 7 real Justices use the site
+    # and only set their own status.
+    justice_id: str
     status: AttendanceStatus
     note: Optional[str] = None
 
@@ -76,6 +82,10 @@ class AttendanceIn(BaseModel):
 
 class RecommendationIn(BaseModel):
     hearing_id: str
+    # No auth on this endpoint either (see routers/justices.py) -- same
+    # trust model as attendance: the caller says which justice is
+    # recommending rather than it being derived from a login.
+    justice_id: str
     note: Optional[str] = None
 
     @field_validator("note")

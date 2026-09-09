@@ -80,22 +80,29 @@ pre-law students generally:
   propose a case summary or a judge's name for a hearing. Moderated, not
   immediate -- see `docs/EXCLUSION_LOGIC.md`'s "Visitor-submitted content"
   section for why and how.
-- **`HearingAttendance`** and **`HearingRecommendation`**: let the 7 CUSG
-  Justices RSVP to a hearing (attending/not attending/maybe, with an
+- **`HearingAttendance`** and **`HearingRecommendation`**: let a CUSG
+  Justice RSVP to a hearing (attending/not attending/maybe, with an
   optional note) and recommend a hearing to the rest of the court (with a
   note on why), landing on a dedicated public board at `/recommendations`.
-  Both reuse the *same* `AdminUser`/JWT login as the Editor/Contributor
-  curation team rather than a parallel auth system -- see `AdminUser`'s
-  docstring in `app/models.py` for why `role` (curation) and `is_justice`
-  (court membership) are independent fields on one account rather than a
-  single combined enum: the same small group of real people plausibly
-  wears both hats, and forcing two separate logins for one person would be
-  pure friction with no security benefit at this scale (7 named
-  individuals, `scripts/create_justices.py`).
-- These two features share one instinct with the original Section 4
-  guardrails: something public-facing proposes, someone with real
-  authority (an Editor, or the submitting Justice's own name) is
-  accountable for it -- see `docs/EXCLUSION_LOGIC.md`.
+  **No login at all**, by explicit request: the caller passes a
+  `justice_id` (from the public `/api/justices` roster) directly in the
+  request body rather than one being derived from a token. The trust
+  model -- not enforced server-side, a deliberate choice -- is that the 7
+  real Justices are the only realistic audience for this in practice and
+  are expected to only act as themselves; see `set_attendance()`'s
+  docstring in `app/routers/justices.py`. `AdminUser.is_justice` and
+  `scripts/create_justices.py` still exist (a Justice who's *also* an
+  Editor/Contributor still logs in for that), but that login is no longer
+  required for attendance or recommendations specifically -- only for the
+  separate Editor/Contributor curation tool in `app/routers/admin.py`,
+  which stays role-gated (a more consequential system -- publishing public
+  content, excluding hearings -- that these changes were not asked to
+  touch).
+- `CommunitySubmission` remains moderated (Editor approval before
+  anything publishes) -- that gate is about *content quality/sensitivity*
+  on a fully anonymous, un-identified input, not about restricting who can
+  use the feature, so the "no login" changes above don't apply to it. See
+  `docs/EXCLUSION_LOGIC.md`.
 
 ## Running locally
 

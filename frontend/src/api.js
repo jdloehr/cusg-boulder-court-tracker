@@ -103,19 +103,14 @@ export const api = {
     }),
   activityLog: () => request("/api/admin/activity-log", { headers: authHeaders() }),
 
-  // --- CUSG Justice features ---
+  // --- CUSG Justice features: no login required (see backend/app/routers/justices.py) ---
   listJustices: () => request("/api/justices"),
   setAttendance: (hearingId, payload) =>
-    request(`/api/hearings/${hearingId}/attendance`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify(payload),
-    }),
+    request(`/api/hearings/${hearingId}/attendance`, { method: "PUT", body: JSON.stringify(payload) }),
   listRecommendations: () => request("/api/recommendations"),
   createRecommendation: (payload) =>
-    request("/api/recommendations", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
-  deleteRecommendation: (id) =>
-    request(`/api/recommendations/${id}`, { method: "DELETE", headers: authHeaders() }),
+    request("/api/recommendations", { method: "POST", body: JSON.stringify(payload) }),
+  deleteRecommendation: (id) => request(`/api/recommendations/${id}`, { method: "DELETE" }),
 };
 
 export function getStoredAdmin() {

@@ -91,24 +91,36 @@ def test_login_response_carries_justice_identity(client):
     assert body["role"] is None
 
 
-def test_non_justice_cannot_set_attendance(client):
-    token = _login(client, "editor@test.local")["access_token"]
+def _justice_id(client, display_name):
+    roster = client.get("/api/justices").json()
+    return next(j["id"] for j in roster if j["display_name"] == display_name)
+
+
+def test_setting_attendance_needs_no_login(client):
+    # By request: no auth on this endpoint at all -- the caller identifies
+    # which justice via justice_id in the body, not a token. Trust model,
+    # not enforcement -- see set_attendance()'s docstring.
+    dillon_id = _justice_id(client, "Dillon Rankin")
+    r = client.put("/api/hearings/hearing-1/attendance", json={"justice_id": dillon_id, "status": "attending"})
+    assert r.status_code == 200
+    assert r.json()["display_name"] == "Dillon Rankin"
+
+
+def test_unknown_justice_id_is_rejected(client):
+    r = client.put("/api/hearings/hearing-1/attendance", json={"justice_id": "not-a-real-id", "status": "attending"})
+    assert r.status_code == 404
+
+
+def test_setting_attendance_again_updates_not_duplicates(client):
+    dillon_id = _justice_id(client, "Dillon Rankin")
+
     r = client.put("/api/hearings/hearing-1/attendance",
-                    json={"status": "attending"}, headers={"Authorization": f"Bearer {token}"})
-    assert r.status_code == 403
-
-
-def test_justice_can_set_and_update_own_attendance(client):
-    token = _login(client, "dillon@test.local")["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-
-    r = client.put("/api/hearings/hearing-1/attendance",
-                    json={"status": "maybe", "note": "depends on my class schedule"}, headers=headers)
+                    json={"justice_id": dillon_id, "status": "maybe", "note": "depends on my class schedule"})
     assert r.status_code == 200
     assert r.json()["status"] == "maybe"
 
-    # updating again should replace, not duplicate
-    r2 = client.put("/api/hearings/hearing-1/attendance", json={"status": "attending"}, headers=headers)
+    # setting it again should replace, not duplicate
+    r2 = client.put("/api/hearings/hearing-1/attendance", json={"justice_id": dillon_id, "status": "attending"})
     assert r2.status_code == 200
     assert r2.json()["status"] == "attending"
 
@@ -119,33 +131,25 @@ def test_justice_can_set_and_update_own_attendance(client):
 
 
 def test_two_justices_attendance_is_independent(client):
-    dillon_token = _login(client, "dillon@test.local")["access_token"]
-    joshua_token = _login(client, "joshua@test.local")["access_token"]
+    dillon_id = _justice_id(client, "Dillon Rankin")
+    joshua_id = _justice_id(client, "Joshua Loehr")
 
-    client.put("/api/hearings/hearing-1/attendance", json={"status": "attending"},
-               headers={"Authorization": f"Bearer {dillon_token}"})
-    client.put("/api/hearings/hearing-1/attendance", json={"status": "not_attending"},
-               headers={"Authorization": f"Bearer {joshua_token}"})
+    client.put("/api/hearings/hearing-1/attendance", json={"justice_id": dillon_id, "status": "attending"})
+    client.put("/api/hearings/hearing-1/attendance", json={"justice_id": joshua_id, "status": "not_attending"})
 
     hearing = client.get("/api/hearings/hearing-1").json()
     statuses = {a["display_name"]: a["status"] for a in hearing["attendance"]}
     assert statuses == {"Dillon Rankin": "attending", "Joshua Loehr": "not_attending"}
 
 
-def test_recommendation_board_is_public_but_writes_need_a_justice(client):
+def test_recommendation_board_needs_no_login_to_read_or_write(client):
     r = client.get("/api/recommendations")
     assert r.status_code == 200
     assert r.json() == []
 
-    editor_token = _login(client, "editor@test.local")["access_token"]
-    denied = client.post("/api/recommendations", json={"hearing_id": "hearing-1", "note": "worth it"},
-                          headers={"Authorization": f"Bearer {editor_token}"})
-    assert denied.status_code == 403
-
-    joshua_token = _login(client, "joshua@test.local")["access_token"]
+    joshua_id = _justice_id(client, "Joshua Loehr")
     created = client.post("/api/recommendations",
-                           json={"hearing_id": "hearing-1", "note": "Good example of voir dire"},
-                           headers={"Authorization": f"Bearer {joshua_token}"})
+                           json={"hearing_id": "hearing-1", "justice_id": joshua_id, "note": "Good example of voir dire"})
     assert created.status_code == 201
     assert created.json()["justice_display_name"] == "Joshua Loehr"
 
@@ -155,14 +159,15 @@ def test_recommendation_board_is_public_but_writes_need_a_justice(client):
     assert board[0]["hearing_case_number"] == "2026CR000123"
 
 
-def test_any_justice_can_remove_a_recommendation(client):
-    joshua_token = _login(client, "joshua@test.local")["access_token"]
-    dillon_token = _login(client, "dillon@test.local")["access_token"]
+def test_removing_a_recommendation_needs_no_login(client):
+    joshua_id = _justice_id(client, "Joshua Loehr")
+    rec = client.post("/api/recommendations", json={"hearing_id": "hearing-1", "justice_id": joshua_id, "note": "x"}).json()
 
-    rec = client.post("/api/recommendations", json={"hearing_id": "hearing-1", "note": "x"},
-                       headers={"Authorization": f"Bearer {joshua_token}"}).json()
-
-    removed = client.delete(f"/api/recommendations/{rec['id']}",
-                             headers={"Authorization": f"Bearer {dillon_token}"})
+    removed = client.delete(f"/api/recommendations/{rec['id']}")
     assert removed.status_code == 200
     assert client.get("/api/recommendations").json() == []
+
+
+def test_recommending_with_an_unknown_justice_id_is_rejected(client):
+    r = client.post("/api/recommendations", json={"hearing_id": "hearing-1", "justice_id": "nope", "note": "x"})
+    assert r.status_code == 404

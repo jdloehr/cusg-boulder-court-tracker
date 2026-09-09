@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, getStoredAdmin } from "../api.js";
+import { api } from "../api.js";
 
 const COURT_INFO = {
   boulder_county: {
@@ -36,7 +36,6 @@ export default function HearingDetail() {
   const { id } = useParams();
   const [hearing, setHearing] = useState(null);
   const [error, setError] = useState(null);
-  const admin = getStoredAdmin();
 
   function reload() {
     api.getHearing(id).then(setHearing).catch((e) => setError(e.message));
@@ -127,7 +126,7 @@ export default function HearingDetail() {
         </p>
       </div>
 
-      <CourtAttendance hearing={hearing} admin={admin} onChange={reload} />
+      <CourtAttendance hearing={hearing} onChange={reload} />
 
       {hearing.news_mentions?.length > 0 && (
         <div className="card">
@@ -179,10 +178,13 @@ export default function HearingDetail() {
   );
 }
 
-function CourtAttendance({ hearing, admin, onChange }) {
+function CourtAttendance({ hearing, onChange }) {
   const [justices, setJustices] = useState(null);
-  const [note, setNote] = useState("");
+  // Keyed by justice id -- every row is independently editable now (see
+  // below), so each needs its own draft note rather than one shared value.
+  const [notes, setNotes] = useState({});
   const [recNote, setRecNote] = useState("");
+  const [recAsId, setRecAsId] = useState("");
   const [message, setMessage] = useState(null);
 
   useEffect(() => {
@@ -190,22 +192,31 @@ function CourtAttendance({ hearing, admin, onChange }) {
   }, []);
 
   const byId = new Map((hearing.attendance || []).map((a) => [a.justice_id, a]));
-  const mine = admin?.isJustice ? hearing.attendance?.find((a) => a.display_name === admin.displayName) : null;
 
-  // Pre-fill the note box from the already-saved note (once) rather than
-  // always starting blank, so re-opening a hearing shows what you wrote
+  // Pre-fill each row's note box from its already-saved note (once) rather
+  // than starting blank, so re-opening a hearing shows what was written
   // last time instead of looking like it was lost.
   useEffect(() => {
-    if (mine?.note) setNote((current) => current || mine.note);
-  }, [mine?.note]);
+    setNotes((current) => {
+      const next = { ...current };
+      for (const a of hearing.attendance || []) {
+        if (a.note && next[a.justice_id] === undefined) next[a.justice_id] = a.note;
+      }
+      return next;
+    });
+  }, [hearing.attendance]);
 
-  async function setStatus(status) {
-    await api.setAttendance(hearing.id, { status, note: note || undefined });
+  async function setStatus(justiceId, status) {
+    await api.setAttendance(hearing.id, { justice_id: justiceId, status, note: notes[justiceId] || undefined });
     onChange();
   }
 
   async function recommend() {
-    await api.createRecommendation({ hearing_id: hearing.id, note: recNote || undefined });
+    if (!recAsId) {
+      setMessage("Pick which Justice this recommendation is from first.");
+      return;
+    }
+    await api.createRecommendation({ hearing_id: hearing.id, justice_id: recAsId, note: recNote || undefined });
     setMessage("Added to the court recommendations board.");
     setRecNote("");
   }
@@ -216,43 +227,36 @@ function CourtAttendance({ hearing, admin, onChange }) {
     <div className="card">
       <h3>Court attendance</h3>
       <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
-        Who from the court plans to be here.
+        Who from the court plans to be here. Anyone can set any Justice's status below -- please
+        only set your own.
       </p>
       <table className="data-table">
         <tbody>
           {justices.map((j) => {
             const a = byId.get(j.id);
-            const isMe = admin?.isJustice && admin.displayName === j.display_name;
             return (
               <tr key={j.id}>
                 <td>{j.title ? `${j.title} ${j.display_name}` : j.display_name}</td>
                 <td>
-                  {isMe ? (
-                    <select value={a?.status || ""} onChange={(e) => setStatus(e.target.value)} style={{ minWidth: "10rem" }}>
-                      <option value="" disabled>
-                        No response yet -- click to set
-                      </option>
-                      <option value="attending">Attending</option>
-                      <option value="maybe">Maybe</option>
-                      <option value="not_attending">Not attending</option>
-                    </select>
-                  ) : a ? (
-                    <span className={`badge ${a.status === "attending" ? "badge-news" : a.status === "maybe" ? "badge-changed" : "badge-cancelled"}`}>
-                      {ATTENDANCE_LABELS[a.status]}
-                    </span>
-                  ) : (
-                    <span style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>No response yet</span>
-                  )}
-                  {a?.note && !isMe && <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>{a.note}</div>}
-                  {isMe && (
-                    <input
-                      placeholder="Optional note (e.g. conflicts with class until 2pm)"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      onBlur={() => a?.status && setStatus(a.status)}
-                      style={{ display: "block", width: "100%", maxWidth: "22rem", marginTop: "0.4rem", fontSize: "0.85rem", padding: "0.3rem 0.5rem" }}
-                    />
-                  )}
+                  <select
+                    value={a?.status || ""}
+                    onChange={(e) => setStatus(j.id, e.target.value)}
+                    style={{ minWidth: "10rem" }}
+                  >
+                    <option value="" disabled>
+                      No response yet -- click to set
+                    </option>
+                    <option value="attending">Attending</option>
+                    <option value="maybe">Maybe</option>
+                    <option value="not_attending">Not attending</option>
+                  </select>
+                  <input
+                    placeholder="Optional note (e.g. conflicts with class until 2pm)"
+                    value={notes[j.id] || ""}
+                    onChange={(e) => setNotes((current) => ({ ...current, [j.id]: e.target.value }))}
+                    onBlur={() => a?.status && setStatus(j.id, a.status)}
+                    style={{ display: "block", width: "100%", maxWidth: "22rem", marginTop: "0.4rem", fontSize: "0.85rem", padding: "0.3rem 0.5rem" }}
+                  />
                 </td>
               </tr>
             );
@@ -260,24 +264,32 @@ function CourtAttendance({ hearing, admin, onChange }) {
         </tbody>
       </table>
 
-      {admin?.isJustice && (
-        <div style={{ marginTop: "1rem", borderTop: "1px solid var(--line)", paddingTop: "1rem" }}>
-          <p style={{ fontSize: "0.85rem" }}>
-            Recommend this hearing to the rest of the court (see the{" "}
-            <Link to="/recommendations">recommendations board</Link>):
-          </p>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              placeholder="Why is this worth the court's attention?"
-              value={recNote}
-              onChange={(e) => setRecNote(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button className="btn btn-secondary" onClick={recommend}>Recommend</button>
-          </div>
-          {message && <p className="message-success">{message}</p>}
+      <div style={{ marginTop: "1rem", borderTop: "1px solid var(--line)", paddingTop: "1rem" }}>
+        <p style={{ fontSize: "0.85rem" }}>
+          Recommend this hearing to the rest of the court (see the{" "}
+          <Link to="/recommendations">recommendations board</Link>):
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <select id="recommend-as" value={recAsId} onChange={(e) => setRecAsId(e.target.value)} style={{ minWidth: "12rem" }}>
+            <option value="" disabled>
+              Recommending as...
+            </option>
+            {justices.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.title ? `${j.title} ${j.display_name}` : j.display_name}
+              </option>
+            ))}
+          </select>
+          <input
+            placeholder="Why is this worth the court's attention?"
+            value={recNote}
+            onChange={(e) => setRecNote(e.target.value)}
+            style={{ flex: 1, minWidth: "12rem" }}
+          />
+          <button className="btn btn-secondary" onClick={recommend}>Recommend</button>
         </div>
-      )}
+        {message && <p className="message-success">{message}</p>}
+      </div>
     </div>
   );
 }
