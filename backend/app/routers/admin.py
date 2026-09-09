@@ -1,8 +1,9 @@
 """
 Role-gated admin/curation endpoints (Section 5.4). Two roles:
-- editor: publish blurbs, manage the federal supplement, exclude/flag
-  hearings, set academic-calendar periods.
-- contributor: draft blurbs, flag federal candidates for review. Cannot
+- editor: publish blurbs, manage the appellate supplement (federal +
+  Colorado Supreme Court/Court of Appeals), exclude/flag hearings, set
+  academic-calendar periods.
+- contributor: draft blurbs, flag appellate candidates for review. Cannot
   publish or exclude.
 
 Every mutating action writes an ActivityLogEntry so the small CUSG team can
@@ -19,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, get_current_admin, require_editor, verify_password
 from app.db import get_db
-from app.jobs.federal_supplement import search_candidates
+from app.jobs.appellate_supplement import PRESET_COURTS, search_candidates
 from app.models import (
     AcademicCalendarPeriod,
     ActivityLogEntry,
@@ -41,13 +42,13 @@ from app.schemas import (
     AcademicCalendarPeriodOut,
     AdminLoginRequest,
     AdminLoginResponse,
+    AppellateCandidateOut,
     BlurbDraftIn,
     CommunitySubmissionReviewOut,
     ExclusionIn,
-    FederalCandidateOut,
     HearingOut,
     NewsMentionOut,
-    PublishFederalCandidateIn,
+    PublishAppellateCandidateIn,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -242,32 +243,39 @@ def set_exclusion(hearing_id: str, payload: ExclusionIn, db: Session = Depends(g
     return {"status": "updated"}
 
 
-# --- Federal supplement (Section 2.3 / 5.4) ----------------------------------
+# --- Appellate supplement (Section 2.3 / 5.4, expanded to CO Supreme Court/Court of Appeals) --
 
-@router.get("/federal-candidates/search", response_model=list[FederalCandidateOut])
-def federal_candidate_search(query: str, court: Optional[str] = None, result_type: str = "o",
-                              admin: AdminUser = Depends(get_current_admin)):
+@router.get("/appellate-candidates/search", response_model=list[AppellateCandidateOut])
+def appellate_candidate_search(query: str, court: Optional[str] = None, result_type: str = "o",
+                                admin: AdminUser = Depends(get_current_admin)):
     candidates = search_candidates(query, court=court, result_type=result_type)
-    return [FederalCandidateOut(**vars(c)) for c in candidates]
+    return [AppellateCandidateOut(**vars(c)) for c in candidates]
 
 
-@router.post("/federal-candidates/flag")
-def flag_federal_candidate(candidate: FederalCandidateOut, db: Session = Depends(get_db),
-                            admin: AdminUser = Depends(get_current_admin)):
+@router.get("/appellate-candidates/courts")
+def appellate_candidate_court_presets(admin: AdminUser = Depends(get_current_admin)):
+    """Quick-pick court options for the search form -- see PRESET_COURTS in
+    app/jobs/appellate_supplement.py."""
+    return PRESET_COURTS
+
+
+@router.post("/appellate-candidates/flag")
+def flag_appellate_candidate(candidate: AppellateCandidateOut, db: Session = Depends(get_db),
+                              admin: AdminUser = Depends(get_current_admin)):
     """Contributor (or Editor) flags a CourtListener result as worth an
     Editor reviewing for the public feed. Logged to the activity log rather
     than a dedicated table -- see docs/ARCHITECTURE.md."""
-    _log(db, admin, "flagged_federal_candidate", "federal_candidate", None,
+    _log(db, admin, "flagged_appellate_candidate", "appellate_candidate", None,
          json.dumps(candidate.model_dump()))
     db.commit()
     return {"status": "flagged for review"}
 
 
-@router.get("/federal-candidates/flagged")
-def list_flagged_federal_candidates(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+@router.get("/appellate-candidates/flagged")
+def list_flagged_appellate_candidates(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     entries = (
         db.query(ActivityLogEntry)
-        .filter(ActivityLogEntry.action == "flagged_federal_candidate")
+        .filter(ActivityLogEntry.action == "flagged_appellate_candidate")
         .order_by(ActivityLogEntry.created_at.desc())
         .all()
     )
@@ -275,13 +283,16 @@ def list_flagged_federal_candidates(db: Session = Depends(get_db), admin: AdminU
             for e in entries]
 
 
-@router.post("/federal-candidates/publish", response_model=HearingOut)
-def publish_federal_candidate(payload: PublishFederalCandidateIn, db: Session = Depends(get_db),
-                               admin: AdminUser = Depends(require_editor)):
-    """Editor manually curates a CourtListener candidate into the public
-    feed as a source=federal_courtlistener Hearing row. Deliberately manual
-    (Section 2.3: "a team member flags this federal case is Boulder-relevant
-    rather than a keyword filter alone")."""
+@router.post("/appellate-candidates/publish", response_model=HearingOut)
+def publish_appellate_candidate(payload: PublishAppellateCandidateIn, db: Session = Depends(get_db),
+                                 admin: AdminUser = Depends(require_editor)):
+    """Editor manually curates a CourtListener candidate (federal, or
+    Colorado Supreme Court/Court of Appeals) into the public feed as a
+    source=federal_courtlistener Hearing row. Deliberately manual (Section
+    2.3: "a team member flags this ... case is Boulder-relevant rather
+    than a keyword filter alone") -- see app/jobs/appellate_supplement.py's
+    module docstring for why this is still curator-driven even for
+    Colorado's own appellate courts."""
     from app.hearing_types import classify_hearing_type
 
     type_result = classify_hearing_type(payload.hearing_type_raw)
@@ -302,7 +313,7 @@ def publish_federal_candidate(payload: PublishFederalCandidateIn, db: Session = 
         status=HearingStatus.scheduled,
     )
     db.add(hearing)
-    _log(db, admin, "published_federal_candidate", "hearing", None, payload.case_name)
+    _log(db, admin, "published_appellate_candidate", "hearing", None, payload.case_name)
     db.commit()
     db.refresh(hearing)
     return HearingOut.from_orm_hearing(hearing)

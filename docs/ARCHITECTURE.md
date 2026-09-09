@@ -103,6 +103,33 @@ pre-law students generally:
   on a fully anonymous, un-identified input, not about restricting who can
   use the feature, so the "no login" changes above don't apply to it. See
   `docs/EXCLUSION_LOGIC.md`.
+- **`CourtLocation.colorado_supreme_court` / `colorado_court_of_appeals`**:
+  "expand the data" to Colorado's own two appellate courts, restricted to
+  cases already newsworthy or likely to become so. `app/jobs/
+  federal_supplement.py` was renamed to `appellate_supplement.py` and
+  generalized (`PRESET_COURTS`, a `court` parameter already supported the
+  mechanism) rather than building a parallel pipeline, since the real
+  constraint is the same for federal and Colorado-appellate cases alike:
+  CourtListener indexes real opinions for both `colo` and `coloctapp`
+  (confirmed live) but has no oral-argument *scheduling* data for either
+  -- Colorado's own calendars exist only as PDFs. `check_news_coverage()`
+  cross-references a candidate's name against real articles the news-
+  monitoring pipeline already gathered, surfacing an "In the news" hint in
+  the admin search UI -- a curation aid, not a hard filter, since a
+  genuinely newsworthy case shouldn't get hidden by a name-matching quirk.
+  See `docs/DATA_SOURCE_FINDINGS.md` section 7 for the live findings this
+  is built on.
+- **`SubscriptionFilterType.new_recommendation`**: email the moment a
+  Justice adds a hearing to the recommendation board -- reuses
+  `SubscriptionFrequency.realtime_for_followed_case` (see that enum's
+  updated comment in `app/models.py`) rather than adding a new frequency
+  value, since both mean "immediately," not something case-specific.
+- **`/welcome`**: a first-visit tour page, shown automatically once per
+  browser (a `localStorage` flag, not a server-side "first login" concept
+  -- there's no login for regular visitors) when landing on the plain
+  homepage; always reachable from the nav afterward. A shared link
+  straight to a specific hearing or the recommendations board is left
+  alone rather than hijacked to the tour.
 
 ## Running locally
 

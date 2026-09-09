@@ -171,3 +171,26 @@ def test_removing_a_recommendation_needs_no_login(client):
 def test_recommending_with_an_unknown_justice_id_is_rejected(client):
     r = client.post("/api/recommendations", json={"hearing_id": "hearing-1", "justice_id": "nope", "note": "x"})
     assert r.status_code == 404
+
+
+def test_new_recommendation_emails_subscribers(client, monkeypatch):
+    sent = []
+    monkeypatch.setattr("app.jobs.digest.send_email", lambda to, subject, body: sent.append((to, subject, body)))
+
+    client.post("/api/subscriptions", json={
+        "email": "watcher@example.com", "filter_type": "new_recommendation",
+        "filter_value": "all", "frequency": "realtime_for_followed_case",
+    })
+    # A weekly-digest subscriber to something else shouldn't get this email.
+    client.post("/api/subscriptions", json={
+        "email": "other@example.com", "filter_type": "hearing_type_category",
+        "filter_value": "jury_trial", "frequency": "weekly_digest",
+    })
+
+    joshua_id = _justice_id(client, "Joshua Loehr")
+    client.post("/api/recommendations", json={"hearing_id": "hearing-1", "justice_id": joshua_id, "note": "worth it"})
+
+    assert len(sent) == 1
+    assert sent[0][0] == "watcher@example.com"
+    assert "New court recommendation" in sent[0][1]
+    assert "Joshua Loehr" in sent[0][2]

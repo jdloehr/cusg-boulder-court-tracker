@@ -76,20 +76,20 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ is_excluded: isExcluded, exclusion_reason: reason || null }),
     }),
-  searchFederalCandidates: (query, resultType = "o") =>
-    request(`/api/admin/federal-candidates/search?query=${encodeURIComponent(query)}&result_type=${resultType}`, {
-      headers: authHeaders(),
-    }),
-  flagFederalCandidate: (candidate) =>
-    request("/api/admin/federal-candidates/flag", {
+  appellateCourtPresets: () => request("/api/admin/appellate-candidates/courts", { headers: authHeaders() }),
+  searchAppellateCandidates: (query, court, resultType = "o") =>
+    request(`/api/admin/appellate-candidates/search?query=${encodeURIComponent(query)}` +
+      `&court=${encodeURIComponent(court || "")}&result_type=${resultType}`, { headers: authHeaders() }),
+  flagAppellateCandidate: (candidate) =>
+    request("/api/admin/appellate-candidates/flag", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(candidate),
     }),
-  listFlaggedFederalCandidates: () =>
-    request("/api/admin/federal-candidates/flagged", { headers: authHeaders() }),
-  publishFederalCandidate: (payload) =>
-    request("/api/admin/federal-candidates/publish", {
+  listFlaggedAppellateCandidates: () =>
+    request("/api/admin/appellate-candidates/flagged", { headers: authHeaders() }),
+  publishAppellateCandidate: (payload) =>
+    request("/api/admin/appellate-candidates/publish", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),

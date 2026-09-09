@@ -148,3 +148,33 @@ def notify_realtime_subscribers_of_change(db: Session, hearing: Hearing) -> int:
         )
         send_email(sub.email, subject, body)
     return len(subs)
+
+
+def notify_subscribers_of_new_recommendation(db: Session, recommendation) -> int:
+    """Added on request: email anyone subscribed to new_recommendation the
+    moment a Justice adds one to the board. Called from
+    routers/justices.py::create_recommendation() right after the row is
+    committed."""
+    subs = (
+        db.query(Subscription)
+        .filter(
+            Subscription.is_active.is_(True),
+            Subscription.filter_type == SubscriptionFilterType.new_recommendation,
+            Subscription.frequency == SubscriptionFrequency.realtime_for_followed_case,
+        )
+        .all()
+    )
+    hearing = recommendation.hearing
+    justice_name = recommendation.justice.display_name or recommendation.justice.email
+    for sub in subs:
+        subject = "New court recommendation"
+        body = (
+            f"{justice_name} recommended a hearing to watch:\n\n"
+            f"{hearing.hearing_type_display}\n"
+            f"Case {hearing.case_number} | {hearing.date} {hearing.time or ''}\n"
+            f"{recommendation.note or ''}\n\n"
+            f"See it at /recommendations\n"
+            f"Unsubscribe: /unsubscribe/{sub.unsubscribe_token}"
+        )
+        send_email(sub.email, subject, body)
+    return len(subs)

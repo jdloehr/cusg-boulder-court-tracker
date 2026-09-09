@@ -7,10 +7,13 @@ a week or two out, plus anything getting real local news coverage. Full
 spec in the original build prompt; this README covers what was actually
 built and how to run it.
 
-Beyond the original spec, the court's 7 Justices can also RSVP their
-attendance to a hearing and recommend hearings to each other on a shared
-board, and any visitor can propose case details (a summary, a judge's
-name) for the team to review.
+Beyond the original spec: anyone can RSVP a Justice's attendance to a
+hearing (no login) and recommend hearings on a shared board with an email
+alert option; any visitor can propose case details (a summary, a judge's
+name) for the team to review; the feed now also covers the Colorado
+Supreme Court and Court of Appeals, restricted to cases already
+newsworthy or likely to become so; and a first-visit welcome page
+explains how to use the tool.
 
 **This was built and validated against real, live data, not mocks.**
 During this build the docket-pull job pulled real Boulder County court
@@ -28,11 +31,12 @@ and how they were fixed.
 |---|---|
 | Docket-pull pipeline (fetch, decode, classify, filter, diff/upsert) | **Real, working, tested against live data.** |
 | News-monitoring pipeline (6 real sources, extraction, matching, review queue) | **Real, working, tested against live sources** -- 4 Boulder-specific (Boulder Reporting Lab, Daily Camera, CU Independent, Boulder Weekly) + 2 statewide supplementary. No naturally-occurring auto-match happened to occur during build (see findings doc for why that's an honest data fact, not a bug); the auto-match code path itself is tested against clearly-labeled synthetic fixtures. |
-| Federal supplement (CourtListener search) | **Real, working**, seeded with one real, currently-scheduled case. |
-| Public list/detail/subscribe/recommendations views | **Real, working**, React frontend against the real API. |
+| Appellate supplement (CourtListener search: federal + Colorado Supreme Court/Court of Appeals) | **Real, working**, seeded with one real, currently-scheduled federal case; "In the news" curation hint verified live against real Colorado Supreme Court search results. |
+| Public list/detail/subscribe/recommendations/welcome views | **Real, working**, React frontend against the real API. |
 | Admin/curation tool (review queues, blurbs, exclusion, academic calendar, activity log) | **Real, working.** |
-| CUSG Justice features (attendance RSVP, recommendation board) | **Real, working**, seeded with the actual 7 Justices. Not in the original spec -- added on request. |
+| CUSG Justice features (attendance RSVP, recommendation board) | **Real, working**, seeded with the actual 7 Justices, no login required (by request) -- verified end-to-end as a fully anonymous visitor. Not in the original spec -- added on request. |
 | Public "add case details" submissions | **Real, working**, moderated by an Editor before anything publishes. Not in the original spec -- added on request. |
+| Email alert on new recommendations | **Real, working** (console-logged, same as the weekly digest -- see Email delivery below). Not in the original spec -- added on request. |
 | Academic-calendar de-emphasis | **Real, working**, seeded with CU Boulder's actual published Fall 2026 dates. |
 | Email delivery | **Stubbed to console/log output.** No transactional-email account exists for this build; the digest-selection and suppression logic is fully implemented and testable, only the "send" call is a stand-in. See `app/jobs/digest.py`. |
 | Job-failure alerting | **Stubbed to console/log output**, same reasoning. See `app/alerting.py`. |

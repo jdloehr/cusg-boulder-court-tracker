@@ -14,7 +14,7 @@ real pass here is meaningful evidence the integration works.
 import httpx
 import pytest
 
-from app.jobs.federal_supplement import search_candidates
+from app.jobs.appellate_supplement import search_candidates
 
 
 def _courtlistener_reachable() -> bool:
@@ -39,3 +39,21 @@ def test_suncor_boulder_case_is_findable_via_real_courtlistener_search():
     # Suncor Energy", Court of Appeals for the Tenth Circuit, filed 2022-02-08.
     top = candidates[0]
     assert top.absolute_url.startswith("https://www.courtlistener.com/opinion/")
+
+
+@pytest.mark.skipif(not _courtlistener_reachable(), reason="courtlistener.com not reachable from this network")
+def test_colorado_appellate_courts_are_real_and_searchable():
+    """Confirmed live during build (see docs/DATA_SOURCE_FINDINGS.md):
+    CourtListener court ids "colo" (Supreme Court of Colorado) and
+    "coloctapp" (Colorado Court of Appeals) are real, in-use courts with
+    genuine opinion data -- this is what makes the appellate supplement's
+    expansion to Colorado's own courts (Section 12 addition) more than a
+    guess. Neither has oral-argument scheduling data via CourtListener
+    (has_oral_argument_scraper=False for both, confirmed via
+    /api/rest/v4/courts/<id>/), which is why publishing one is still a
+    manual, curator-driven action -- see PublishAppellateCandidateIn."""
+    colo = search_candidates("Colorado", court="colo", result_type="o")
+    assert len(colo) > 0
+
+    coloctapp = search_candidates("Colorado", court="coloctapp", result_type="o")
+    assert len(coloctapp) > 0

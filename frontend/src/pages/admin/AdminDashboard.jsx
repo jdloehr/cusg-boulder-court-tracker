@@ -6,7 +6,7 @@ const TABS = [
   { key: "hearings", label: "Review Queue: Hearings" },
   { key: "news", label: "Review Queue: News" },
   { key: "community", label: "Review Queue: Community" },
-  { key: "federal", label: "Federal Supplement" },
+  { key: "federal", label: "Appellate Supplement" },
   { key: "calendar", label: "Academic Calendar" },
   { key: "activity", label: "Activity Log" },
 ];
@@ -48,7 +48,7 @@ export default function AdminDashboard() {
           {tab === "hearings" && <HearingReviewQueue admin={admin} />}
           {tab === "news" && <NewsReviewQueue />}
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
-          {tab === "federal" && <FederalSupplement admin={admin} />}
+          {tab === "federal" && <AppellateSupplement admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
           {tab === "activity" && <ActivityLog />}
         </div>
@@ -263,39 +263,56 @@ function CommunitySubmissionQueue({ admin }) {
 
 // --- Federal supplement: search CourtListener, flag, publish ---
 
-function FederalSupplement({ admin }) {
-  const [query, setQuery] = useState("Suncor Boulder");
+const COURT_PRESET_TO_LOCATION = {
+  scotus: "us_supreme_court",
+  colo: "colorado_supreme_court",
+  coloctapp: "colorado_court_of_appeals",
+};
+
+function AppellateSupplement({ admin }) {
+  const [courts, setCourts] = useState({});
+  const [court, setCourt] = useState("colo");
+  const [query, setQuery] = useState("Boulder");
   const [resultType, setResultType] = useState("o");
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [flagged, setFlagged] = useState([]);
 
+  useEffect(() => {
+    api.appellateCourtPresets().then(setCourts).catch(() => {});
+  }, []);
+
   function loadFlagged() {
-    api.listFlaggedFederalCandidates().then(setFlagged).catch(() => {});
+    api.listFlaggedAppellateCandidates().then(setFlagged).catch(() => {});
   }
   useEffect(loadFlagged, []);
 
   async function search() {
     setError(null);
     try {
-      setResults(await api.searchFederalCandidates(query, resultType));
+      setResults(await api.searchAppellateCandidates(query, court, resultType));
     } catch (e) {
       setError(e.message);
     }
   }
 
   async function flag(candidate) {
-    await api.flagFederalCandidate(candidate);
+    await api.flagAppellateCandidate(candidate);
     loadFlagged();
   }
 
   async function publish(candidate) {
-    const date = prompt("Hearing date (YYYY-MM-DD)?", candidate.date_filed?.slice(0, 10) || "");
+    const date = prompt(
+      "Hearing date (YYYY-MM-DD)? For Colorado's own appellate courts, check the real PDF oral-argument " +
+      "calendar first (coloradojudicial.gov/supreme-court/supreme-court-oral-arguments or " +
+      ".../topic/77/court-appeals-oral-arguments) -- CourtListener doesn't have a scheduling feed for them.",
+      candidate.date_filed?.slice(0, 10) || ""
+    );
     if (!date) return;
-    await api.publishFederalCandidate({
+    await api.publishAppellateCandidate({
       case_name: candidate.case_name,
       docket_number: candidate.docket_number || candidate.absolute_url,
-      court_location: "us_district_colorado",
+      court_location: COURT_PRESET_TO_LOCATION[court] || "us_district_colorado",
       court_note: candidate.court,
       date,
       hearing_type_raw: "Oral Argument",
@@ -307,14 +324,23 @@ function FederalSupplement({ admin }) {
 
   return (
     <div>
-      <h2>CourtListener search (Section 2.3 federal supplement)</h2>
+      <h2>CourtListener search (Section 2.3 appellate supplement)</h2>
       <p className="disclaimer">
-        Search for Boulder-relevant federal cases. A Contributor can flag a result for an Editor to
-        review; only an Editor can publish one to the public feed. This is deliberately manual --
-        federal relevance isn't a keyword filter, it's a judgment call.
+        Search federal courts or Colorado's own Supreme Court / Court of Appeals. A Contributor can
+        flag a result for an Editor to review; only an Editor can publish one to the public feed.
+        Deliberately manual -- relevance isn't a keyword filter, it's a judgment call, and neither
+        CourtListener nor Colorado publishes a structured oral-argument schedule for its own
+        appellate courts (only PDFs), so the actual date has to be confirmed by hand either way.
       </p>
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} style={{ flex: 1 }} />
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+        <select value={court} onChange={(e) => setCourt(e.target.value)}>
+          {Object.entries(courts).map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} style={{ flex: 1, minWidth: "10rem" }} />
         <select value={resultType} onChange={(e) => setResultType(e.target.value)}>
           <option value="o">Opinions</option>
           <option value="oa">Oral argument audio</option>
@@ -341,6 +367,7 @@ function FederalSupplement({ admin }) {
                   <a href={c.absolute_url} target="_blank" rel="noreferrer">
                     {c.case_name}
                   </a>
+                  {c.already_in_news && <span className="badge badge-news" style={{ marginLeft: "0.5rem" }}>In the news</span>}
                 </td>
                 <td>{c.court}</td>
                 <td>{c.date_filed}</td>
@@ -366,6 +393,7 @@ function FederalSupplement({ admin }) {
         {flagged.map((f, i) => (
           <li key={i}>
             {f.candidate.case_name} -- flagged by {f.flagged_by}
+            {f.candidate.already_in_news && <span className="badge badge-news" style={{ marginLeft: "0.5rem" }}>In the news</span>}
           </li>
         ))}
       </ul>

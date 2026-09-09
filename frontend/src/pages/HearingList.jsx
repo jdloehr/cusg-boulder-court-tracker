@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import AcademicCalendarBanner from "../components/AcademicCalendarBanner.jsx";
+import { COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
 
 const HORIZONS = [
   { label: "Next 2 weeks", days: 14 },
@@ -18,15 +19,6 @@ const CASE_CATEGORY_LABELS = {
   probate: "Probate",
   juvenile: "Juvenile",
   other: "Other",
-};
-
-const COURT_LOCATION_LABELS = {
-  boulder_county: "Boulder County Court",
-  boulder_district: "Boulder Combined Court",
-  longmont_combined: "Longmont Combined Court",
-  us_district_colorado: "U.S. District Court, Colorado",
-  us_supreme_court: "U.S. Supreme Court",
-  unknown: "Location unconfirmed",
 };
 
 function todayISO() {
@@ -188,7 +180,9 @@ function HearingRow({ hearing }) {
         </div>
       </div>
       <div className="badges">
-        {hearing.source === "federal_courtlistener" && <span className="badge badge-federal">Federal</span>}
+        {hearing.court_location !== "boulder_county" && (
+          <span className="badge badge-federal">{COURT_LOCATION_TAG[hearing.court_location] || hearing.court_location}</span>
+        )}
         {hasNews && <span className="badge badge-news">In the news</span>}
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}

@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.jobs.digest import notify_subscribers_of_new_recommendation
 from app.models import (
     ActivityLogEntry,
     AdminUser,
@@ -137,6 +138,7 @@ def create_recommendation(payload: RecommendationIn, db: Session = Depends(get_d
     ))
     db.commit()
     db.refresh(rec)
+    notify_subscribers_of_new_recommendation(db, rec)
 
     return RecommendationOut(
         id=rec.id, hearing_id=hearing.id, hearing_case_number=hearing.case_number,

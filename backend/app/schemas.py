@@ -239,13 +239,14 @@ class ExclusionIn(BaseModel):
     exclusion_reason: Optional[str] = None
 
 
-class FederalCandidateOut(BaseModel):
+class AppellateCandidateOut(BaseModel):
     case_name: str
     court: str
     date_filed: Optional[str]
     docket_number: Optional[str]
     absolute_url: str
     result_type: str
+    already_in_news: bool = False
 
 
 class CommunitySubmissionIn(BaseModel):
@@ -274,7 +275,7 @@ class CommunitySubmissionReviewOut(CommunitySubmissionOut):
     hearing_case_number: str
 
 
-class PublishFederalCandidateIn(BaseModel):
+class PublishAppellateCandidateIn(BaseModel):
     case_name: str
     docket_number: str
     court_location: CourtLocation

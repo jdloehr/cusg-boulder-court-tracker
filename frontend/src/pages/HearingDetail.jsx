@@ -1,30 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api.js";
-
-const COURT_INFO = {
-  boulder_county: {
-    name: "Boulder County Justice Center",
-    address: "1777 6th St, Boulder, CO 80302",
-  },
-  boulder_district: {
-    name: "Boulder County Justice Center (Combined Court)",
-    address: "1777 6th St, Boulder, CO 80302",
-  },
-  longmont_combined: {
-    name: "Boulder County Combined Court -- Longmont",
-    address: "1035 Kimbark St, Longmont, CO 80501",
-  },
-  us_district_colorado: {
-    name: "Alfred A. Arraj U.S. Courthouse",
-    address: "901 19th St, Denver, CO 80294",
-  },
-  us_supreme_court: {
-    name: "Supreme Court of the United States",
-    address: "1 First St NE, Washington, DC 20543 (seating extremely limited; usually livestreamed)",
-  },
-  unknown: { name: "Location unconfirmed", address: "Check the official docket." },
-};
+import { COURT_INFO, COURT_LOCATION_TAG } from "../courtInfo.js";
 
 const ATTENDANCE_LABELS = {
   attending: "Attending",
@@ -55,7 +32,9 @@ export default function HearingDetail() {
 
       <div className="detail-header">
         <h1>{hearing.hearing_type_raw}</h1>
-        {hearing.source === "federal_courtlistener" && <span className="badge badge-federal">Federal case</span>}
+        {hearing.court_location !== "boulder_county" && (
+          <span className="badge badge-federal">{COURT_LOCATION_TAG[hearing.court_location] || hearing.court_location}</span>
+        )}
         {hearing.news_mentions?.length > 0 && <span className="badge badge-news">In the news</span>}
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}

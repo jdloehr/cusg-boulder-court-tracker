@@ -77,6 +77,19 @@ class CourtLocation(str, enum.Enum):
     # it under us_district_colorado would misdescribe which court a student
     # would need to travel to (or watch remotely).
     us_supreme_court = "us_supreme_court"
+    # Colorado's own two appellate courts (added on request, Section 12
+    # deliverable "expand the data"). Real oral-argument case discovery for
+    # these comes from CourtListener (court ids "colo" and "coloctapp",
+    # confirmed live -- see docs/DATA_SOURCE_FINDINGS.md), curated the same
+    # way as the federal supplement: CourtListener has no scheduling/oral-
+    # argument-date feed for either (has_oral_argument_scraper=False for
+    # both, confirmed live), only real, indexed opinions -- actual argument
+    # *dates* come from Colorado's own published PDF calendars
+    # (coloradojudicial.gov/supreme-court/supreme-court-oral-arguments and
+    # .../topic/77/court-appeals-oral-arguments), which a curator reads
+    # directly, the same way the Suncor SCOTUS date was confirmed.
+    colorado_supreme_court = "colorado_supreme_court"
+    colorado_court_of_appeals = "colorado_court_of_appeals"
     unknown = "unknown"
 
 
@@ -102,10 +115,21 @@ class SubscriptionFilterType(str, enum.Enum):
     hearing_type_category = "hearing_type_category"
     case_number = "case_number"
     keyword = "keyword"
+    # Added on request: notify on any new entry to the Justice
+    # recommendation board (Section "CUSG Justice features"), rather than
+    # filtering hearings directly. filter_value is unused/ignored for this
+    # type (the frontend sends a placeholder) since there's nothing to
+    # filter -- every new recommendation qualifies.
+    new_recommendation = "new_recommendation"
 
 
 class SubscriptionFrequency(str, enum.Enum):
     weekly_digest = "weekly_digest"
+    # Historically named for the "follow one case" use case; also now used
+    # for new_recommendation subscriptions below, since both mean "email
+    # immediately when the triggering event happens" rather than something
+    # specific to case-following. Not renamed to avoid an unrelated schema
+    # churn -- see docs/ARCHITECTURE.md.
     realtime_for_followed_case = "realtime_for_followed_case"
 
 

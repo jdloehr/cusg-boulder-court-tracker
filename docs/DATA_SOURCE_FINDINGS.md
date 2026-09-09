@@ -255,7 +255,50 @@ live search results, not fixtures). Because this case is genuinely at the
 only listed `us_district_colorado`) -- see `app/models.py` for the
 comment explaining why.
 
-## 6. What this means for "Still Open" (Section 10), summarized
+## 6. Colorado Court of Appeals / Colorado Supreme Court (added on request)
+
+Asked to "expand the data" to Colorado's own two appellate courts,
+restricted to cases already newsworthy or likely to become so. Findings
+from live testing:
+
+- CourtListener's court ids `colo` (Supreme Court of Colorado) and
+  `coloctapp` (Colorado Court of Appeals) are real and confirmed via
+  `GET /api/rest/v4/courts/<id>/`: both `in_use: true`,
+  `has_opinion_scraper: true` (real, current opinions genuinely indexed --
+  a live search for "Colorado" against `court=colo` and `court=coloctapp`
+  each returned real results, not zero).
+- **Neither has oral-argument scheduling data**: both report
+  `has_oral_argument_scraper: false`. This is the same shape of limitation
+  as federal RECAP needing a token (section 5) -- opinions (what already
+  happened) are freely searchable; a *future* hearing date is not exposed
+  by CourtListener for either court.
+- Colorado publishes its own oral-argument calendars for both courts
+  directly (`coloradojudicial.gov/supreme-court/supreme-court-oral-
+  arguments` and `.../topic/77/court-appeals-oral-arguments`), confirmed
+  live -- **but only as PDF documents**, not structured HTML or an API.
+  Parsing these PDFs into a real feed was judged out of scope for this
+  pass (a genuinely separate, fragile sub-project -- inconsistent PDF
+  layouts, no stable schema) and is a good next step for whoever picks
+  this up; documented here rather than silently skipped.
+- Given both constraints, this is implemented the same way as the
+  federal supplement: a curator searches CourtListener (now with Colorado
+  Supreme Court / Court of Appeals as quick-pick options, see
+  `PRESET_COURTS` in `app/jobs/appellate_supplement.py`), reads the real
+  PDF calendar to find the actual date, and publishes manually. The "only
+  the newsworthy ones" instruction is implemented as `check_news_coverage()`,
+  which cross-references a candidate's case name against real articles
+  already gathered by the news-monitoring pipeline (Section 2.2) and
+  surfaces an "In the news" badge in the search results -- confirmed live
+  during build: searching `court=colo` for "Boulder" correctly flagged
+  real matches (e.g. "County of Boulder v. Boulder and Weld County Ditch
+  Co.", "City of Boulder v. Public Service Company of Colorado") against
+  genuine local-news headlines already in the database, while leaving
+  unrelated results unflagged. This is a curation aid, not a hard filter
+  -- a curator can still publish an unflagged result they know is
+  significant, since name-matching against recent headlines will always
+  miss some genuinely newsworthy cases.
+
+## 7. What this means for "Still Open" (Section 10), summarized
 
 | # | Question | Status |
 |---|---|---|

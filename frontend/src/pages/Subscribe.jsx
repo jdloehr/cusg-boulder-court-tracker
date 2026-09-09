@@ -9,13 +9,34 @@ export default function Subscribe() {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  function onFilterTypeChange(value) {
+    setFilterType(value);
+    if (value === "hearing_type_category") {
+      setFilterValue("jury_trial");
+      setFrequency("weekly_digest");
+    } else if (value === "new_recommendation") {
+      // Nothing to filter by -- filter_value is unused for this type
+      // (see SubscriptionFilterType.new_recommendation in app/models.py).
+      setFilterValue("all");
+      setFrequency("realtime_for_followed_case");
+    } else {
+      setFilterValue("");
+    }
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     setBusy(true);
     setStatus(null);
     try {
       await api.createSubscription({ email, filter_type: filterType, filter_value: filterValue, frequency });
-      setStatus({ ok: true, message: "You're subscribed. Look for the first digest next Monday." });
+      setStatus({
+        ok: true,
+        message:
+          filterType === "new_recommendation"
+            ? "You're subscribed -- you'll get an email as soon as a Justice recommends a new hearing."
+            : "You're subscribed. Look for the first digest next Monday.",
+      });
       setEmail("");
     } catch (err) {
       setStatus({ ok: false, message: err.message });
@@ -28,9 +49,9 @@ export default function Subscribe() {
     <article>
       <h1>Subscribe</h1>
       <p className="disclaimer">
-        Email only, no account needed. Choose a weekly digest of hearings matching your filter, or
-        real-time alerts for one specific case you're following. Digests are shortened during CU
-        breaks and finals week.
+        Email only, no account needed. Choose a weekly digest of hearings matching your filter,
+        real-time alerts for one specific case you're following, or an alert the moment the court
+        recommends a new hearing. Digests are shortened during CU breaks and finals week.
       </p>
 
       <form className="form-grid" onSubmit={onSubmit}>
@@ -41,22 +62,15 @@ export default function Subscribe() {
 
         <div>
           <label htmlFor="filterType">Follow by</label>
-          <select
-            id="filterType"
-            value={filterType}
-            onChange={(e) => {
-              setFilterType(e.target.value);
-              setFilterValue(e.target.value === "hearing_type_category" ? "jury_trial" : "");
-              if (e.target.value === "realtime_case") setFrequency("realtime_for_followed_case");
-            }}
-          >
+          <select id="filterType" value={filterType} onChange={(e) => onFilterTypeChange(e.target.value)}>
             <option value="hearing_type_category">Hearing type</option>
             <option value="case_number">A specific case number</option>
             <option value="keyword">Keyword</option>
+            <option value="new_recommendation">New court recommendations</option>
           </select>
         </div>
 
-        {filterType === "hearing_type_category" ? (
+        {filterType === "hearing_type_category" && (
           <div>
             <label htmlFor="filterValue">Type</label>
             <select id="filterValue" value={filterValue} onChange={(e) => setFilterValue(e.target.value)}>
@@ -64,7 +78,8 @@ export default function Subscribe() {
               <option value="oral_argument_motions">Oral arguments / motions</option>
             </select>
           </div>
-        ) : (
+        )}
+        {(filterType === "case_number" || filterType === "keyword") && (
           <div>
             <label htmlFor="filterValue">{filterType === "case_number" ? "Case number" : "Keyword"}</label>
             <input
@@ -76,16 +91,24 @@ export default function Subscribe() {
             />
           </div>
         )}
+        {filterType === "new_recommendation" && (
+          <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+            You'll get an email every time a Justice adds one -- see the{" "}
+            <a href="/recommendations">recommendations board</a>.
+          </p>
+        )}
 
-        <div>
-          <label htmlFor="frequency">Frequency</label>
-          <select id="frequency" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-            <option value="weekly_digest">Weekly digest</option>
-            <option value="realtime_for_followed_case">
-              Real-time (only meaningful when following a specific case number)
-            </option>
-          </select>
-        </div>
+        {filterType !== "new_recommendation" && (
+          <div>
+            <label htmlFor="frequency">Frequency</label>
+            <select id="frequency" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+              <option value="weekly_digest">Weekly digest</option>
+              <option value="realtime_for_followed_case">
+                Real-time (only meaningful when following a specific case number)
+              </option>
+            </select>
+          </div>
+        )}
 
         <button className="btn" type="submit" disabled={busy}>
           {busy ? "Subscribing…" : "Subscribe"}
