@@ -229,6 +229,24 @@ class Hearing(Base):
     def has_news_mention(self) -> bool:
         return any(nm.match_status != MatchStatus.unmatched_review for nm in self.news_mentions)
 
+    @property
+    def time_sort_key(self) -> int:
+        """Minutes since midnight, for chronological sorting -- `time` is
+        stored as whatever free-text string the source gave us (docket
+        export or a curator typing "9:00 AM"), so `ORDER BY time` in SQL
+        sorts it *alphabetically*, not chronologically. Real bug, caught
+        against real live data: a day mixing "10:00 AM", "1:00 PM", and
+        "9:00 AM" rendered in that exact wrong order, since '1' < '9' as
+        the first character. Unparseable or missing times sort last."""
+        raw = (self.time or "").strip().upper()
+        for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                return parsed.hour * 60 + parsed.minute
+            except ValueError:
+                continue
+        return 24 * 60  # unparseable/blank -- after every real time, not before
+
 
 class NewsMention(Base):
     __tablename__ = "news_mentions"

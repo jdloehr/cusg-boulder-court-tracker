@@ -43,7 +43,7 @@ def send_email(to: str, subject: str, body: str) -> None:
 
 def default_upcoming_hearings(db: Session, days_ahead: int = 14) -> list[Hearing]:
     today = date.today()
-    return (
+    hearings = (
         db.query(Hearing)
         .filter(
             Hearing.date >= today,
@@ -53,9 +53,12 @@ def default_upcoming_hearings(db: Session, days_ahead: int = 14) -> list[Hearing
             Hearing.case_category != CaseCategory.juvenile,
             Hearing.appearance_type == AppearanceType.in_person,
         )
-        .order_by(Hearing.date, Hearing.time)
+        .order_by(Hearing.date)
         .all()
     )
+    # Sorted in Python: see Hearing.time_sort_key's docstring for why
+    # ORDER BY on the free-text `time` column doesn't sort chronologically.
+    return sorted(hearings, key=lambda h: (h.date, h.time_sort_key))
 
 
 def hearings_matching_subscription(db: Session, sub: Subscription) -> list[Hearing]:

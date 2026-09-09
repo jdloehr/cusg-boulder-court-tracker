@@ -67,7 +67,11 @@ def list_hearings(
     if court_location:
         q = q.filter(Hearing.court_location == court_location)
 
-    hearings = q.order_by(Hearing.date, Hearing.time).all()
+    # Sorted in Python, not SQL: `time` is free text ("9:00 AM", "10:30
+    # AM", ...), and ORDER BY on that column sorts alphabetically, not
+    # chronologically -- see Hearing.time_sort_key's docstring for the
+    # real bug this was.
+    hearings = sorted(q.order_by(Hearing.date).all(), key=lambda h: (h.date, h.time_sort_key))
 
     if hearing_type_category or case_category or show_all_types:
         filtered = hearings
