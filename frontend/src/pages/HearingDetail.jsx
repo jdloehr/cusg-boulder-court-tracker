@@ -192,6 +192,13 @@ function CourtAttendance({ hearing, admin, onChange }) {
   const byId = new Map((hearing.attendance || []).map((a) => [a.justice_id, a]));
   const mine = admin?.isJustice ? hearing.attendance?.find((a) => a.display_name === admin.displayName) : null;
 
+  // Pre-fill the note box from the already-saved note (once) rather than
+  // always starting blank, so re-opening a hearing shows what you wrote
+  // last time instead of looking like it was lost.
+  useEffect(() => {
+    if (mine?.note) setNote((current) => current || mine.note);
+  }, [mine?.note]);
+
   async function setStatus(status) {
     await api.setAttendance(hearing.id, { status, note: note || undefined });
     onChange();
@@ -215,18 +222,37 @@ function CourtAttendance({ hearing, admin, onChange }) {
         <tbody>
           {justices.map((j) => {
             const a = byId.get(j.id);
+            const isMe = admin?.isJustice && admin.displayName === j.display_name;
             return (
               <tr key={j.id}>
                 <td>{j.title ? `${j.title} ${j.display_name}` : j.display_name}</td>
                 <td>
-                  {a ? (
+                  {isMe ? (
+                    <select value={a?.status || ""} onChange={(e) => setStatus(e.target.value)} style={{ minWidth: "10rem" }}>
+                      <option value="" disabled>
+                        No response yet -- click to set
+                      </option>
+                      <option value="attending">Attending</option>
+                      <option value="maybe">Maybe</option>
+                      <option value="not_attending">Not attending</option>
+                    </select>
+                  ) : a ? (
                     <span className={`badge ${a.status === "attending" ? "badge-news" : a.status === "maybe" ? "badge-changed" : "badge-cancelled"}`}>
                       {ATTENDANCE_LABELS[a.status]}
                     </span>
                   ) : (
                     <span style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>No response yet</span>
                   )}
-                  {a?.note && <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>{a.note}</div>}
+                  {a?.note && !isMe && <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>{a.note}</div>}
+                  {isMe && (
+                    <input
+                      placeholder="Optional note (e.g. conflicts with class until 2pm)"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      onBlur={() => a?.status && setStatus(a.status)}
+                      style={{ display: "block", width: "100%", maxWidth: "22rem", marginTop: "0.4rem", fontSize: "0.85rem", padding: "0.3rem 0.5rem" }}
+                    />
+                  )}
                 </td>
               </tr>
             );
@@ -236,19 +262,6 @@ function CourtAttendance({ hearing, admin, onChange }) {
 
       {admin?.isJustice && (
         <div style={{ marginTop: "1rem", borderTop: "1px solid var(--line)", paddingTop: "1rem" }}>
-          <p style={{ fontSize: "0.85rem" }}>Set your own status ({admin.displayName}):</p>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-            <button className="btn" onClick={() => setStatus("attending")}>Attending</button>
-            <button className="btn btn-secondary" onClick={() => setStatus("maybe")}>Maybe</button>
-            <button className="btn btn-danger" onClick={() => setStatus("not_attending")}>Not attending</button>
-          </div>
-          <input
-            placeholder="Optional note (e.g. conflicts with class until 2pm)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            style={{ marginBottom: "1rem" }}
-          />
-
           <p style={{ fontSize: "0.85rem" }}>
             Recommend this hearing to the rest of the court (see the{" "}
             <Link to="/recommendations">recommendations board</Link>):
