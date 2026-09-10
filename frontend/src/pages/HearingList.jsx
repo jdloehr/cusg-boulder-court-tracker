@@ -38,9 +38,21 @@ export default function HearingList() {
   const [horizonDays, setHorizonDays] = useState(14);
   const [hearings, setHearings] = useState(null);
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setError(null);
+    setLoading(true);
+    // `ignore` guards against a real race: the backend's free hosting
+    // tier cold-starts in 30-60s when idle, so the *first* request (e.g.
+    // on initial page load) can still be in flight when a filter change
+    // fires a second, faster request. Without this guard, whichever
+    // response happens to arrive *last* wins and overwrites the other --
+    // in practice, the slow first request's stale (default-filter) result
+    // would land after the fast one and silently undo the filter change,
+    // which looks exactly like "the search doesn't refresh."
+    let ignore = false;
+
     const params = {
       date_from: todayISO(),
       date_to: addDaysISO(horizonDays),
@@ -58,8 +70,19 @@ export default function HearingList() {
     }
     api
       .listHearings(params)
-      .then(setHearings)
-      .catch((e) => setError(e.message));
+      .then((data) => {
+        if (!ignore) setHearings(data);
+      })
+      .catch((e) => {
+        if (!ignore) setError(e.message);
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, [hearingTypeCategory, caseCategory, courtLocation, horizonDays]);
 
   const filtered = useMemo(() => {
@@ -140,9 +163,17 @@ export default function HearingList() {
 
       {error && <p className="message-error">Couldn't load hearings: {error}</p>}
 
-      {!error && filtered === null && <p>Loading&hellip;</p>}
+      {!error && filtered === null && (
+        <p>
+          Loading&hellip; (the first request of the day can take up to a minute while the server
+          wakes up)
+        </p>
+      )}
+      {!error && loading && filtered !== null && (
+        <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem" }}>Updating&hellip;</p>
+      )}
 
-      {filtered && filtered.length === 0 && (
+      {!loading && filtered && filtered.length === 0 && (
         <div className="empty-state">
           <p>No hearings match these filters in this window. Try widening the planning window or clearing a filter.</p>
         </div>
