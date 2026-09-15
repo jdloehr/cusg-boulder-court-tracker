@@ -12,8 +12,16 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db() -> None:
     """Create tables if they don't exist. For local SQLite dev/demo use.
     Production against Postgres should use a real migration tool
-    (Alembic) instead of create_all -- see docs/ARCHITECTURE.md."""
+    (Alembic) instead of create_all -- see docs/ARCHITECTURE.md.
+
+    Runs app.migrations.run_startup_migrations() right after, to cover
+    what create_all() can't: ALTERing a table that already exists. See
+    that module's docstring -- this project's Render plan has no Shell/
+    one-off-job access, so a schema patch that isn't automatic at boot
+    doesn't have anywhere to run at all."""
     Base.metadata.create_all(bind=engine)
+    from app.migrations import run_startup_migrations
+    run_startup_migrations(engine)
 
 
 def get_db():

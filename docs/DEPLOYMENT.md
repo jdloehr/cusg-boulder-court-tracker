@@ -94,14 +94,35 @@ and GitHub can email you on workflow failures (repo Settings ->
 Notifications) -- that's Section 8's "alert an Editor on job failure"
 requirement, for free, without standing up Slack/PagerDuty.
 
-## After any future deploy that adds/changes an enum value
+## Schema changes: no Shell access on this Render plan
 
-Real bug hit during this build (see `docs/ARCHITECTURE.md`'s "Known
-limitations"): a new value on a Python enum in `app/models.py` doesn't
-retroactively reach an already-created Postgres enum type, and the
-symptom is a confusing CORS error in the browser (masking a real 500).
-After deploying any change that touches an enum, run this once against
-production and fix anything it reports before moving on:
+Discovered the hard way during the Phase-2 round: this backend service's
+Render plan does **not** include the Shell tab (it's a paid-plan
+feature), so there's no way to log into the running container and run a
+one-off script by hand -- the "open the Shell tab and run
+`scripts/check_enum_drift.py`" instructions from earlier in this build
+don't work here.
+
+Two different consequences follow from that:
+
+**Schema patches that need to actually change the database (new columns
+on an existing table, a new enum type an existing table's column needs)
+now run automatically on every backend startup** -- see
+`app/migrations.py`. Nothing to do by hand on deploy; this exists
+*because* Shell isn't available, not in spite of it. If a future change
+needs a genuinely manual, one-time data fix (backfilling a value from
+external data, say -- not just "make a column exist"), the only way to
+run it without Shell access is locally against the real database (below).
+
+**Read-only diagnostics** (`scripts/check_enum_drift.py`,
+`scripts/add_livestream_columns.py` -- kept for reference/local use even
+though the column migration itself is now automatic) still need to be
+run from somewhere with the production `DATABASE_URL`. Without Shell
+access, that means running them from your own machine, using the
+Postgres database's **External Database URL** -- this is a property of
+the Postgres resource itself (dashboard -> your database -> **Info**
+tab), not the web service, so it's available regardless of the web
+service's plan:
 
 ```bash
 cd backend

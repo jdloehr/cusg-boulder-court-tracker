@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-One-time manual migration: adds Hearing.livestream_source_type and
-livestream_url to an EXISTING production database.
+Superseded by app/migrations.py, which runs this exact patch
+automatically on every backend startup now -- discovered right after
+this script was first written that this project's Render plan has no
+Shell tab to run a one-off script in, so a manual-only migration had
+nowhere to actually run in production. Kept here for local/manual use
+(e.g. against a Postgres instance outside this project's own Render
+deploy) and as the readable, single-purpose version of what
+app/migrations.py's POSTGRES_MIGRATIONS list also does automatically.
 
 Same class of gap as scripts/check_enum_drift.py's problem, but for
 columns instead of enum values: Base.metadata.create_all() (this
@@ -14,6 +20,8 @@ the table itself, which is skipped since it already exists).
 Safe to re-run -- checks what already exists before doing anything.
 
 Usage: DATABASE_URL=<postgres url> python scripts/add_livestream_columns.py
+(the External Database URL from the Postgres resource's own Info tab in
+the Render dashboard, not the web service -- see docs/DEPLOYMENT.md)
 """
 import os
 import sys

@@ -225,23 +225,37 @@ the API, `npm run dev` for the frontend.
 
 ## Known limitations / next steps
 
-- **Adding a new enum value needs a manual Postgres migration in
-  production, or it 500s.** Real bug, caught live: adding
-  `CourtLocation.colorado_supreme_court` etc. to `app/models.py` and
-  deploying was not enough -- `Base.metadata.create_all()` (this project's
-  stand-in for a real migration tool) never runs `ALTER TYPE ... ADD
-  VALUE` on a Postgres enum type that already exists, so the *existing*
-  production database still only accepted the old set of values, and
-  `POST /api/subscriptions` with the new `new_recommendation` filter type
-  500'd until fixed by hand. Invisible in the test suite because it runs
-  against SQLite, which has no native enum type to drift. Run
-  `DATABASE_URL=<prod url> python scripts/check_enum_drift.py` after any
-  deploy that touches an enum -- it compares every Python enum in
-  `models.py` against the live Postgres types and prints the exact `ALTER
-  TYPE` statements to fix any gap. Adopting Alembic (or another real
-  migration tool) would make this automatic; deferred for this build's
-  scope, per the project's original "shouldn't need a migration tool at
-  CUSG's scale" framing, but this is the concrete cost of that choice.
+- **Adding a new enum value, or a new column on an existing table, needs
+  a Postgres schema patch in production, or it 500s.** Real bug, hit
+  twice: first, adding `CourtLocation.colorado_supreme_court` etc. to
+  `app/models.py` and deploying was not enough -- `Base.metadata.
+  create_all()` (this project's stand-in for a real migration tool) never
+  runs `ALTER TYPE ... ADD VALUE` on a Postgres enum type that already
+  exists, so `POST /api/subscriptions` with the new `new_recommendation`
+  filter type 500'd until fixed by hand. Second, the Phase-2 round added
+  `livestream_source_type`/`livestream_url` columns to the pre-existing
+  `hearings` table -- same root cause, one level up: `create_all()` only
+  creates whole missing *tables*, so a table that already exists never
+  gets ALTERed for a new column, and every `/api/hearings` request 500'd
+  in production after that deploy. Both are invisible in the test suite
+  because it runs against SQLite, which recreates cleanly from a wiped
+  file and has no native enum type to drift in the first place.
+
+  The second occurrence also surfaced a hosting constraint that made the
+  first occurrence's fix (a manual script, run by hand in Render's Shell
+  tab) impossible to repeat: **this project's Render plan doesn't include
+  Shell access.** So `app/migrations.py` now runs small, hand-written,
+  idempotent schema patches automatically on every backend startup --
+  covering new columns/types on already-existing tables without needing
+  anywhere to run a one-off command by hand. `scripts/check_enum_drift.py`
+  (a read-only diagnostic, not a fix) still needs to run from a machine
+  that has the production `DATABASE_URL` -- see `docs/DEPLOYMENT.md`'s
+  "Schema changes: no Shell access on this Render plan" for how, now that
+  Render's Shell tab isn't an option. Adopting Alembic (or another real
+  migration tool) would replace both of these with one consistent
+  mechanism; deferred for this build's scope, per the project's original
+  "shouldn't need a migration tool at CUSG's scale" framing, but this is
+  the concrete, now twice-paid cost of that choice.
 - **Multi-day trials list one line per day, everywhere** (list view,
   digest email, etc.), because the docket export genuinely lists them that
   way and each day is a real, distinct scheduled event (see
