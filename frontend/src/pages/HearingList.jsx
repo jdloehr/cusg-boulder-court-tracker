@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import AcademicCalendarBanner from "../components/AcademicCalendarBanner.jsx";
+import DataStatusBar from "../components/DataStatusBar.jsx";
 import { COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
 
 const HORIZONS = [
@@ -39,6 +40,7 @@ export default function HearingList() {
   const [hearings, setHearings] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     setError(null);
@@ -83,7 +85,7 @@ export default function HearingList() {
     return () => {
       ignore = true;
     };
-  }, [hearingTypeCategory, caseCategory, courtLocation, horizonDays]);
+  }, [hearingTypeCategory, caseCategory, courtLocation, horizonDays, refreshTick]);
 
   const filtered = useMemo(() => {
     if (!hearings) return null;
@@ -109,6 +111,7 @@ export default function HearingList() {
         before you go.
       </p>
 
+      <DataStatusBar onRefreshed={() => setRefreshTick((t) => t + 1)} />
       <AcademicCalendarBanner />
 
       <div className="filter-bar">

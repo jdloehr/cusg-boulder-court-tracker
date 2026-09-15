@@ -40,6 +40,8 @@ export const api = {
     request(`/api/hearings/${hearingId}/submissions`, { method: "POST", body: JSON.stringify(payload) }),
   icsUrl: (id) => `${API_BASE}/api/hearings/${id}/ics`,
   academicCalendarCurrent: () => request("/api/academic-calendar/current"),
+  dataStatus: () => request("/api/data-status"),
+  triggerRefresh: () => request("/api/refresh", { method: "POST" }),
   createSubscription: (payload) =>
     request("/api/subscriptions", { method: "POST", body: JSON.stringify(payload) }),
   unsubscribe: (token) => request(`/api/subscriptions/${token}`, { method: "DELETE" }),
@@ -103,14 +105,35 @@ export const api = {
     }),
   activityLog: () => request("/api/admin/activity-log", { headers: authHeaders() }),
 
-  // --- CUSG Justice features: no login required (see backend/app/routers/justices.py) ---
+  // --- CUSG Justice features: setting/recommending requires a Justice login; reading is public ---
   listJustices: () => request("/api/justices"),
   setAttendance: (hearingId, payload) =>
-    request(`/api/hearings/${hearingId}/attendance`, { method: "PUT", body: JSON.stringify(payload) }),
-  listRecommendations: () => request("/api/recommendations"),
+    request(`/api/hearings/${hearingId}/attendance`, {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    }),
+  listRecommendations: (hearingId) =>
+    request(`/api/recommendations${hearingId ? `?hearing_id=${encodeURIComponent(hearingId)}` : ""}`),
   createRecommendation: (payload) =>
-    request("/api/recommendations", { method: "POST", body: JSON.stringify(payload) }),
-  deleteRecommendation: (id) => request(`/api/recommendations/${id}`, { method: "DELETE" }),
+    request("/api/recommendations", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
+  deleteRecommendation: (id) =>
+    request(`/api/recommendations/${id}`, { method: "DELETE", headers: authHeaders() }),
+
+  // --- Archive & Reflections: reading and "Submit a Summary" are public; ---
+  // --- editing/removing needs a Justice login (see backend/app/routers/archive.py) ---
+  listArchive: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    ).toString();
+    return request(`/api/archive${qs ? `?${qs}` : ""}`);
+  },
+  getArchiveEntry: (id) => request(`/api/archive/${id}`),
+  createArchiveEntry: (payload) =>
+    request("/api/archive", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
+  updateArchiveEntry: (id, payload) =>
+    request(`/api/archive/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),
+  deleteArchiveEntry: (id) => request(`/api/archive/${id}`, { method: "DELETE", headers: authHeaders() }),
 };
 
 export function getStoredAdmin() {

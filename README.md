@@ -7,13 +7,21 @@ a week or two out, plus anything getting real local news coverage. Full
 spec in the original build prompt; this README covers what was actually
 built and how to run it.
 
-Beyond the original spec: anyone can RSVP a Justice's attendance to a
-hearing (no login) and recommend hearings on a shared board with an email
-alert option; any visitor can propose case details (a summary, a judge's
-name) for the team to review; the feed now also covers the Colorado
-Supreme Court and Court of Appeals, restricted to cases already
-newsworthy or likely to become so; and a first-visit welcome page
-explains how to use the tool.
+Beyond the original spec: logged-in Justices can RSVP their own attendance
+to a hearing and recommend hearings on a shared board (recommending emails
+every other Justice plus anyone subscribed) with a callout on the
+hearing's own page; any visitor can propose case details (a summary, a
+judge's name) for the team to review, or add a post-hearing writeup to the
+public Archive; the feed now also covers the Colorado Supreme Court and
+Court of Appeals, restricted to cases already newsworthy or likely to
+become so; a first-visit welcome page explains how to use the tool; and
+the docket refreshes on a fixed daily schedule with a visible
+last-updated timestamp and a rate-limited manual-refresh button. See
+"Phase 2 additions" in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for
+the full list, including two access-model decisions made explicitly by
+the CUSG contact that reversed earlier choices in this same build
+(Justice actions now require real login; Justice identity and curation
+role are kept as separate, independent fields).
 
 **This was built and validated against real, live data, not mocks.**
 During this build the docket-pull job pulled real Boulder County court
@@ -34,9 +42,12 @@ and how they were fixed.
 | Appellate supplement (CourtListener search: federal + Colorado Supreme Court/Court of Appeals) | **Real, working**, seeded with one real, currently-scheduled federal case; "In the news" curation hint verified live against real Colorado Supreme Court search results. |
 | Public list/detail/subscribe/recommendations/welcome views | **Real, working**, React frontend against the real API. |
 | Admin/curation tool (review queues, blurbs, exclusion, academic calendar, activity log) | **Real, working.** |
-| CUSG Justice features (attendance RSVP, recommendation board) | **Real, working**, seeded with the actual 7 Justices, no login required (by request) -- verified end-to-end as a fully anonymous visitor. Not in the original spec -- added on request. |
+| CUSG Justice features (attendance RSVP, recommendation board) | **Real, working**, seeded with the actual 7 Justices; requires real Justice login (reversed from an earlier no-login version at the CUSG contact's explicit request -- see `docs/ARCHITECTURE.md`). Not in the original spec -- added on request. |
 | Public "add case details" submissions | **Real, working**, moderated by an Editor before anything publishes. Not in the original spec -- added on request. |
-| Email alert on new recommendations | **Real, working** (console-logged, same as the weekly digest -- see Email delivery below). Not in the original spec -- added on request. |
+| Recommendation callout + dual email alert | **Real, working**: a new recommendation emails every other Justice and every subscriber to new-recommendation alerts, and shows a "&#9733; Recommended" callout on the hearing's own page (console-logged, same as the weekly digest -- see Email delivery below). Not in the original spec -- added on request. |
+| Livestream links | **Real, working** -- honest links to Colorado's real statewide courtroom-video portal and the U.S. Supreme Court's real live-audio page (neither offers a deep link to a specific hearing). Not in the original spec -- added on request. |
+| Archive & Reflections | **Real, working** -- anyone (Justice or public) can add a post-hearing writeup once its date has passed; publishes immediately with spam/profanity filtering and rate-limiting, no review queue. Not in the original spec -- added on request. |
+| Fixed daily auto-refresh + manual refresh | **Real, working** -- 7am America/Denver via APScheduler (DST-aware) and GitHub Actions cron (UTC, drifts across DST -- documented), plus a public "Refresh now" button with a global cooldown and per-IP rate limit. Not in the original spec -- added on request. |
 | Academic-calendar de-emphasis | **Real, working**, seeded with CU Boulder's actual published Fall 2026 dates. |
 | Email delivery | **Stubbed to console/log output.** No transactional-email account exists for this build; the digest-selection and suppression logic is fully implemented and testable, only the "send" call is a stand-in. See `app/jobs/digest.py`. |
 | Job-failure alerting | **Stubbed to console/log output**, same reasoning. See `app/alerting.py`. |

@@ -5,15 +5,18 @@ browsing, per Section 7: "none required to browse."
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.academic_calendar import current_period
-from app.db import get_db
+from app.config import REFRESH_COOLDOWN_MINUTES
+from app.db import SessionLocal, get_db
+from app.jobs.docket_pull import run_docket_pull
+from app.rate_limit import check_rate_limit, client_ip
 from app.models import (
     AppearanceType,
     CaseCategory,
@@ -22,12 +25,14 @@ from app.models import (
     Hearing,
     HearingStatus,
     HearingTypeCategory,
+    JobRun,
     NewsMention,
     Subscription,
 )
 from app.schemas import (
     AcademicCalendarPeriodOut,
     CommunitySubmissionIn,
+    DataStatusOut,
     HearingOut,
     SubscriptionCreate,
     SubscriptionOut,
@@ -183,3 +188,80 @@ def unsubscribe(token: str, db: Session = Depends(get_db)):
     sub.is_active = False
     db.commit()
     return {"status": "unsubscribed"}
+
+
+# --- Auto-update status + manual refresh (Phase-2 doc, Section 1) -----------
+
+def _most_recent_docket_pull_attempt(db: Session) -> Optional[JobRun]:
+    return (
+        db.query(JobRun)
+        .filter(JobRun.job_name == "docket_pull")
+        .order_by(JobRun.started_at.desc())
+        .first()
+    )
+
+
+@router.get("/data-status", response_model=DataStatusOut)
+def data_status(db: Session = Depends(get_db)):
+    """Powers the "Last updated HH:MM today" display and the refresh
+    button's enabled/disabled state -- both computed from real JobRun rows
+    (Section 8), not a new tracking table."""
+    last_success = (
+        db.query(JobRun)
+        .filter(JobRun.job_name == "docket_pull", JobRun.success.is_(True))
+        .order_by(JobRun.finished_at.desc())
+        .first()
+    )
+    most_recent_attempt = _most_recent_docket_pull_attempt(db)
+    next_refresh_available_at = None
+    if most_recent_attempt:
+        next_refresh_available_at = most_recent_attempt.started_at + timedelta(minutes=REFRESH_COOLDOWN_MINUTES)
+
+    return DataStatusOut(
+        last_updated_at=last_success.finished_at if last_success else None,
+        next_refresh_available_at=next_refresh_available_at,
+        refresh_cooldown_minutes=REFRESH_COOLDOWN_MINUTES,
+    )
+
+
+def _run_refresh_in_background() -> None:
+    db = SessionLocal()
+    try:
+        run_docket_pull(db)
+    except Exception:  # noqa: BLE001 - run_docket_pull already alerts + records the failed JobRun
+        pass
+    finally:
+        db.close()
+
+
+@router.post("/refresh", status_code=202)
+def trigger_refresh(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Public, on-demand docket re-pull -- global cooldown, not per-user
+    (one person's click updates data for everyone; there's one shared
+    `last_updated_at`, not per-visitor state). Runs as a background task
+    so the request returns immediately rather than holding the connection
+    open for however long the live docket-export fetch takes; the
+    frontend polls GET /data-status afterward to see the new timestamp.
+
+    Also per-IP rate-limited (Section 6) -- mostly belt-and-suspenders on
+    top of the global cooldown above, which already blocks *everyone*
+    (not just one IP) once any refresh has run recently; the per-IP check
+    additionally bounds how many failed/near-miss attempts one address can
+    throw at this endpoint while the cooldown is active."""
+    if not check_rate_limit(f"refresh:{client_ip(request)}", max_requests=5, window_seconds=600):
+        raise HTTPException(429, "Too many refresh attempts from this address -- try again in a few minutes.")
+
+    most_recent_attempt = _most_recent_docket_pull_attempt(db)
+    now = datetime.utcnow()
+    if most_recent_attempt:
+        elapsed = now - most_recent_attempt.started_at
+        cooldown = timedelta(minutes=REFRESH_COOLDOWN_MINUTES)
+        if elapsed < cooldown:
+            retry_at = most_recent_attempt.started_at + cooldown
+            raise HTTPException(
+                429,
+                f"A refresh already ran recently. Try again after "
+                f"{retry_at.isoformat(timespec='minutes')}Z.",
+            )
+    background_tasks.add_task(_run_refresh_in_background)
+    return {"status": "refreshing"}

@@ -131,3 +131,11 @@ EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "console")
 # Same situation as email: no paging/notification account exists yet.
 # ALERT_BACKEND "console" logs loudly; swap in Slack/email/PagerDuty here.
 ALERT_BACKEND = os.environ.get("ALERT_BACKEND", "console")
+
+# --- Manual refresh (Phase-2 doc, Section 1) --------------------------------
+# Global, not per-user: one shared cooldown counted from the most recent
+# docket_pull JobRun (scheduled or manual), so many visitors clicking
+# refresh in quick succession can't hammer coloradojudicial.gov. The doc's
+# own open question #3 suggests 15-30 minutes as a starting point;
+# defaulted to the middle of that range.
+REFRESH_COOLDOWN_MINUTES = int(os.environ.get("REFRESH_COOLDOWN_MINUTES", "20"))

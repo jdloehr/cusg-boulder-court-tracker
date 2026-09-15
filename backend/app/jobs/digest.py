@@ -22,6 +22,7 @@ from app.academic_calendar import current_period
 from app.config import EMAIL_BACKEND
 from app.models import (
     AcademicPeriodType,
+    AdminUser,
     AppearanceType,
     CaseCategory,
     Hearing,
@@ -181,3 +182,25 @@ def notify_subscribers_of_new_recommendation(db: Session, recommendation) -> int
         )
         send_email(sub.email, subject, body)
     return len(subs)
+
+
+def notify_all_justices_of_new_recommendation(db: Session, recommendation) -> int:
+    """Phase-2 doc, Section 4: "An automatic email is sent to all Justices"
+    -- distinct from notify_subscribers_of_new_recommendation() above,
+    which serves the public /subscribe feature (any email, no login).
+    Every active Justice gets this one automatically, with no
+    subscription step, since it's their own court's recommendation."""
+    justices = db.query(AdminUser).filter(AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True)).all()
+    hearing = recommendation.hearing
+    justice_name = recommendation.justice.display_name or recommendation.justice.email
+    for j in justices:
+        subject = f"{justice_name} recommends a hearing"
+        body = (
+            f"{justice_name} recommended a hearing to the court:\n\n"
+            f"{hearing.hearing_type_display}\n"
+            f"Case {hearing.case_number} | {hearing.date} {hearing.time or ''}\n\n"
+            f"Reason: {recommendation.note}\n\n"
+            f"See it at /hearings/{hearing.id}"
+        )
+        send_email(j.email, subject, body)
+    return len(justices)

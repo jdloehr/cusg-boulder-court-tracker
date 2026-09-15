@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api } from "../api.js";
+import { api, getStoredAdmin } from "../api.js";
 import { COURT_INFO, COURT_LOCATION_TAG } from "../courtInfo.js";
 
 const ATTENDANCE_LABELS = {
@@ -13,6 +13,7 @@ export default function HearingDetail() {
   const { id } = useParams();
   const [hearing, setHearing] = useState(null);
   const [error, setError] = useState(null);
+  const admin = getStoredAdmin();
 
   function reload() {
     api.getHearing(id).then(setHearing).catch((e) => setError(e.message));
@@ -39,6 +40,8 @@ export default function HearingDetail() {
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}
       </div>
+
+      <RecommendationCallout hearingId={hearing.id} />
 
       {hearing.status === "cancelled" && (
         <p className="banner">
@@ -105,7 +108,7 @@ export default function HearingDetail() {
         </p>
       </div>
 
-      <CourtAttendance hearing={hearing} onChange={reload} />
+      <CourtAttendance hearing={hearing} admin={admin} onChange={reload} />
 
       {hearing.news_mentions?.length > 0 && (
         <div className="card">
@@ -144,7 +147,10 @@ export default function HearingDetail() {
         >
           Confirm on official docket
         </a>
+        <LivestreamLink hearing={hearing} />
       </div>
+
+      {hearing.date < new Date().toISOString().slice(0, 10) && <ArchiveSubmission hearing={hearing} admin={admin} />}
 
       <AddDetailsForm hearingId={hearing.id} onSubmitted={reload} />
 
@@ -157,13 +163,59 @@ export default function HearingDetail() {
   );
 }
 
-function CourtAttendance({ hearing, onChange }) {
+// Phase-2 doc, Section 2 + 7: honest, modestly-styled livestream link --
+// never implies a guaranteed "watch now," since state-court streaming is
+// judge's discretion (CJD 23-02) and federal courts rarely offer one at
+// all. See app/livestream.py for how each source_type gets assigned.
+const LIVESTREAM_LABELS = {
+  state_portal: "May be livestreamed — check live.coloradojudicial.gov",
+  scotus_audio: "Listen live (SCOTUS oral argument audio)",
+  federal_audio_line: "Public audio access line",
+};
+
+function LivestreamLink({ hearing }) {
+  const label = LIVESTREAM_LABELS[hearing.livestream_source_type];
+  if (!label || !hearing.livestream_url) return null;
+  return (
+    <a className="btn btn-secondary" href={hearing.livestream_url} target="_blank" rel="noreferrer">
+      {label}
+    </a>
+  );
+}
+
+// Phase-2 doc, Section 4: "a prominent star badge appears at the top of the
+// hearing detail page ... should support multiple recommendations on the
+// same hearing (show all of them, don't overwrite)." A top-of-page
+// callout, not buried in a tab -- rendered right under the title/badges,
+// before anything else.
+function RecommendationCallout({ hearingId }) {
+  const [recs, setRecs] = useState(null);
+
+  useEffect(() => {
+    api.listRecommendations(hearingId).then(setRecs).catch(() => setRecs([]));
+  }, [hearingId]);
+
+  if (!recs || recs.length === 0) return null;
+
+  return (
+    <div className="card recommendation-callout">
+      {recs.map((r) => (
+        <p key={r.id} style={{ margin: "0.25rem 0" }}>
+          <span className="badge badge-news">&#9733; Recommended</span>{" "}
+          <strong>{r.justice_title ? `${r.justice_title} ${r.justice_display_name}` : r.justice_display_name}</strong>
+          {" recommends this case — “"}
+          {r.note}
+          {"”"}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function CourtAttendance({ hearing, admin, onChange }) {
   const [justices, setJustices] = useState(null);
-  // Keyed by justice id -- every row is independently editable now (see
-  // below), so each needs its own draft note rather than one shared value.
-  const [notes, setNotes] = useState({});
+  const [note, setNote] = useState("");
   const [recNote, setRecNote] = useState("");
-  const [recAsId, setRecAsId] = useState("");
   const [message, setMessage] = useState(null);
 
   useEffect(() => {
@@ -171,33 +223,29 @@ function CourtAttendance({ hearing, onChange }) {
   }, []);
 
   const byId = new Map((hearing.attendance || []).map((a) => [a.justice_id, a]));
+  const mine = admin?.isJustice ? hearing.attendance?.find((a) => a.display_name === admin.displayName) : null;
 
-  // Pre-fill each row's note box from its already-saved note (once) rather
-  // than starting blank, so re-opening a hearing shows what was written
+  // Pre-fill the note box from the already-saved note (once) rather than
+  // always starting blank, so re-opening a hearing shows what was written
   // last time instead of looking like it was lost.
   useEffect(() => {
-    setNotes((current) => {
-      const next = { ...current };
-      for (const a of hearing.attendance || []) {
-        if (a.note && next[a.justice_id] === undefined) next[a.justice_id] = a.note;
-      }
-      return next;
-    });
-  }, [hearing.attendance]);
+    if (mine?.note) setNote((current) => current || mine.note);
+  }, [mine?.note]);
 
-  async function setStatus(justiceId, status) {
-    await api.setAttendance(hearing.id, { justice_id: justiceId, status, note: notes[justiceId] || undefined });
+  async function setStatus(status) {
+    await api.setAttendance(hearing.id, { status, note: note || undefined });
     onChange();
   }
 
   async function recommend() {
-    if (!recAsId) {
-      setMessage("Pick which Justice this recommendation is from first.");
+    if (!recNote.trim()) {
+      setMessage("A reason is required.");
       return;
     }
-    await api.createRecommendation({ hearing_id: hearing.id, justice_id: recAsId, note: recNote || undefined });
-    setMessage("Added to the court recommendations board.");
+    await api.createRecommendation({ hearing_id: hearing.id, note: recNote.trim() });
+    setMessage("Added to the court recommendations board, and every Justice has been emailed.");
     setRecNote("");
+    onChange();
   }
 
   if (justices === null) return null;
@@ -206,69 +254,175 @@ function CourtAttendance({ hearing, onChange }) {
     <div className="card">
       <h3>Court attendance</h3>
       <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
-        Who from the court plans to be here. Anyone can set any Justice's status below -- please
-        only set your own.
+        Who from the court plans to be here.
       </p>
       <table className="data-table">
         <tbody>
           {justices.map((j) => {
             const a = byId.get(j.id);
+            const isMe = admin?.isJustice && admin.displayName === j.display_name;
             return (
               <tr key={j.id}>
                 <td>{j.title ? `${j.title} ${j.display_name}` : j.display_name}</td>
                 <td>
-                  <select
-                    value={a?.status || ""}
-                    onChange={(e) => setStatus(j.id, e.target.value)}
-                    style={{ minWidth: "10rem" }}
-                  >
-                    <option value="" disabled>
-                      No response yet -- click to set
-                    </option>
-                    <option value="attending">Attending</option>
-                    <option value="maybe">Maybe</option>
-                    <option value="not_attending">Not attending</option>
-                  </select>
-                  <input
-                    placeholder="Optional note (e.g. conflicts with class until 2pm)"
-                    value={notes[j.id] || ""}
-                    onChange={(e) => setNotes((current) => ({ ...current, [j.id]: e.target.value }))}
-                    onBlur={() => a?.status && setStatus(j.id, a.status)}
-                    style={{ display: "block", width: "100%", maxWidth: "22rem", marginTop: "0.4rem", fontSize: "0.85rem", padding: "0.3rem 0.5rem" }}
-                  />
+                  {isMe ? (
+                    <select value={a?.status || ""} onChange={(e) => setStatus(e.target.value)} style={{ minWidth: "10rem" }}>
+                      <option value="" disabled>
+                        No response yet -- click to set
+                      </option>
+                      <option value="attending">Attending</option>
+                      <option value="maybe">Maybe</option>
+                      <option value="not_attending">Not attending</option>
+                    </select>
+                  ) : a ? (
+                    <span className={`badge ${a.status === "attending" ? "badge-news" : a.status === "maybe" ? "badge-changed" : "badge-cancelled"}`}>
+                      {ATTENDANCE_LABELS[a.status]}
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>No response yet</span>
+                  )}
+                  {a?.note && !isMe && <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>{a.note}</div>}
+                  {isMe && (
+                    <input
+                      placeholder="Optional note (e.g. conflicts with class until 2pm)"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      onBlur={() => a?.status && setStatus(a.status)}
+                      style={{ display: "block", width: "100%", maxWidth: "22rem", marginTop: "0.4rem", fontSize: "0.85rem", padding: "0.3rem 0.5rem" }}
+                    />
+                  )}
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-
-      <div style={{ marginTop: "1rem", borderTop: "1px solid var(--line)", paddingTop: "1rem" }}>
-        <p style={{ fontSize: "0.85rem" }}>
-          Recommend this hearing to the rest of the court (see the{" "}
-          <Link to="/recommendations">recommendations board</Link>):
+      {!admin?.isJustice && (
+        <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)", marginTop: "0.5rem" }}>
+          <Link to="/admin/login">Sign in as a Justice</Link> to set your own status or recommend this hearing.
         </p>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          <select id="recommend-as" value={recAsId} onChange={(e) => setRecAsId(e.target.value)} style={{ minWidth: "12rem" }}>
-            <option value="" disabled>
-              Recommending as...
-            </option>
-            {justices.map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.title ? `${j.title} ${j.display_name}` : j.display_name}
-              </option>
+      )}
+
+      {admin?.isJustice && (
+        <div style={{ marginTop: "1rem", borderTop: "1px solid var(--line)", paddingTop: "1rem" }}>
+          <p style={{ fontSize: "0.85rem" }}>
+            Recommend this hearing to the rest of the court (see the{" "}
+            <Link to="/recommendations">recommendations board</Link>) -- a reason is required, and every
+            Justice will be emailed:
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <input
+              placeholder="Why is this worth the court's attention? (required)"
+              value={recNote}
+              onChange={(e) => setRecNote(e.target.value)}
+              style={{ flex: 1, minWidth: "12rem" }}
+            />
+            <button className="btn btn-secondary" onClick={recommend} disabled={!recNote.trim()}>
+              Recommend
+            </button>
+          </div>
+          {message && <p className="message-success">{message}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STAGE_OPTIONS = [
+  ["opening_statements", "Opening Statements"],
+  ["closing_arguments", "Closing Arguments"],
+  ["sentencing", "Sentencing"],
+  ["oral_argument", "Oral Argument"],
+  ["jury_selection", "Jury Selection"],
+  ["motions_hearing", "Motions Hearing"],
+  ["other", "Other"],
+];
+
+// Phase-2 doc, Section 3 + 5: "Mark Attendance" (a logged-in Justice,
+// reflection optional) and "Submit a Summary" (anyone, no login,
+// reflection required) both post to the same Archive endpoint -- see
+// routers/archive.py for how the backend tells them apart. Restricted to
+// hearings whose date has already passed (the page only renders this
+// component for those -- see the date check in HearingDetail above).
+function ArchiveSubmission({ hearing, admin }) {
+  const [stage, setStage] = useState("other");
+  const [judgeName, setJudgeName] = useState("");
+  const [reflection, setReflection] = useState("");
+  const [name, setName] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const isJustice = admin?.isJustice;
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setStatus(null);
+    try {
+      await api.createArchiveEntry({
+        hearing_id: hearing.id,
+        proceeding_stage: stage,
+        judge_name: judgeName || undefined,
+        reflection_text: reflection || undefined,
+        submitted_by_name: name || "Anonymous",
+        website: website || undefined,
+      });
+      setStatus({ ok: true, message: "Added to the Archive." });
+      setReflection("");
+      setJudgeName("");
+    } catch (err) {
+      setStatus({ ok: false, message: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: "1.5rem" }}>
+      <h3>{isJustice ? "Mark attendance / write a reflection" : "Were you there? Write it up for the Archive"}</h3>
+      <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+        {isJustice
+          ? "You'll be added as an attendee. A reflection is optional."
+          : "Publishes immediately under your name -- see the Archive."}
+      </p>
+      <form className="form-grid" onSubmit={onSubmit}>
+        <div>
+          <label htmlFor="stage">What did you see?</label>
+          <select id="stage" value={stage} onChange={(e) => setStage(e.target.value)}>
+            {STAGE_OPTIONS.map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
             ))}
           </select>
-          <input
-            placeholder="Why is this worth the court's attention?"
-            value={recNote}
-            onChange={(e) => setRecNote(e.target.value)}
-            style={{ flex: 1, minWidth: "12rem" }}
-          />
-          <button className="btn btn-secondary" onClick={recommend}>Recommend</button>
         </div>
-        {message && <p className="message-success">{message}</p>}
-      </div>
+        <div>
+          <label htmlFor="archiveJudgeName">Judge (optional)</label>
+          <input id="archiveJudgeName" value={judgeName} onChange={(e) => setJudgeName(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="reflection">Reflection {isJustice ? "(optional)" : "(required)"}</label>
+          <textarea
+            id="reflection"
+            value={reflection}
+            onChange={(e) => setReflection(e.target.value)}
+            required={!isJustice}
+          />
+        </div>
+        {!isJustice && (
+          <div>
+            <label htmlFor="submittedByName">Your name</label>
+            <input id="submittedByName" required value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+        )}
+        <div style={{ position: "absolute", left: "-9999px" }} aria-hidden="true">
+          <label htmlFor="archiveWebsite">Leave blank</label>
+          <input id="archiveWebsite" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+        </div>
+        <button className="btn btn-secondary" type="submit" disabled={busy}>
+          {busy ? "Submitting…" : isJustice ? "Mark attendance" : "Submit for the Archive"}
+        </button>
+        {status && <p className={status.ok ? "message-success" : "message-error"}>{status.message}</p>}
+      </form>
     </div>
   );
 }

@@ -144,6 +144,27 @@ class SubmissionStatus(str, enum.Enum):
     rejected = "rejected"
 
 
+class ProceedingStage(str, enum.Enum):
+    """Phase-2 doc, Section 5: "distinct from the existing
+    hearing_type_category, describing what was actually witnessed."
+    Doc's own suggested list, used as-is (Section 9 open question #5
+    flags this as confirmable/extensible -- `other` plus this being a
+    plain string-backed enum, not something requiring a migration to add
+    to, is the extensibility path)."""
+    opening_statements = "opening_statements"
+    closing_arguments = "closing_arguments"
+    sentencing = "sentencing"
+    oral_argument = "oral_argument"
+    jury_selection = "jury_selection"
+    motions_hearing = "motions_hearing"
+    other = "other"
+
+
+class ArchiveSubmitterRole(str, enum.Enum):
+    justice = "justice"
+    regular_user = "regular_user"
+
+
 class AdminRole(str, enum.Enum):
     editor = "editor"
     contributor = "contributor"
@@ -153,6 +174,24 @@ class AttendanceStatus(str, enum.Enum):
     attending = "attending"
     not_attending = "not_attending"
     maybe = "maybe"
+
+
+class LivestreamSourceType(str, enum.Enum):
+    """Phase-2 doc, Section 2. Colorado's own livestream portal
+    (live.coloradojudicial.gov, confirmed live and reachable) covers the
+    state courts (county/district and, per that same portal, Colorado's
+    own Supreme Court/Court of Appeals); federal courts don't offer public
+    video, only an occasional published audio-access line, entered
+    per-case rather than assumed; SCOTUS has a real, standing live-audio
+    page for oral arguments. See app/livestream.py for the default
+    assignment and the honest availability caveats -- none of these
+    guarantee an actual stream exists for a given hearing, since
+    streaming state trials/evidentiary hearings is judge's-discretion
+    under CJD 23-02, not presumptive."""
+    state_portal = "state_portal"
+    federal_audio_line = "federal_audio_line"
+    scotus_audio = "scotus_audio"
+    none = "none"
 
 
 # --------------------------------------------------------------------------
@@ -194,6 +233,15 @@ class Hearing(Base):
     # Always double-check against the official docket; a case can be
     # reassigned between when this is entered and when a student attends.
     judge_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+    # Phase-2 doc, Section 2: defaulted by court_location (see
+    # app/livestream.py::default_livestream), overridable per-row (e.g. a
+    # curator adds a specific federal audio-access line for one case).
+    # Labeled honestly, not as a guarantee -- see LivestreamSourceType.
+    livestream_source_type: Mapped[LivestreamSourceType] = mapped_column(
+        Enum(LivestreamSourceType), nullable=False, default=LivestreamSourceType.none
+    )
+    livestream_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     appearance_type: Mapped[AppearanceType] = mapped_column(
         Enum(AppearanceType), nullable=False, default=AppearanceType.unknown
@@ -343,6 +391,53 @@ class HearingRecommendation(Base):
 
     hearing: Mapped["Hearing"] = relationship(back_populates="recommendations")
     justice: Mapped["AdminUser"] = relationship()
+
+
+class ArchiveEntry(Base):
+    """Phase-2 doc, Section 5: a public, browsable record of hearings the
+    team or public actually attended and wrote up -- separate from the
+    live/upcoming calendar. Two submission paths converge here:
+    - Regular (public, no login) users: "Submit a Summary" -- a display
+      name, no password, the same lightweight pattern already used for
+      email subscriptions. Publishes immediately, no approval queue (a
+      deliberate choice -- see the after-the-fact safeguards below).
+    - Justices (logged in): "Mark Attendance" on a hearing that's already
+      happened, which is really just creating (or editing) this same kind
+      of entry with attendees populated and submitted_by_role=justice --
+      reflection_text is optional for this path (a Justice can record
+      "I was there" without necessarily writing a narrative), required
+      for the public "Submit a Summary" path (see ArchiveEntryIn).
+
+    Removing the pre-publish approval queue for a fully anonymous input
+    (unlike CommunitySubmission, which stays moderated) trades a
+    pre-publish safety net for after-the-fact ones instead: `submitter_ip`
+    is logged (never shown publicly) so abuse can be traced, and any
+    Justice can edit or remove any entry after the fact -- see
+    routers/archive.py.
+    """
+    __tablename__ = "archive_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    hearing_id: Mapped[str] = mapped_column(ForeignKey("hearings.id"), nullable=False, index=True)
+
+    proceeding_stage: Mapped[ProceedingStage] = mapped_column(Enum(ProceedingStage), nullable=False, index=True)
+    judge_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    # JSON-encoded list of attendee display names (Justices via attendance
+    # marks, plus the submitter's own name for a regular-user summary).
+    attendees: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reflection_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    submitted_by_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    submitted_by_role: Mapped[ArchiveSubmitterRole] = mapped_column(Enum(ArchiveSubmitterRole), nullable=False)
+
+    # Internal-only, never exposed via ArchiveEntryOut -- Section 6's
+    # after-the-fact abuse-tracing safeguard for a fully anonymous,
+    # unmoderated public input.
+    submitter_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    hearing: Mapped["Hearing"] = relationship()
 
 
 class Subscription(Base):

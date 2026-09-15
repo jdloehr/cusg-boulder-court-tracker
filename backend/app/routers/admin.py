@@ -33,6 +33,7 @@ from app.models import (
     HearingSource,
     HearingStatus,
     HearingTypeCategory,
+    LivestreamSourceType,
     MatchStatus,
     NewsMention,
     SubmissionStatus,
@@ -294,8 +295,12 @@ def publish_appellate_candidate(payload: PublishAppellateCandidateIn, db: Sessio
     module docstring for why this is still curator-driven even for
     Colorado's own appellate courts."""
     from app.hearing_types import classify_hearing_type
+    from app.livestream import default_livestream
 
     type_result = classify_hearing_type(payload.hearing_type_raw)
+    livestream_type, livestream_url = default_livestream(payload.court_location)
+    if payload.federal_audio_line_url:
+        livestream_type, livestream_url = LivestreamSourceType.federal_audio_line, payload.federal_audio_line_url
     hearing = Hearing(
         source=HearingSource.federal_courtlistener,
         case_number=payload.docket_number,
@@ -308,6 +313,8 @@ def publish_appellate_candidate(payload: PublishAppellateCandidateIn, db: Sessio
         time=payload.time,
         court_location=payload.court_location,
         courtroom=payload.court_note,
+        livestream_source_type=livestream_type,
+        livestream_url=livestream_url,
         appearance_type=AppearanceType.in_person,
         curated_blurb=payload.curated_blurb,
         status=HearingStatus.scheduled,

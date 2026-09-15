@@ -60,11 +60,37 @@ export default function Welcome() {
       <div className="card">
         <h3>For CUSG Justices</h3>
         <p>
-          Every hearing has a <strong>Court attendance</strong> section where any of the 7 Justices'
-          status (attending / maybe / not attending, with an optional note) can be set directly --
-          no login needed, just pick your own name's row. Justices can also{" "}
-          <strong>recommend</strong> a hearing to the rest of the court with a note on why, which
-          lands on the public <Link to="/recommendations">Court Recommendations</Link> board.
+          Every hearing has a <strong>Court attendance</strong> section where a logged-in Justice can
+          set their own status (attending / maybe / not attending, with an optional note) -- everyone
+          else sees the full roster read-only. Justices can also <strong>recommend</strong> a hearing
+          to the rest of the court with a required reason, which emails every other Justice and
+          anyone subscribed to new recommendations, and shows up as a{" "}
+          <span className="badge badge-news" style={{ verticalAlign: "middle" }}>&#9733; Recommended</span>{" "}
+          callout at the top of that hearing's page. Justice login is separate from the
+          Editor/Contributor curation accounts -- being a Justice doesn't grant curation access, and
+          vice versa.
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>Listening in live</h3>
+        <p>
+          Where a real audio/video feed exists, a hearing's detail page has a <strong>Listen live</strong>{" "}
+          link -- Colorado's own statewide courtroom-video portal for state cases, or the U.S. Supreme
+          Court's live audio page for federal oral arguments. It links to the real public portal, not
+          a direct feed to a specific courtroom, so you'll still need to find the right session once
+          you're there.
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>Archive &amp; Reflections</h3>
+        <p>
+          After a hearing has happened, anyone who attended -- Justice or student -- can add a short
+          write-up: what the proceeding actually covered, who was on the bench, and what stood out.
+          These publish immediately (no review queue) and live on the public{" "}
+          <Link to="/archive">Archive &amp; Reflections</Link> page, organized by case and proceeding
+          type -- a running record of what CUSG has actually gone and watched.
         </p>
       </div>
 
@@ -76,6 +102,16 @@ export default function Welcome() {
           moment the court adds a new recommendation. Digests are shortened during CU Boulder breaks
           and finals week, since court doesn't pause for the academic calendar but most students
           aren't watching then.
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>How fresh is this data?</h3>
+        <p>
+          The bar at the top of the <Link to="/">Hearings</Link> page shows when the docket was last
+          pulled -- it refreshes automatically every morning, and anyone can trigger an early refresh
+          by hand if something seems out of date (limited to one every so often, so it can't be
+          hammered).
         </p>
       </div>
 

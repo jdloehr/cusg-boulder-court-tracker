@@ -15,14 +15,24 @@ name: Scheduled data pulls
 
 on:
   schedule:
-    - cron: "0 11 * * *"   # docket pull: daily 11:00 UTC (~5am Boulder time)
-    - cron: "30 11 * * *"  # news monitor: daily 11:30 UTC, after the docket pull
-    - cron: "0 15 * * 1"   # weekly digest: Mondays 15:00 UTC (~8am Boulder time)
+    # Phase-2 doc, Section 1: fixed 7:00 AM Mountain Time, not just "once a
+    # day" at an arbitrary time. 13:00 UTC = 7:00 AM MDT (Mountain Daylight
+    # Time, UTC-6), correct roughly mid-March to early November. GitHub
+    # Actions cron has no DST awareness, so during MST (UTC-7, the rest of
+    # the year) this actually fires at 6:00 AM local instead of 7:00 --
+    # documented rather than silently wrong; fixing it exactly year-round
+    # would need two cron lines swapped by the maintainer twice a year, or
+    # a scheduler with real timezone support (APScheduler's CronTrigger,
+    # used by jobs/scheduler.py for a non-GitHub-Actions deployment, DOES
+    # support timezone= directly and doesn't have this gap).
+    - cron: "0 13 * * *"   # docket pull: daily, 7:00 AM MDT / 6:00 AM MST
+    - cron: "30 13 * * *"  # news monitor: daily, right after the docket pull
+    - cron: "0 15 * * 1"   # weekly digest: Mondays, ~8-9am Boulder time
   workflow_dispatch: {}     # manual "Run workflow" button for testing
 
 jobs:
   docket_pull:
-    if: github.event.schedule == '0 11 * * *' || github.event_name == 'workflow_dispatch'
+    if: github.event.schedule == '0 13 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +45,7 @@ jobs:
         run: python scripts/run_docket_pull.py
 
   news_monitor:
-    if: github.event.schedule == '30 11 * * *' || github.event_name == 'workflow_dispatch'
+    if: github.event.schedule == '30 13 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

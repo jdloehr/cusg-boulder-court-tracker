@@ -6,6 +6,7 @@ import Subscribe from "./pages/Subscribe.jsx";
 import About from "./pages/About.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import Recommendations from "./pages/Recommendations.jsx";
+import Archive from "./pages/Archive.jsx";
 import AdminLogin from "./pages/admin/AdminLogin.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import { clearAdmin, getStoredAdmin } from "./api.js";
@@ -75,6 +76,7 @@ export default function App() {
               Hearings
             </NavLink>
             <NavLink to="/recommendations">Court Recommendations</NavLink>
+            <NavLink to="/archive">Archive</NavLink>
             <NavLink to="/subscribe">Subscribe</NavLink>
             <NavLink to="/about">Visiting a Courtroom</NavLink>
             <AccountNav />
@@ -88,6 +90,7 @@ export default function App() {
           <Route path="/welcome" element={<Welcome />} />
           <Route path="/hearings/:id" element={<HearingDetail />} />
           <Route path="/recommendations" element={<Recommendations />} />
+          <Route path="/archive" element={<Archive />} />
           <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/about" element={<About />} />
           <Route path="/admin/login" element={<AdminLogin />} />

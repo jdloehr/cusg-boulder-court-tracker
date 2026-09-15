@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api.js";
+import { api, getStoredAdmin } from "../api.js";
 
 export default function Recommendations() {
   const [recs, setRecs] = useState(null);
   const [error, setError] = useState(null);
+  const admin = getStoredAdmin();
 
   function load() {
     api.listRecommendations().then(setRecs).catch((e) => setError(e.message));
@@ -20,8 +21,8 @@ export default function Recommendations() {
     <article>
       <h1>Court Recommendations</h1>
       <p className="disclaimer">
-        Hearings a CUSG Justice has personally flagged for the rest of the court, with a note on why.
-        Add one from any hearing's detail page.
+        Hearings a CUSG Justice has personally flagged for the rest of the court, with a reason why.
+        Add one from any hearing's detail page (Justice login required).
       </p>
 
       {error && <p className="message-error">{error}</p>}
@@ -42,9 +43,11 @@ export default function Recommendations() {
             {r.justice_title ? `${r.justice_title} ${r.justice_display_name}` : r.justice_display_name}
           </p>
           {r.note && <p className="blurb">{r.note}</p>}
-          <button className="btn btn-danger" onClick={() => remove(r.id)}>
-            Remove
-          </button>
+          {admin?.isJustice && (
+            <button className="btn btn-danger" onClick={() => remove(r.id)}>
+              Remove
+            </button>
+          )}
         </div>
       ))}
     </article>

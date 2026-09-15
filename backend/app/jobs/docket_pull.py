@@ -25,6 +25,7 @@ from app.alerting import alert_job_failure
 from app.case_categories import decode_case_category
 from app.config import COURT_LOCATION_CODES, DOCKET_EXPORT_URL, DOCKET_PULL_WINDOW_DAYS
 from app.hearing_types import classify_hearing_type
+from app.livestream import default_livestream
 from app.models import (
     AppearanceType,
     CaseCategory,
@@ -260,6 +261,7 @@ def upsert_row(db: Session, row: ParsedRow, now: datetime, touched_ids: set[str]
     match_existing_hearing() as exclude_ids -- see its docstring."""
     existing = match_existing_hearing(db, row, exclude_ids=touched_ids)
     if existing is None:
+        livestream_type, livestream_url = default_livestream(row.court_location)
         hearing = Hearing(
             source=HearingSource.state_docket_export,
             case_number=row.case_number,
@@ -273,6 +275,8 @@ def upsert_row(db: Session, row: ParsedRow, now: datetime, touched_ids: set[str]
             duration=row.duration,
             court_location=row.court_location,
             courtroom=row.courtroom,
+            livestream_source_type=livestream_type,
+            livestream_url=livestream_url,
             appearance_type=row.appearance_type,
             is_excluded=(row.case_category == CaseCategory.juvenile),
             exclusion_reason=("Juvenile case (Section 4 default exclusion)"

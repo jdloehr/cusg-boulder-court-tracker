@@ -12,32 +12,41 @@ backend/
     academic_calendar.py   Section 5.5 "is today a break/finals day" helper
     auth.py                JWT auth shared by the curation team AND CUSG Justices
     alerting.py             Job-failure alerting (console-log stub, Section 8)
+    livestream.py            Court-livestream link defaults by court_location (Phase-2 doc Section 2)
+    moderation.py            Basic spam/profanity filter for the Archive's unmoderated public input
     schemas.py             Pydantic request/response models
     routers/
-      public.py             Fully public endpoints (Section 7: no login to browse)
+      public.py             Fully public endpoints (Section 7: no login to browse); also
+                             data-status + manual-refresh (Phase-2 doc Section 1)
       admin.py              Role-gated curation endpoints (Section 5.4)
-      justices.py            CUSG Justice attendance + recommendation board (post-spec addition)
+      justices.py            CUSG Justice attendance + recommendation board (post-spec addition;
+                             now login-gated, see "Phase 2" section below)
+      archive.py              Archive & Reflections (Phase-2 doc Section 5)
     jobs/
       docket_pull.py        Phase 1 core pipeline (Section 2.1)
       news_monitor.py        Phase 2 news enrichment (Section 2.2) -- RSS and WordPress
                              REST API sources, see docs/DATA_SOURCE_FINDINGS.md section 4
-      federal_supplement.py  Phase 3 CourtListener search (Section 2.3)
-      digest.py               Weekly email digest + academic-break suppression (Section 5.3/5.5)
-      scheduler.py            APScheduler wiring for the above (Section 8)
+      appellate_supplement.py  CourtListener search (Section 2.3), generalized to also cover
+                                Colorado's own Supreme Court/Court of Appeals
+      digest.py               Weekly email digest + academic-break suppression (Section 5.3/5.5);
+                               also the new-recommendation email triggers (Phase-2 doc Section 4)
+      scheduler.py            APScheduler wiring for the above (Section 8), fixed 7am
+                              America/Denver schedule (Phase-2 doc Section 1)
     main.py                FastAPI app assembly
   scripts/
     run_docket_pull.py, run_news_monitor.py    Manual job entrypoints (cron calls these)
     seed_demo_data.py                            One-shot real-data demo seed (see README)
     create_admin_user.py                          Bootstrap a curation-team account
     create_justices.py                            Bootstrap the 7 real CUSG Justice accounts
+    check_enum_drift.py                           Post-deploy Postgres enum-drift checker
     verify_data_sources.py                        Section 10 open-questions checker
-  tests/                  55 tests: unit tests for both decoders, full pipeline tests
+  tests/                  ~90 tests: unit tests for both decoders, full pipeline tests
                           against a synthetic fixture, news-monitor tests against REAL
                           fetched RSS/REST-API fixtures, a live integration test against the
                           real CourtListener API, and full-stack TestClient tests for the
-                          community-submission and Justice features. See each file's
-                          docstring for what's real data vs. synthetic and why.
-frontend/                 React (Vite) SPA -- list/detail/subscribe/recommendations/admin views
+                          community-submission, Justice, Archive, and auto-update features.
+                          See each file's docstring for what's real data vs. synthetic and why.
+frontend/                 React (Vite) SPA -- list/detail/subscribe/recommendations/archive/admin views
 docs/                     This file, plus the three build-prompt-required writeups
 ```
 
@@ -130,6 +139,81 @@ pre-law students generally:
   homepage; always reachable from the nav afterward. A shared link
   straight to a specific hearing or the recommendations board is left
   alone rather than hijacked to the tour.
+
+## Phase 2 additions (a follow-up build-prompt document)
+
+A second round of features, specified in a separate follow-up document
+once the site was already live. Two decisions from that document
+deliberately reverse choices made in the round above -- flagged and
+confirmed with the user rather than applied silently, since they directly
+contradict an explicit prior instruction:
+
+- **Attendance and recommendations now require a real Justice login
+  again** (`require_justice`), reversing the "no login at all, justice_id
+  in the request body" design from the round above. `AttendanceIn` and
+  `RecommendationIn` no longer take a `justice_id` field; identity comes
+  from the authenticated user. `RecommendationIn.note` also became
+  *required* (a "short required reason"), where it was previously
+  optional.
+- **Justices and the Editor/Contributor curation role stay separate
+  accounts/authority**, confirmed explicitly rather than merging them the
+  way the new document's Section 3 assumed ("the 7-8 Justices are the
+  same people as the Editor role"). `require_justice` still checks
+  `AdminUser.is_justice`, independent of `role`.
+
+New, purely additive features from that document:
+
+- **`Hearing.livestream_source_type` / `livestream_url`** (`app/
+  livestream.py`): defaulted by `court_location` at hearing-creation time
+  (docket-pull and the appellate-candidate publish endpoint both call
+  `default_livestream()`). Built from real findings, not assumptions:
+  `live.coloradojudicial.gov` is real and reachable, but its county picker
+  is populated by client-side JS with no discoverable deep-link query
+  parameter (checked live -- the page's initial HTML has only one
+  hardcoded `<option>`), so state hearings link to the portal itself
+  rather than a fabricated per-county URL. SCOTUS gets a real, confirmed
+  live-audio URL. Federal district court gets no default (no general
+  public video livestreaming) unless a curator supplies a specific
+  audio-access line when publishing.
+- **`GET /api/data-status` + `POST /api/refresh`**: a real "last updated"
+  timestamp (the most recent successful `docket_pull` `JobRun.finished_at`
+  -- no new tracking table) and a public, globally-cooled-down
+  (`REFRESH_COOLDOWN_MINUTES`, default 20) manual refresh button. The
+  refresh runs as a FastAPI `BackgroundTask` so the request returns
+  immediately rather than holding the connection open for however long a
+  live docket-export fetch takes.
+- **Fixed 7:00 AM Mountain Time schedule**: `app/jobs/scheduler.py`'s
+  APScheduler `CronTrigger` now takes `timezone="America/Denver"`
+  (handles the MST/MDT switch correctly year-round on its own). The
+  GitHub Actions cron (`.github/workflows/scheduled-jobs.yml`) has no
+  timezone support at all, so it's pinned to `13:00 UTC` (correct for
+  MDT, off by an hour during MST) with the drift documented in a comment
+  rather than silently wrong.
+- **`ArchiveEntry`** (`app/routers/archive.py`): a public, browsable,
+  reverse-chronological record of hearings actually attended and written
+  up, restricted to hearings whose date has already passed. Two
+  submission paths converge on one `POST /api/archive` endpoint,
+  distinguished by a new `get_optional_admin()` auth dependency in
+  `app/auth.py` (returns `None` instead of raising when there's no/an
+  invalid token, unlike `get_current_admin`): a logged-in Justice's
+  "Mark Attendance" (reflection optional, auto-added to `attendees`) vs.
+  anyone's "Submit a Summary" (reflection required, a free-text display
+  name, no account). The public path publishes immediately with no
+  approval queue -- a deliberate choice, unlike `CommunitySubmission`'s
+  moderation queue -- so it leans on after-the-fact safeguards instead:
+  `app/moderation.py`'s basic spam/profanity filter at submission time,
+  `submitter_ip` logged internally (never exposed via `ArchiveEntryOut`),
+  and any Justice can edit or remove any entry afterward.
+- **`SubscriptionFilterType.new_recommendation` now also triggers a
+  second, unconditional email to every active Justice**
+  (`notify_all_justices_of_new_recommendation` in `app/jobs/digest.py`),
+  distinct from the existing subscriber-based
+  `notify_subscribers_of_new_recommendation` -- two different audiences,
+  both notified from the same `create_recommendation` call.
+- **Security review** (the doc's Section 6) -- see
+  `docs/SECURITY_REVIEW.md` for what applies to this app's actual
+  architecture (a JWT-bearer API, not cookie-session auth) and what
+  doesn't.
 
 ## Running locally
 

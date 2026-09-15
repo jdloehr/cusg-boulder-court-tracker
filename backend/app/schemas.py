@@ -10,13 +10,16 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from app.models import (
     AcademicPeriodType,
     AppearanceType,
+    ArchiveSubmitterRole,
     AttendanceStatus,
     CaseCategory,
     CourtLocation,
     HearingSource,
     HearingStatus,
     HearingTypeCategory,
+    LivestreamSourceType,
     MatchStatus,
+    ProceedingStage,
     SubmissionStatus,
     SubscriptionFilterType,
     SubscriptionFrequency,
@@ -63,12 +66,10 @@ class AttendanceOut(BaseModel):
 
 
 class AttendanceIn(BaseModel):
-    # No auth on this endpoint (see routers/justices.py) -- the caller says
-    # which justice's row they're setting rather than it being derived from
-    # a logged-in identity. Trust model: anyone can reach this, on the
-    # expectation that in practice only the 7 real Justices use the site
-    # and only set their own status.
-    justice_id: str
+    # No justice_id here -- identity comes from the Justice login
+    # (require_justice in routers/justices.py), not a caller-supplied
+    # field. Earlier build session made this endpoint fully open with
+    # justice_id in the body; reversed on request.
     status: AttendanceStatus
     note: Optional[str] = None
 
@@ -82,18 +83,19 @@ class AttendanceIn(BaseModel):
 
 class RecommendationIn(BaseModel):
     hearing_id: str
-    # No auth on this endpoint either (see routers/justices.py) -- same
-    # trust model as attendance: the caller says which justice is
-    # recommending rather than it being derived from a login.
-    justice_id: str
-    note: Optional[str] = None
+    # Required, not optional -- "a Justice can submit a starred
+    # recommendation on any hearing with a short required reason."
+    note: str
 
     @field_validator("note")
     @classmethod
     def _cap_length(cls, value):
-        if value and len(value) > 2000:
+        stripped = (value or "").strip()
+        if not stripped:
+            raise ValueError("A reason is required")
+        if len(stripped) > 2000:
             raise ValueError("note must be under 2000 characters")
-        return value
+        return stripped
 
 
 class RecommendationOut(BaseModel):
@@ -124,6 +126,8 @@ class HearingOut(BaseModel):
     court_location: CourtLocation
     courtroom: Optional[str]
     judge_name: Optional[str]
+    livestream_source_type: LivestreamSourceType
+    livestream_url: Optional[str]
     appearance_type: AppearanceType
     is_excluded: bool
     curated_blurb: Optional[str]
@@ -203,6 +207,14 @@ class SubscriptionOut(BaseModel):
     filter_value: str
     frequency: SubscriptionFrequency
     unsubscribe_token: str
+
+
+class DataStatusOut(BaseModel):
+    """Phase-2 doc, Section 1: "Last updated HH:MM today" + refresh-button
+    state, computed from real JobRun rows."""
+    last_updated_at: Optional[datetime]
+    next_refresh_available_at: Optional[datetime]
+    refresh_cooldown_minutes: int
 
 
 class AcademicCalendarPeriodIn(BaseModel):
@@ -293,3 +305,71 @@ class PublishAppellateCandidateIn(BaseModel):
     case_category: CaseCategory = CaseCategory.civil
     curated_blurb: Optional[str] = None
     source_url: str
+    # Optional override for a federal case with a known public audio-access
+    # line -- federal courts don't offer general video livestreaming, so
+    # there's no default URL to assume (see app/livestream.py); leave blank
+    # unless the curator has a specific one for this case.
+    federal_audio_line_url: Optional[str] = None
+
+
+class ArchiveEntryIn(BaseModel):
+    hearing_id: str
+    proceeding_stage: ProceedingStage
+    judge_name: Optional[str] = None
+    reflection_text: Optional[str] = None
+    submitted_by_name: str
+    # Honeypot, same pattern as CommunitySubmissionIn -- real visitors
+    # never see or fill this field.
+    website: Optional[str] = None
+
+    @field_validator("submitted_by_name")
+    @classmethod
+    def _name_required(cls, value):
+        stripped = (value or "").strip()
+        if not stripped:
+            raise ValueError("A name is required")
+        if len(stripped) > 120:
+            raise ValueError("Name must be under 120 characters")
+        return stripped
+
+    @field_validator("judge_name")
+    @classmethod
+    def _cap_judge_name(cls, value):
+        if value and len(value) > 120:
+            raise ValueError("judge_name must be under 120 characters")
+        return value
+
+    @field_validator("reflection_text")
+    @classmethod
+    def _cap_reflection(cls, value):
+        if value and len(value) > 5000:
+            raise ValueError("reflection_text must be under 5000 characters")
+        return value
+
+
+class ArchiveEntryUpdateIn(BaseModel):
+    """Justice-only edit -- see routers/archive.py. All fields optional;
+    only what's provided gets changed."""
+    proceeding_stage: Optional[ProceedingStage] = None
+    judge_name: Optional[str] = None
+    reflection_text: Optional[str] = None
+    attendees: Optional[list[str]] = None
+
+
+class ArchiveEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    hearing_id: str
+    hearing_case_number: str
+    hearing_type_display: str
+    hearing_date: date
+    case_category: CaseCategory
+    proceeding_stage: ProceedingStage
+    judge_name: Optional[str] = None
+    attendees: list[str] = []
+    reflection_text: Optional[str] = None
+    submitted_by_name: str
+    submitted_by_role: ArchiveSubmitterRole
+    created_at: datetime
+    # submitter_ip deliberately excluded -- internal-only, see
+    # ArchiveEntry's docstring in app/models.py.

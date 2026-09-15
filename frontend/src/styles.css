@@ -130,7 +130,51 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   margin: 1.5rem 0;
 }
 
+/* Phase-2 doc, Section 7: the Archive "lean[s] into a more editorial/
+   narrative layout than the dense docket-style calendar -- generous
+   whitespace, paragraph-style presentation per entry ... since these are
+   reflective write-ups meant to be read, not scanned like a schedule."
+   Same typography system (h2 already inherits the serif heading style),
+   just roomier. */
+.archive-entry {
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.archive-entry:first-of-type { padding-top: 0.5rem; }
+.archive-entry-meta {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin: 0 0 1rem;
+}
+.archive-entry-body {
+  font-size: 1.02rem;
+  line-height: 1.7;
+  max-width: 42rem;
+  white-space: pre-wrap;
+}
+.archive-entry-byline {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin-top: 1rem;
+}
+
 /* --- Filter bar --- */
+
+/* Phase-2 doc, Section 1 + 7: small, secondary -- shouldn't compete with
+   the hearing content itself. */
+.data-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.75rem;
+}
+.data-status-refresh-btn {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.78rem;
+}
 
 .filter-bar {
   display: flex;
@@ -236,6 +280,14 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   border-radius: var(--radius);
   padding: 1.25rem;
   margin-bottom: 1.25rem;
+}
+
+/* Phase-2 doc, Section 7: "use the existing accent color so it visually
+   pops ... without breaking the restrained overall aesthetic." A top-of-
+   page callout for Justice recommendations -- an accent left-border on
+   the existing .card, not a new loud component. */
+.recommendation-callout {
+  border-left: 4px solid var(--accent);
 }
 
 .blurb { font-size: 1.02rem; line-height: 1.6; }

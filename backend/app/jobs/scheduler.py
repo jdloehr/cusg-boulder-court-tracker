@@ -41,19 +41,24 @@ def start_scheduler() -> BackgroundScheduler:
         return _scheduler
 
     scheduler = BackgroundScheduler()
-    # Daily docket re-pull, early morning (Section 8: "daily re-pull minimum").
+    # Phase-2 doc, Section 1: fixed 7:00 AM Mountain Time, not just "once a
+    # day" at an arbitrary time. Unlike the GitHub Actions cron (which has
+    # no DST awareness -- see .github/workflows/scheduled-jobs.yml's
+    # comment), APScheduler's CronTrigger takes a real IANA timezone and
+    # handles the MST/MDT switch correctly year-round on its own.
+    tz = "America/Denver"
     scheduler.add_job(lambda: _run_with_session(run_docket_pull),
-                       CronTrigger(hour=5, minute=0), id="docket_pull_daily")
+                       CronTrigger(hour=7, minute=0, timezone=tz), id="docket_pull_daily")
     # Daily news poll, staggered after the docket pull so new hearings exist
     # to match against.
     scheduler.add_job(lambda: _run_with_session(run_news_monitor),
-                       CronTrigger(hour=5, minute=30), id="news_monitor_daily")
+                       CronTrigger(hour=7, minute=30, timezone=tz), id="news_monitor_daily")
     # Weekly digest (Section 5.3 default cadence).
     scheduler.add_job(lambda: _run_with_session(run_weekly_digest),
-                       CronTrigger(day_of_week="mon", hour=8, minute=0), id="weekly_digest")
+                       CronTrigger(day_of_week="mon", hour=8, minute=0, timezone=tz), id="weekly_digest")
 
     scheduler.start()
     _scheduler = scheduler
-    logger.info("Scheduler started: docket_pull(daily 05:00), news_monitor(daily 05:30), "
-                "weekly_digest(mon 08:00)")
+    logger.info("Scheduler started (America/Denver): docket_pull(daily 07:00), "
+                "news_monitor(daily 07:30), weekly_digest(mon 08:00)")
     return scheduler
