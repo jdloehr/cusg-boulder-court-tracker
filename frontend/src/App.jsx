@@ -15,6 +15,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import AcceptInvite from "./pages/admin/AcceptInvite.jsx";
 import ForgotPassword from "./pages/admin/ForgotPassword.jsx";
 import ResetPassword from "./pages/admin/ResetPassword.jsx";
+import RequestInvite from "./pages/admin/RequestInvite.jsx";
 import { clearAdmin, getStoredAdmin } from "./api.js";
 
 const FIRST_VISIT_KEY = "cusg_visited";
@@ -111,6 +112,7 @@ export default function App() {
           <Route path="/accept-invite/:token" element={<AcceptInvite />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/request-invite" element={<RequestInvite />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
         </Routes>
       </main>

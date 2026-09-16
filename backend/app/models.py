@@ -572,6 +572,31 @@ class PasswordResetToken(Base):
     admin_user: Mapped["AdminUser"] = relationship()
 
 
+class JusticeAllowlistEntry(Base):
+    """Follow-up to Phase 3, Section 1: lets a known Justice self-serve
+    their own invite link (POST /api/justices/request-invite) instead of
+    needing an existing Editor/Justice to click "Create invite" on their
+    behalf every time -- while keeping the doc's original "only 7-8 known
+    people, never open self-registration" guarantee, since only an
+    email already on this list can ever trigger a real invite send. An
+    Editor still adds each real Justice's email here once (that's the
+    actual gate, same trust boundary as before); self-service just
+    replaces *who clicks the button* to actually send the link.
+
+    Additive alongside the original direct-invite flow
+    (POST /api/admin/invites), not a replacement of it -- an Editor can
+    still invite someone directly without them needing to know this page
+    exists at all."""
+    __tablename__ = "justice_allowlist"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    added_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class ActivityLogEntry(Base):
     """Section 5.4: "Activity log so multiple students on the team can
     coordinate without duplicating work." Not in the Section 6 schema

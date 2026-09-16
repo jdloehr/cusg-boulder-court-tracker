@@ -3,11 +3,18 @@ Phase-3 doc: Justice account provisioning (Section 1), sign-in support --
 password reset (Section 2), and public Justice profiles (Section 3).
 
 Provisioning is invite-link, not open self-registration or a shared code
-(Section 6.1's explicit choice): an existing Editor/Justice enters a real
-person's name+email here (POST /admin/invites), and the resulting
-one-time, expiring link is what lets that person set their own password
-and become an account -- see AdminInvite's docstring in app/models.py for
-why the token itself is never stored in plaintext.
+(Section 6.1's explicit choice): a real person's name+email has to reach
+AdminInvite before they can set a password and become an account -- see
+AdminInvite's docstring in app/models.py for why the token itself is
+never stored in plaintext. Two ways to get there, both live:
+- An existing Editor/Justice invites someone directly
+  (POST /admin/invites) -- the original design.
+- A known Justice self-serves their own link
+  (POST /justices/request-invite), added on request once "I have to
+  already have an account to invite anyone, including myself" turned out
+  to be a real bootstrapping problem. Still gated the same way: only an
+  email an Editor has already added to JusticeAllowlistEntry can trigger
+  a real send -- see that model's docstring in app/models.py.
 
 Signing in as a Justice now also grants full curation access (Section 2's
 explicit "merge now" choice, reversing this build's earlier "keep
@@ -20,6 +27,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -33,11 +41,13 @@ from app.auth import (
 from app.config import FRONTEND_URL, INVITE_EXPIRE_HOURS, PASSWORD_RESET_EXPIRE_HOURS
 from app.db import get_db
 from app.jobs.digest import send_email
-from app.models import AdminInvite, AdminRole, AdminUser, PasswordResetToken
+from app.models import AdminInvite, AdminRole, AdminUser, JusticeAllowlistEntry, PasswordResetToken
 from app.photo import InvalidPhotoError, process_profile_photo
 from app.rate_limit import check_rate_limit, client_ip
 from app.schemas import (
     AdminLoginResponse,
+    AllowlistEntryIn,
+    AllowlistEntryOut,
     ForgotPasswordIn,
     InviteAcceptIn,
     InviteCreateIn,
@@ -45,6 +55,7 @@ from app.schemas import (
     InviteOut,
     JusticeOut,
     JusticeProfileIn,
+    RequestInviteIn,
     ResetPasswordIn,
 )
 
@@ -65,38 +76,118 @@ def _justice_out(j: AdminUser) -> JusticeOut:
 
 # --- Section 1: invite-link provisioning ------------------------------------
 
-@router.post("/api/admin/invites", response_model=InviteOut, status_code=201)
-def create_invite(payload: InviteCreateIn, db: Session = Depends(get_db),
-                   admin: AdminUser = Depends(require_editor)):
-    """Editor-only (or, after Section 2's merge, any Justice -- they're
-    the same thing now). Invalidates any previously-issued, still-unused
-    invite for this email first, so re-inviting someone (fixing a typo,
-    or effectively resetting them before they ever set a password)
-    doesn't leave two valid links outstanding."""
+def _issue_invite(db: Session, *, email: str, display_name: str, title: str | None,
+                   invited_by: str, email_body: str) -> InviteOut:
+    """Shared by the Editor-direct flow (create_invite) and the
+    self-service flow (request_invite): invalidate any previously-issued,
+    still-unused invite for this email first (so re-inviting someone --
+    fixing a typo, or effectively resetting them before they ever set a
+    password -- doesn't leave two valid links outstanding), then create
+    and send a fresh one."""
     now = datetime.utcnow()
     db.query(AdminInvite).filter(
-        AdminInvite.email == payload.email, AdminInvite.used_at.is_(None)
+        AdminInvite.email == email, AdminInvite.used_at.is_(None)
     ).update({"used_at": now})
 
     token = generate_secure_token()
     expires_at = now + timedelta(hours=INVITE_EXPIRE_HOURS)
     invite = AdminInvite(
-        email=payload.email, display_name=payload.display_name, title=payload.title,
-        token_hash=hash_token(token), created_by_email=admin.email, expires_at=expires_at,
+        email=email, display_name=display_name, title=title,
+        token_hash=hash_token(token), created_by_email=invited_by, expires_at=expires_at,
     )
     db.add(invite)
     db.commit()
 
     link = f"{FRONTEND_URL}/accept-invite/{token}"
-    send_email(
-        payload.email,
-        "You're invited to the CUSG Boulder Court Tracker",
-        f"{admin.display_name or admin.email} has invited you to set up your CUSG Justice "
-        f"account as {payload.display_name}.\n\nSet your password here (expires in "
-        f"{INVITE_EXPIRE_HOURS} hours, one-time use):\n{link}",
+    send_email(email, "Set up your CUSG Boulder Court Tracker account", email_body.format(link=link))
+    return InviteOut(email=email, display_name=display_name, expires_at=expires_at, invite_link=link)
+
+
+@router.post("/api/admin/invites", response_model=InviteOut, status_code=201)
+def create_invite(payload: InviteCreateIn, db: Session = Depends(get_db),
+                   admin: AdminUser = Depends(require_editor)):
+    """Editor-only (or, after Section 2's merge, any Justice -- they're
+    the same thing now): invite someone directly, without them needing to
+    know the self-service page (request_invite, below) exists."""
+    return _issue_invite(
+        db, email=payload.email, display_name=payload.display_name, title=payload.title,
+        invited_by=admin.email,
+        email_body=(
+            f"{admin.display_name or admin.email} has invited you to set up your CUSG Justice "
+            f"account as {payload.display_name}.\n\nSet your password here (expires in "
+            f"{INVITE_EXPIRE_HOURS} hours, one-time use):\n{{link}}"
+        ),
     )
-    return InviteOut(email=payload.email, display_name=payload.display_name, expires_at=expires_at,
-                      invite_link=link)
+
+
+# --- Self-service invite requests, gated by an Editor-maintained allow-list --
+
+@router.post("/api/admin/justice-allowlist", response_model=AllowlistEntryOut, status_code=201)
+def add_to_allowlist(payload: AllowlistEntryIn, db: Session = Depends(get_db),
+                      admin: AdminUser = Depends(require_editor)):
+    """The actual gate behind self-service provisioning: adding someone
+    here is what lets them later request their own invite link. Adding an
+    email that's already listed just updates the name/title on file
+    rather than erroring, so fixing a typo doesn't need a delete-then-
+    re-add."""
+    existing = db.query(JusticeAllowlistEntry).filter(
+        func.lower(JusticeAllowlistEntry.email) == payload.email.strip().lower()
+    ).first()
+    if existing:
+        existing.display_name = payload.display_name
+        existing.title = payload.title
+        entry = existing
+    else:
+        entry = JusticeAllowlistEntry(
+            email=payload.email.strip(), display_name=payload.display_name,
+            title=payload.title, added_by_email=admin.email,
+        )
+        db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.get("/api/admin/justice-allowlist", response_model=list[AllowlistEntryOut])
+def list_allowlist(db: Session = Depends(get_db), admin: AdminUser = Depends(require_editor)):
+    return db.query(JusticeAllowlistEntry).order_by(JusticeAllowlistEntry.created_at).all()
+
+
+@router.delete("/api/admin/justice-allowlist/{entry_id}")
+def remove_from_allowlist(entry_id: str, db: Session = Depends(get_db),
+                           admin: AdminUser = Depends(require_editor)):
+    entry = db.query(JusticeAllowlistEntry).filter(JusticeAllowlistEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(404, "Not found")
+    db.delete(entry)
+    db.commit()
+    return {"status": "removed"}
+
+
+@router.post("/api/justices/request-invite")
+def request_invite(payload: RequestInviteIn, request: Request, db: Session = Depends(get_db)):
+    """Public, self-service: a known Justice enters their own email and
+    gets their own signup link sent, without needing an existing Editor/
+    Justice to trigger it for them. Always returns the same generic
+    response regardless of whether the email is allow-listed -- same
+    anti-enumeration reasoning as forgot_password below -- and is rate-
+    limited per IP so it can't be used to spam an inbox."""
+    if not check_rate_limit(f"request-invite:{client_ip(request)}", max_requests=5, window_seconds=600):
+        raise HTTPException(429, "Too many requests -- try again in a few minutes.")
+
+    entry = db.query(JusticeAllowlistEntry).filter(
+        func.lower(JusticeAllowlistEntry.email) == payload.email.strip().lower()
+    ).first()
+    if entry:
+        _issue_invite(
+            db, email=entry.email, display_name=entry.display_name, title=entry.title,
+            invited_by=entry.added_by_email,
+            email_body=(
+                "You're on the CUSG Justice list -- set your password here (expires in "
+                f"{INVITE_EXPIRE_HOURS} hours, one-time use):\n{{link}}"
+            ),
+        )
+    return {"status": "ok", "message": "If that email is on the CUSG Justice list, a signup link has been sent."}
 
 
 def _load_valid_invite(db: Session, token: str) -> AdminInvite:

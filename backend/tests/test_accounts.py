@@ -16,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 from app.auth import hash_password, hash_token
 from app.db import get_db
 from app.main import app
-from app.models import AdminInvite, AdminRole, AdminUser, Base, PasswordResetToken
+from app.models import AdminInvite, AdminRole, AdminUser, Base, JusticeAllowlistEntry, PasswordResetToken
 from app.rate_limit import reset_for_tests
 
 
@@ -152,6 +152,111 @@ def test_accept_invite_rejects_a_weak_password(ctx):
     token = link.rsplit("/", 1)[-1]
     r = client.post(f"/api/invites/{token}/accept", json={"password": "short"})
     assert r.status_code == 422
+
+
+# --- Self-service invite requests, gated by an Editor-maintained allow-list --
+
+def test_editor_can_manage_the_allowlist(ctx):
+    client, _Session = ctx
+    headers = _auth(client, "editor@test.local", "editor-pw-123")
+
+    created = client.post("/api/admin/justice-allowlist", json={
+        "email": "future.justice@test.local", "display_name": "Future Justice", "title": "Associate Justice",
+    }, headers=headers)
+    assert created.status_code == 201, created.text
+    entry_id = created.json()["id"]
+
+    listed = client.get("/api/admin/justice-allowlist", headers=headers)
+    assert listed.status_code == 200
+    assert any(e["email"] == "future.justice@test.local" for e in listed.json())
+
+    removed = client.delete(f"/api/admin/justice-allowlist/{entry_id}", headers=headers)
+    assert removed.status_code == 200
+    assert client.get("/api/admin/justice-allowlist", headers=headers).json() == []
+
+
+def test_non_editor_cannot_manage_the_allowlist(ctx):
+    client, Session = ctx
+    db = Session()
+    db.add(AdminUser(email="contributor@test.local", hashed_password=hash_password("contrib-pw-123"),
+                      role=AdminRole.contributor))
+    db.commit()
+    db.close()
+    headers = _auth(client, "contributor@test.local", "contrib-pw-123")
+    r = client.post("/api/admin/justice-allowlist", json={
+        "email": "x@test.local", "display_name": "X",
+    }, headers=headers)
+    assert r.status_code == 403
+
+
+def test_allowlisted_email_can_self_request_an_invite(ctx, monkeypatch):
+    client, _Session = ctx
+    sent = []
+    monkeypatch.setattr("app.routers.account.send_email", lambda to, subject, body: sent.append((to, subject, body)))
+
+    headers = _auth(client, "editor@test.local", "editor-pw-123")
+    client.post("/api/admin/justice-allowlist", json={
+        "email": "future.justice@test.local", "display_name": "Future Justice", "title": "Associate Justice",
+    }, headers=headers)
+
+    r = client.post("/api/justices/request-invite", json={"email": "future.justice@test.local"})
+    assert r.status_code == 200
+    assert len(sent) == 1
+    assert sent[0][0] == "future.justice@test.local"
+    assert "/accept-invite/" in sent[0][2]
+
+    # The link in the email is real and completes the same accept flow.
+    token = sent[0][2].rsplit("/accept-invite/", 1)[-1].split()[0]
+    accepted = client.post(f"/api/invites/{token}/accept", json={"password": "a-strong-passw0rd"})
+    assert accepted.status_code == 200
+    assert accepted.json()["display_name"] == "Future Justice"
+    assert accepted.json()["role"] == "editor"
+
+
+def test_unlisted_email_gets_the_same_generic_response_and_no_email(ctx, monkeypatch):
+    client, _Session = ctx
+    sent = []
+    monkeypatch.setattr("app.routers.account.send_email", lambda to, subject, body: sent.append((to, subject, body)))
+
+    listed = client.post("/api/justices/request-invite", json={"email": "nobody-knows-me@test.local"})
+    assert listed.status_code == 200
+    assert sent == []
+
+
+def test_request_invite_is_case_insensitive_on_email(ctx, monkeypatch):
+    client, Session = ctx
+    sent = []
+    monkeypatch.setattr("app.routers.account.send_email", lambda to, subject, body: sent.append((to, subject, body)))
+
+    db = Session()
+    db.add(JusticeAllowlistEntry(email="Future.Justice@Test.Local", display_name="Future Justice",
+                                  added_by_email="editor@test.local"))
+    db.commit()
+    db.close()
+
+    r = client.post("/api/justices/request-invite", json={"email": "future.justice@test.local"})
+    assert r.status_code == 200
+    assert len(sent) == 1
+
+
+def test_request_invite_is_rate_limited(ctx):
+    client, _Session = ctx
+    for _ in range(5):
+        client.post("/api/justices/request-invite", json={"email": "nobody@test.local"})
+    blocked = client.post("/api/justices/request-invite", json={"email": "nobody@test.local"})
+    assert blocked.status_code == 429
+
+
+def test_adding_to_allowlist_does_not_by_itself_grant_login(ctx):
+    """Being on the allow-list only lets someone *request* an invite --
+    it doesn't create an AdminUser or grant any access on its own."""
+    client, _Session = ctx
+    headers = _auth(client, "editor@test.local", "editor-pw-123")
+    client.post("/api/admin/justice-allowlist", json={
+        "email": "future.justice@test.local", "display_name": "Future Justice",
+    }, headers=headers)
+    r = client.post("/api/admin/login", json={"email": "future.justice@test.local", "password": "anything"})
+    assert r.status_code == 401
 
 
 # --- Section 2: forgot / reset password --------------------------------------

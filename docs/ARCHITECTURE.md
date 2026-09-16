@@ -246,6 +246,19 @@ New, purely additive features from that document:
   `AdminUser` and logs them straight in. Not open self-registration or a
   shared code (the document's own Section 6.1 choice, confirmed) -- only
   someone already holding curation access can mint an invite.
+- **Self-service invite requests, added as a follow-up** once "you need
+  an existing Editor/Justice to invite you before you can invite anyone,
+  including yourself" turned out to be a real bootstrapping problem in
+  practice. `JusticeAllowlistEntry` is the actual gate (an Editor adds a
+  real person's email once); `POST /api/justices/request-invite` is
+  public and lets that person trigger their own invite send by entering
+  their own email -- an unlisted email gets the same generic response
+  either way (`{"status": "ok", ...}`, no send), same anti-enumeration
+  reasoning as forgot-password. Shares `_issue_invite()` with the
+  Editor-direct flow above rather than duplicating the token/expiry/
+  invalidate-previous-invite logic. Purely additive -- the direct flow
+  still works unchanged for an Editor who'd rather just invite someone
+  themselves.
 - **Forgot/reset password** (`PasswordResetToken`,
   `POST /api/auth/forgot-password` + `POST /api/auth/reset-password/
   {token}`): same single-use, expiring, hashed-token pattern as invites.

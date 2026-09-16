@@ -438,6 +438,42 @@ class InviteOut(BaseModel):
     invite_link: str
 
 
+class AllowlistEntryIn(BaseModel):
+    """Adds an email to JusticeAllowlistEntry (app/models.py) -- the gate
+    behind the self-service POST /api/justices/request-invite. Same
+    shape/validation as InviteCreateIn since it's the same underlying
+    information (who's allowed to become a Justice and what to call
+    them), just not sent anywhere yet."""
+    email: str
+    display_name: str
+    title: Optional[str] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _require_name(cls, value):
+        stripped = (value or "").strip()
+        if not stripped:
+            raise ValueError("A name is required")
+        if len(stripped) > 120:
+            raise ValueError("Name must be under 120 characters")
+        return stripped
+
+
+class AllowlistEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: str
+    display_name: str
+    title: Optional[str] = None
+    created_at: datetime
+
+
+class RequestInviteIn(BaseModel):
+    """Public: what a Justice submits on the self-service 'get my signup
+    link' page."""
+    email: str
+
+
 class InviteInfoOut(BaseModel):
     """Public: what the accept-invite page shows before a password is
     set. No token, no internal fields -- just enough to say "you've been

@@ -55,6 +55,9 @@ export default function AdminLogin() {
       <p style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
         <Link to="/forgot-password">Forgot your password?</Link>
       </p>
+      <p style={{ marginTop: "0.4rem", fontSize: "0.85rem" }}>
+        New CUSG Justice, no account yet? <Link to="/request-invite">Request your signup link</Link>.
+      </p>
     </article>
   );
 }

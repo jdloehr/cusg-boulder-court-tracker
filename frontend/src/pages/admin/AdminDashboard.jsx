@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { api, clearAdmin, getStoredAdmin } from "../../api.js";
 
 const TABS = [
@@ -577,6 +577,105 @@ function JusticeInvites({ admin }) {
             Expires {new Date(result.expires_at).toLocaleString()}. One-time use.
           </p>
         </div>
+      )}
+
+      <hr style={{ margin: "2rem 0" }} />
+
+      <JusticeAllowlist />
+    </div>
+  );
+}
+
+// Lets a Justice request their own signup link (added on request, once
+// "someone else has to invite me before I can invite myself" turned out
+// to be a real bootstrapping annoyance) -- an Editor still has to add
+// the email here first; that's the actual gate. Complements "Invite a
+// Justice" above rather than replacing it.
+function JusticeAllowlist() {
+  const [entries, setEntries] = useState(null);
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    api.listAllowlist().then(setEntries).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addToAllowlist({ email, display_name: displayName, title: title || undefined });
+      setEmail("");
+      setDisplayName("");
+      setTitle("");
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id) {
+    await api.removeFromAllowlist(id);
+    load();
+  }
+
+  return (
+    <div>
+      <h2>Self-service allow-list</h2>
+      <p className="disclaimer">
+        Add a Justice here once, and they can get their own signup link anytime from{" "}
+        <Link to="/request-invite">Request your signup link</Link> by entering this exact email --
+        no one else has to click "Create invite" for them. An unlisted email gets no link at all.
+      </p>
+      <form className="form-grid" onSubmit={onSubmit}>
+        <div>
+          <label htmlFor="allowlistEmail">Email</label>
+          <input id="allowlistEmail" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="allowlistName">Name</label>
+          <input id="allowlistName" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="allowlistTitle">Title (optional)</label>
+          <input id="allowlistTitle" placeholder="Chief Justice" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <button className="btn btn-secondary" type="submit" disabled={busy}>
+          {busy ? "Adding…" : "Add to allow-list"}
+        </button>
+        {error && <p className="message-error">{error}</p>}
+      </form>
+
+      {entries && entries.length > 0 && (
+        <table className="data-table" style={{ marginTop: "1rem" }}>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id}>
+                <td>{e.title ? `${e.title} ${e.display_name}` : e.display_name}</td>
+                <td>{e.email}</td>
+                <td>
+                  <button className="btn btn-danger" onClick={() => remove(e.id)}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

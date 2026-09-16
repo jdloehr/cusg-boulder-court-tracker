@@ -145,6 +145,14 @@ export const api = {
     request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (token, password) =>
     request(`/api/auth/reset-password/${token}`, { method: "POST", body: JSON.stringify({ password }) }),
+  // Self-service invite requests, gated by the allow-list below.
+  requestInvite: (email) =>
+    request("/api/justices/request-invite", { method: "POST", body: JSON.stringify({ email }) }),
+  listAllowlist: () => request("/api/admin/justice-allowlist", { headers: authHeaders() }),
+  addToAllowlist: (payload) =>
+    request("/api/admin/justice-allowlist", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
+  removeFromAllowlist: (id) =>
+    request(`/api/admin/justice-allowlist/${id}`, { method: "DELETE", headers: authHeaders() }),
   getJustice: (id) => request(`/api/justices/${id}`),
   updateMyProfile: (payload) =>
     request("/api/justices/me/profile", { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),
