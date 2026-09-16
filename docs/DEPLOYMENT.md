@@ -138,13 +138,44 @@ cd backend
 DATABASE_URL=<Render Postgres External Database URL> python scripts/check_enum_drift.py
 ```
 
-## 5. What's still manual after this
+## 5. Real email delivery (optional -- invite links, password resets, the digest)
 
-- **Email delivery** is still stubbed to logs (see README) -- the digest
-  job runs on schedule and computes exactly who should get what, it just
-  doesn't send it anywhere yet. Wiring in a real provider (e.g. Postmark,
-  SendGrid, Resend all have usable free tiers) is a change confined to
-  `send_email()` in `app/jobs/digest.py`.
+Without this, everything still works -- invite/reset links are logged
+(Render's dashboard -> your service -> **Logs**) and also handed back
+directly in the API response (the admin dashboard's "Invite a Justice"
+tab shows the link right after you create one), so you can always copy/
+paste it by hand. This section is for making that automatic.
+
+Using [SendGrid](https://sendgrid.com) here since its free tier (100
+emails/day, forever, no credit card) needs only a single verified sender
+address -- not a whole custom domain -- which fits a project running on
+a bare `.vercel.app`/`.onrender.com` URL. Resend, Postmark, etc. would
+also work but expect a verified domain for real use.
+
+1. Create a free SendGrid account.
+2. **Settings -> Sender Authentication -> Verify a Single Sender.** Use
+   an email address you can actually receive mail at (your own, or a
+   CUSG address) -- SendGrid sends a confirmation link there and refuses
+   to send *from* this address until you click it.
+3. **Settings -> API Keys -> Create API Key** (Restricted Access is fine
+   -- it only needs "Mail Send" permission). Copy the key now; SendGrid
+   only shows it once.
+4. Render dashboard -> your backend service -> **Environment** -> add:
+   - `EMAIL_BACKEND` = `sendgrid`
+   - `SENDGRID_API_KEY` = the key from step 3
+   - `EMAIL_FROM_ADDRESS` = the address you verified in step 2
+   - `EMAIL_FROM_NAME` = `CUSG Boulder Court Tracker` (or whatever you'd
+     like recipients to see)
+5. Redeploy (env var changes need one). Test it by creating a real
+   invite from the dashboard for an email address you can check --
+   the link should now actually arrive, not just appear on-screen.
+
+A failed send (bad key, unverified sender, SendGrid briefly down) never
+breaks the feature that triggered it -- it's logged loudly
+(`app/jobs/digest.py::_send_via_sendgrid`) and the app moves on; an
+invite's link is still shown directly in the response either way.
+
+## 6. What's still manual after this
 - **A CUSG custom domain**, if you want one, is a DNS change plus adding
   it in the Vercel (and optionally Render) project settings -- not
   something I can do without access to CUSG's domain registrar.

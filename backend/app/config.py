@@ -121,11 +121,18 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "480"))
 
 # --- Email (Section 5.3) -----------------------------------------------------
-# No transactional-email account exists for this build. EMAIL_BACKEND
-# "console" renders and logs/persists the digest instead of sending it --
-# see app/jobs/digest.py. Swap in a real provider's SDK behind the same
-# send_email() call when credentials are available.
+# "console" (default) renders and logs the email instead of sending it --
+# see app/jobs/digest.py::send_email. Set EMAIL_BACKEND=sendgrid (plus
+# SENDGRID_API_KEY and EMAIL_FROM_ADDRESS below) for real delivery -- see
+# docs/DEPLOYMENT.md's "Real email delivery" section for how to get a
+# SendGrid account and API key.
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "console")
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+# Must be a "Single Sender" address verified in the SendGrid dashboard
+# (or an address on a verified domain) -- SendGrid rejects a send from
+# any address it hasn't verified.
+EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM_ADDRESS", "")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "CUSG Boulder Court Tracker")
 
 # --- Failure alerting (Section 8) -------------------------------------------
 # Same situation as email: no paging/notification account exists yet.

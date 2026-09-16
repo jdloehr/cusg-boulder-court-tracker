@@ -3,12 +3,15 @@ Phase 3 (Section 5.3): weekly digest generation, plus per-case realtime
 alerts. Section 5.5 requires suppressing/shortening the digest during CU
 breaks and finals.
 
-No transactional-email account exists for this build (Section 10 open
-question left to the CUSG team to set up), so send_email() with
-EMAIL_BACKEND="console" renders the digest and logs it rather than
-delivering it -- the rendering/selection logic is fully real and testable,
-only the last-mile delivery is stubbed. Swap in SendGrid/Postmark/etc.
-behind send_email() when credentials exist.
+send_email() defaults to EMAIL_BACKEND="console" (renders and logs the
+email rather than delivering it -- the rendering/selection logic here is
+fully real and testable regardless of whether delivery is). Set
+EMAIL_BACKEND=sendgrid (plus SENDGRID_API_KEY/EMAIL_FROM_ADDRESS in
+app/config.py) for real delivery via SendGrid's plain HTTP API -- see
+docs/DEPLOYMENT.md's "Real email delivery" section for how to get an
+account and API key. Deliberately a raw httpx.post() call rather than
+SendGrid's own SDK: one API call doesn't need a whole extra dependency
+when this project already depends on httpx for everything else.
 """
 from __future__ import annotations
 
@@ -16,10 +19,11 @@ import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.academic_calendar import current_period
-from app.config import EMAIL_BACKEND
+from app.config import EMAIL_BACKEND, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME, SENDGRID_API_KEY
 from app.models import (
     AcademicPeriodType,
     AdminUser,
@@ -39,7 +43,42 @@ def send_email(to: str, subject: str, body: str) -> None:
     if EMAIL_BACKEND == "console":
         logger.info("EMAIL to=%s subject=%r\n%s", to, subject, body)
         return
+    if EMAIL_BACKEND == "sendgrid":
+        _send_via_sendgrid(to, subject, body)
+        return
     raise NotImplementedError(f"Unknown EMAIL_BACKEND {EMAIL_BACKEND!r}")
+
+
+def _send_via_sendgrid(to: str, subject: str, body: str) -> None:
+    """Never raises -- a failed send (bad API key, an unverified sender,
+    SendGrid being briefly down) shouldn't crash the request that
+    triggered it. The digest job already tolerates per-recipient failures
+    (Section 8's failure-alerting is separate from this), and an invite/
+    reset email failing is recoverable anyway -- the invite link is also
+    returned directly in the API response (see routers/account.py), and
+    an Editor can just re-send. Failures are logged loudly instead."""
+    if not SENDGRID_API_KEY or not EMAIL_FROM_ADDRESS:
+        logger.error(
+            "EMAIL_BACKEND=sendgrid but SENDGRID_API_KEY/EMAIL_FROM_ADDRESS aren't both set -- "
+            "email to=%s subject=%r was NOT sent", to, subject,
+        )
+        return
+    try:
+        resp = httpx.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {SENDGRID_API_KEY}"},
+            json={
+                "personalizations": [{"to": [{"email": to}]}],
+                "from": {"email": EMAIL_FROM_ADDRESS, "name": EMAIL_FROM_NAME},
+                "subject": subject,
+                "content": [{"type": "text/plain", "value": body}],
+            },
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            logger.error("SendGrid send to=%s failed (%s): %s", to, resp.status_code, resp.text)
+    except httpx.HTTPError as exc:
+        logger.error("SendGrid send to=%s raised %s: %s", to, type(exc).__name__, exc)
 
 
 def default_upcoming_hearings(db: Session, days_ahead: int = 14) -> list[Hearing]:

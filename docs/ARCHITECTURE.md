@@ -301,6 +301,15 @@ New, purely additive features from that document:
   time, so it doesn't depend on name-matching, but only populated for
   entries created after this column existed -- older entries' bylines
   just don't link, an honest degradation rather than a backfill guess).
+- **Real, optional email delivery** (`app/jobs/digest.py::send_email`,
+  `EMAIL_BACKEND=sendgrid`): added once invite links became something a
+  real person actually needs delivered, not just logged. A raw
+  `httpx.post()` to SendGrid's HTTP API rather than pulling in their SDK
+  (or a new HTTP-client dependency at all -- `httpx` was already used
+  everywhere else in this codebase) for what's a single API call. Never
+  raises on failure -- logs loudly and moves on, since every caller
+  (invite creation especially) already has a fallback: the invite link
+  itself is also returned directly in the API response.
 
 ## Running locally
 
