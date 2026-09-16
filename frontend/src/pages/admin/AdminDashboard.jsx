@@ -8,6 +8,7 @@ const TABS = [
   { key: "community", label: "Review Queue: Community" },
   { key: "federal", label: "Appellate Supplement" },
   { key: "calendar", label: "Academic Calendar" },
+  { key: "justices", label: "Justice Accounts" },
   { key: "activity", label: "Activity Log" },
 ];
 
@@ -50,6 +51,7 @@ export default function AdminDashboard() {
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
           {tab === "federal" && <AppellateSupplement admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
+          {tab === "justices" && <JusticeInvites admin={admin} />}
           {tab === "activity" && <ActivityLog />}
         </div>
       </div>
@@ -496,6 +498,86 @@ function AcademicCalendar({ admin }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// --- Phase-3 doc, Section 1: invite-link Justice provisioning ---
+
+function JusticeInvites({ admin }) {
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [title, setTitle] = useState("");
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const invite = await api.createInvite({ email, display_name: displayName, title: title || undefined });
+      setResult(invite);
+      setEmail("");
+      setDisplayName("");
+      setTitle("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (admin.role !== "editor") {
+    return (
+      <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+        Only an Editor (which every Justice account also is -- see Sign in) can invite a new Justice.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <h2>Invite a Justice</h2>
+      <p className="disclaimer">
+        Not open self-registration -- only the 7-8 real CUSG Justices should ever have accounts.
+        Enter their real name and email; they'll get a one-time link (expires in 48 hours) to set
+        their own password and fill out their public profile. Signing in as a Justice also grants
+        full curation-tool access.
+      </p>
+      <form className="form-grid" onSubmit={onSubmit}>
+        <div>
+          <label htmlFor="inviteEmail">Email</label>
+          <input id="inviteEmail" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="inviteName">Name</label>
+          <input id="inviteName" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="inviteTitle">Title (optional)</label>
+          <input id="inviteTitle" placeholder="Chief Justice" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <button className="btn" type="submit" disabled={busy}>
+          {busy ? "Creating…" : "Create invite"}
+        </button>
+        {error && <p className="message-error">{error}</p>}
+      </form>
+
+      {result && (
+        <div className="card" style={{ marginTop: "1rem" }}>
+          <p className="message-success">
+            Invite created for {result.display_name} ({result.email}). An email was queued (see the
+            backend's email log if real delivery isn't set up yet) -- or share this link directly:
+          </p>
+          <input readOnly value={result.invite_link} onFocus={(e) => e.target.select()} style={{ width: "100%" }} />
+          <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.4rem" }}>
+            Expires {new Date(result.expires_at).toLocaleString()}. One-time use.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

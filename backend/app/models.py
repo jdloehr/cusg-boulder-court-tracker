@@ -20,6 +20,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -429,6 +430,15 @@ class ArchiveEntry(Base):
 
     submitted_by_name: Mapped[str] = mapped_column(String(120), nullable=False)
     submitted_by_role: Mapped[ArchiveSubmitterRole] = mapped_column(Enum(ArchiveSubmitterRole), nullable=False)
+    # Phase-3 doc, Section 4: lets a Justice-submitted entry's byline link
+    # to that Justice's public profile. Only ever set for the "Mark
+    # Attendance" path (submitted_by_role == justice), where the real
+    # AdminUser is known at write time -- not backfillable for entries
+    # created before this column existed, which just render their byline
+    # as plain text (honest degradation, not an error).
+    submitted_by_justice_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("admin_users.id"), nullable=True
+    )
 
     # Internal-only, never exposed via ArchiveEntryOut -- Section 6's
     # after-the-fact abuse-tracing safeguard for a fully anonymous,
@@ -467,17 +477,31 @@ class AdminUser(Base):
     """One login covers both possible "hats" (Section 5.4's curation
     Editor/Contributor roles, and being a CUSG Supreme Court Justice with
     attendance/recommendation privileges) rather than forcing two separate
-    accounts for the same real person -- the roster is tiny (7 justices,
-    plus whichever curators overlap with them) and the two concerns are
-    genuinely independent, so `role` and `is_justice` are separate fields,
-    not one combined enum."""
+    accounts for the same real person. `role` and `is_justice` stay
+    separate *fields* -- is_justice is identity ("this account is one of
+    the 7-8 real Justices," gating attendance/recommend/profile-editing),
+    role is curation authority (gating the admin review-queue tool).
+
+    Phase-3 doc, Section 2, explicit choice: **every Justice account also
+    gets full curation access** -- reversing this build's earlier "keep
+    them independent" stance (a justice-only account with no curation
+    role was possible before; it no longer is, going forward).
+    Implemented as a plain data fact rather than a code-level merge of
+    require_justice/require_editor: provisioning a Justice (invite-accept
+    in routers/account.py, and the one-time backfill in app/migrations.py
+    for the original 7 seeded pre-Phase-3) sets `role=AdminRole.editor`
+    directly. require_editor's own check (`role == editor`) never
+    changed, so the real Editor-vs-Contributor distinction for curation
+    work is untouched -- a Justice simply always *is* an Editor now, by
+    construction, not by a special-cased permission check."""
     __tablename__ = "admin_users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Curation role (Section 5.4). Nullable: a justice-only account (no
-    # curation duties) has no role here.
+    # Curation role (Section 5.4). Nullable: a contributor-only or
+    # not-yet-provisioned account has no role here. See class docstring --
+    # every Justice account gets AdminRole.editor set here directly.
     role: Mapped[Optional[AdminRole]] = mapped_column(Enum(AdminRole), nullable=True)
     is_justice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Display identity for justices (e.g. "Chief Justice Dillon Rankin"),
@@ -486,6 +510,66 @@ class AdminUser(Base):
     title: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # --- Phase-3 doc, Section 3: public Justice profiles ---------------
+    # All nullable/optional -- a brand-new Justice account has none of
+    # this filled in yet, and the public directory/profile pages render
+    # sensible blanks rather than requiring it up front.
+    bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    year_or_major: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    why_care: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    fun_fact: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Real photo upload (Section 6.3's explicit choice over an avatar
+    # picker). Stored directly in Postgres rather than a separate file/
+    # object-storage service -- this project has no such service
+    # provisioned, and 7-8 people's profile photos (re-encoded and capped
+    # to a small size on upload -- see routers/account.py) is a trivial
+    # amount of data for a database column. Never exposed directly in any
+    # *Out schema; served only via GET /api/justices/{id}/photo.
+    photo_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    photo_content_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+
+
+class AdminInvite(Base):
+    """Phase-3 doc, Section 1: provisioning is invite-link, not open
+    self-registration or a shared signup code -- an Editor enters a real
+    Justice's name/email here, they get emailed a one-time expiring link
+    to set their own password (routers/account.py). Re-inviting an email
+    that already has an account (a reset, or fixing a typo) is allowed --
+    accepting the new invite just updates that existing row rather than
+    erroring on the unique email constraint.
+
+    `token` is stored hashed (sha256 via app.auth.hash_token), same
+    reasoning as password hashing: a database read (a backup, a bug, an
+    over-broad log line) shouldn't hand out a working credential.
+    """
+    __tablename__ = "admin_invites"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    created_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class PasswordResetToken(Base):
+    """Phase-3 doc, Section 2: standard "forgot password" email-link flow.
+    Single-use and expiring, same as AdminInvite, and for the same
+    reason -- token stored hashed, never in plaintext."""
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    admin_user_id: Mapped[str] = mapped_column(ForeignKey("admin_users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    admin_user: Mapped["AdminUser"] = relationship()
 
 
 class ActivityLogEntry(Base):

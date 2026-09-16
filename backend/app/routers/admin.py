@@ -15,12 +15,13 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, get_current_admin, require_editor, verify_password
 from app.db import get_db
 from app.jobs.appellate_supplement import PRESET_COURTS, search_candidates
+from app.rate_limit import check_rate_limit, client_ip
 from app.models import (
     AcademicCalendarPeriod,
     ActivityLogEntry,
@@ -62,17 +63,25 @@ def _log(db: Session, admin: AdminUser, action: str, target_type: str,
 
 
 @router.post("/login", response_model=AdminLoginResponse)
-def login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
+def login(payload: AdminLoginRequest, request: Request, db: Session = Depends(get_db)):
     """Single login for both curation-team accounts (Editor/Contributor)
     and CUSG Justice accounts -- see AdminUser's docstring in
     app/models.py. The frontend routes to the curation dashboard or the
     justice-facing views based on the role/is_justice fields returned
-    here."""
+    here.
+
+    Phase-3 doc, Section 5: rate-limited per IP (not per email -- the
+    roster is only 7-8 people, so a per-IP budget is enough to stop
+    brute-forcing any one of those accounts without needing to track a
+    separate counter per email address)."""
+    if not check_rate_limit(f"login:{client_ip(request)}", max_requests=10, window_seconds=600):
+        raise HTTPException(429, "Too many login attempts from this address -- try again in a few minutes.")
     user = db.query(AdminUser).filter(AdminUser.email == payload.email).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(401, "Invalid credentials")
     return AdminLoginResponse(
         access_token=create_access_token(user),
+        id=user.id,
         role=user.role.value if user.role else None,
         is_justice=user.is_justice,
         display_name=user.display_name,

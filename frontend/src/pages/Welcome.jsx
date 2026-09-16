@@ -66,9 +66,14 @@ export default function Welcome() {
           to the rest of the court with a required reason, which emails every other Justice and
           anyone subscribed to new recommendations, and shows up as a{" "}
           <span className="badge badge-news" style={{ verticalAlign: "middle" }}>&#9733; Recommended</span>{" "}
-          callout at the top of that hearing's page. Justice login is separate from the
-          Editor/Contributor curation accounts -- being a Justice doesn't grant curation access, and
-          vice versa.
+          callout at the top of that hearing's page. Justice accounts are invite-only (an existing
+          Justice/Editor sends a one-time link) and also grant full curation access.
+        </p>
+        <p>
+          Every Justice has a public profile -- a photo, bio, year/major, and why they care about
+          court-watching -- editable only by themselves, browsable on{" "}
+          <Link to="/justices">Meet the Justices</Link>, and linked from their name everywhere it
+          shows up on the site.
         </p>
       </div>
 

@@ -86,18 +86,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .site-nav a { color: #dbe2e8; text-decoration: none; }
 .site-nav a:hover, .site-nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 
-/* Sign-out control sits on the dark header, not the light page background --
-   .btn-secondary's dark-on-transparent styling is unreadable there. */
-.btn-nav-signout {
-  background: transparent;
-  border: 1px solid #566779;
-  color: #dbe2e8;
-  border-radius: var(--radius);
-  padding: 0.15rem 0.5rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.btn-nav-signout:hover { border-color: #fff; color: #fff; }
 
 main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; width: 100%; }
 
@@ -108,6 +96,23 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   color: var(--ink-soft);
   text-align: center;
 }
+/* Phase-3 doc, Section 2: "a simple, unobtrusive Sign in link" -- lives
+   in the footer, not the main nav, so browsing never looks like it
+   expects a login. */
+.site-footer-account {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+}
+.btn-footer-signout {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  border-radius: var(--radius);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.btn-footer-signout:hover { border-color: var(--ink-soft); color: var(--ink); }
 
 /* --- Notice / banner --- */
 
@@ -157,6 +162,62 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   color: var(--ink-soft);
   font-style: italic;
   margin-top: 1rem;
+}
+
+/* Phase-3 doc, Section 4: one consistent treatment for every clickable
+   Justice name across the site (recommendation callout, attendance
+   rows, Archive attendee lists/bylines), distinct enough from ordinary
+   body-text links that visitors learn to recognize it. */
+.justice-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+}
+.justice-link:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* --- "Meet the Justices" directory + individual profile --- */
+.justice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+.justice-card {
+  display: block;
+  text-align: center;
+}
+.justice-photo, .justice-photo-placeholder {
+  width: 7rem;
+  height: 7rem;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 0.6rem;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+}
+.justice-photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 1.8rem;
+  color: var(--accent);
+}
+.justice-profile-header {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.justice-profile-header .justice-photo,
+.justice-profile-header .justice-photo-placeholder {
+  width: 9rem;
+  height: 9rem;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 /* --- Filter bar --- */

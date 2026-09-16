@@ -33,12 +33,30 @@ from app.db import get_db
 from app.rate_limit import check_rate_limit, client_ip
 from app.moderation import is_likely_spam_or_profane
 from app.models import AdminUser, ArchiveEntry, ArchiveSubmitterRole, CaseCategory, Hearing, ProceedingStage
-from app.schemas import ArchiveEntryIn, ArchiveEntryOut, ArchiveEntryUpdateIn
+from app.schemas import ArchiveEntryIn, ArchiveEntryOut, ArchiveEntryUpdateIn, AttendeeOut
 
 router = APIRouter(prefix="/api/archive", tags=["archive"])
 
 
-def _to_out(entry: ArchiveEntry) -> ArchiveEntryOut:
+def _resolve_attendees(db: Session, names: list[str]) -> list[AttendeeOut]:
+    """Phase-3 doc, Section 4: link an attendee's name to their profile
+    wherever it's recognized as a current Justice. `attendees` is stored
+    as plain strings (see ArchiveEntry.attendees docstring), so this
+    matches against the live roster by exact display_name -- a name that
+    doesn't match (a non-Justice attendee, a Justice's name typed
+    slightly differently, or someone no longer active) just renders as
+    plain text, not an error."""
+    if not names:
+        return []
+    roster = {
+        j.display_name: j.id
+        for j in db.query(AdminUser).filter(AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True)).all()
+        if j.display_name
+    }
+    return [AttendeeOut(name=n, justice_id=roster.get(n)) for n in names]
+
+
+def _to_out(entry: ArchiveEntry, db: Session) -> ArchiveEntryOut:
     return ArchiveEntryOut(
         id=entry.id,
         hearing_id=entry.hearing_id,
@@ -48,10 +66,11 @@ def _to_out(entry: ArchiveEntry) -> ArchiveEntryOut:
         case_category=entry.hearing.case_category,
         proceeding_stage=entry.proceeding_stage,
         judge_name=entry.judge_name,
-        attendees=json.loads(entry.attendees) if entry.attendees else [],
+        attendees=_resolve_attendees(db, json.loads(entry.attendees) if entry.attendees else []),
         reflection_text=entry.reflection_text,
         submitted_by_name=entry.submitted_by_name,
         submitted_by_role=entry.submitted_by_role,
+        submitted_by_justice_id=entry.submitted_by_justice_id,
         created_at=entry.created_at,
     )
 
@@ -77,7 +96,7 @@ def list_archive(
     if date_to:
         q = q.filter(Hearing.date <= date_to)
     entries = q.order_by(ArchiveEntry.created_at.desc()).all()
-    return [_to_out(e) for e in entries]
+    return [_to_out(e, db) for e in entries]
 
 
 @router.get("/{entry_id}", response_model=ArchiveEntryOut)
@@ -85,7 +104,7 @@ def get_archive_entry(entry_id: str, db: Session = Depends(get_db)):
     entry = db.query(ArchiveEntry).filter(ArchiveEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(404, "Archive entry not found")
-    return _to_out(entry)
+    return _to_out(entry, db)
 
 
 @router.post("", response_model=ArchiveEntryOut, status_code=201)
@@ -135,12 +154,13 @@ def create_archive_entry(
         reflection_text=payload.reflection_text,
         submitted_by_name=justice.display_name or justice.email if is_justice else payload.submitted_by_name,
         submitted_by_role=ArchiveSubmitterRole.justice if is_justice else ArchiveSubmitterRole.regular_user,
+        submitted_by_justice_id=justice.id if is_justice else None,
         submitter_ip=ip,
     )
     db.add(entry)
     db.commit()
     db.refresh(entry)
-    return _to_out(entry)
+    return _to_out(entry, db)
 
 
 @router.patch("/{entry_id}", response_model=ArchiveEntryOut)
@@ -163,7 +183,7 @@ def update_archive_entry(entry_id: str, payload: ArchiveEntryUpdateIn, db: Sessi
         entry.attendees = json.dumps(payload.attendees)
     db.commit()
     db.refresh(entry)
-    return _to_out(entry)
+    return _to_out(entry, db)
 
 
 @router.delete("/{entry_id}")

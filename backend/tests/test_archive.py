@@ -140,7 +140,10 @@ def test_justice_marking_attendance_needs_no_reflection_and_adds_self_as_attende
     body = r.json()
     assert body["submitted_by_role"] == "justice"
     assert body["submitted_by_name"] == "Joshua Loehr"
-    assert body["attendees"] == ["Joshua Loehr"]
+    # Phase-3 doc, Section 4: attendee names resolve to a linkable
+    # justice_id when they match the current roster.
+    assert body["submitted_by_justice_id"] is not None
+    assert body["attendees"] == [{"name": "Joshua Loehr", "justice_id": body["submitted_by_justice_id"]}]
     assert body["reflection_text"] is None
 
 

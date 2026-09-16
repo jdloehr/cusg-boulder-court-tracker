@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import init_db
-from app.routers import admin, archive, justices, public
+from app.routers import account, admin, archive, justices, public
 
 app = FastAPI(title="CUSG Boulder Court Tracker API")
 
@@ -21,6 +21,7 @@ app.include_router(public.router)
 app.include_router(admin.router)
 app.include_router(justices.router)
 app.include_router(archive.router)
+app.include_router(account.router)
 
 
 @app.on_event("startup")

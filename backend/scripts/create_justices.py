@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.auth import hash_password  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
-from app.models import AdminUser  # noqa: E402
+from app.models import AdminRole, AdminUser  # noqa: E402
 
 # (email, display_name, title). Email is just a login identifier here, not
 # used for anything else (no email-sending to justices in this build) --
@@ -51,6 +51,10 @@ def main():
                 email=email,
                 hashed_password=hash_password(password),
                 is_justice=True,
+                # Phase-3 doc, Section 2's explicit "merge now" choice --
+                # every Justice account also gets full curation access.
+                # See AdminUser's docstring in app/models.py.
+                role=AdminRole.editor,
                 display_name=display_name,
                 title=title,
             ))

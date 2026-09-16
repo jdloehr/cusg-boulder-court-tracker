@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import { COURT_INFO, COURT_LOCATION_TAG } from "../courtInfo.js";
+import JusticeLink from "../components/JusticeLink.jsx";
 
 const ATTENDANCE_LABELS = {
   attending: "Attending",
@@ -202,7 +203,9 @@ function RecommendationCallout({ hearingId }) {
       {recs.map((r) => (
         <p key={r.id} style={{ margin: "0.25rem 0" }}>
           <span className="badge badge-news">&#9733; Recommended</span>{" "}
-          <strong>{r.justice_title ? `${r.justice_title} ${r.justice_display_name}` : r.justice_display_name}</strong>
+          <JusticeLink justiceId={r.justice_id}>
+            <strong>{r.justice_title ? `${r.justice_title} ${r.justice_display_name}` : r.justice_display_name}</strong>
+          </JusticeLink>
           {" recommends this case — “"}
           {r.note}
           {"”"}
@@ -263,7 +266,11 @@ function CourtAttendance({ hearing, admin, onChange }) {
             const isMe = admin?.isJustice && admin.displayName === j.display_name;
             return (
               <tr key={j.id}>
-                <td>{j.title ? `${j.title} ${j.display_name}` : j.display_name}</td>
+                <td>
+                  <JusticeLink justiceId={j.id}>
+                    {j.title ? `${j.title} ${j.display_name}` : j.display_name}
+                  </JusticeLink>
+                </td>
                 <td>
                   {isMe ? (
                     <select value={a?.status || ""} onChange={(e) => setStatus(e.target.value)} style={{ minWidth: "10rem" }}>

@@ -1,4 +1,61 @@
-# Security Review (Phase 2 doc, Section 6)
+# Security Review (Phase 2 doc, Section 6; Phase 3 addendum below)
+
+## Phase 3 addendum
+
+Phase 3 (Justice accounts & public profiles) added real write power a
+Justice didn't have before -- a self-chosen password (Phase 2's Justices
+only ever had random, script-generated ones) and an editable, publicly
+visible profile with a photo upload. What changed here, item by item:
+
+- **Strong passwords**: no longer "there's no self-service flow yet" (see
+  the original item below) -- invite-accept and password-reset are the
+  first self-service password-setting flows this app has, and both run
+  through `app/auth.py::validate_password_strength` (min 10 characters,
+  not just letters or just digits). Deliberately simple rather than an
+  arbitrary complexity checklist -- see that function's docstring.
+- **2FA**: still explicitly deferred, same reasoning as the original
+  item below -- the roster is still 7-8 people, and invite-link
+  provisioning (new this round) if anything *narrows* who can ever get an
+  account, since only an existing Editor/Justice can mint one.
+- **Rate-limiting**: extended to `POST /api/admin/login` (10 attempts per
+  IP per 10 minutes) and `POST /api/auth/forgot-password` (5 per 10
+  minutes) -- the small, known roster of accounts is exactly what a
+  brute-force or reset-spam attempt would be aimed at.
+- **New credential class: invite/reset tokens.** Same treatment as
+  passwords in spirit (never stored as the literal, usable secret) but
+  a lighter mechanism is correct here, not bcrypt: `app/auth.py::
+  hash_token` uses SHA-256, because these tokens are already
+  high-entropy random strings (`secrets.token_urlsafe(32)`), not
+  human-chosen secrets an attacker could dictionary-guess -- there's
+  nothing for bcrypt's deliberate slowness to defend against here that
+  the tokens' own entropy doesn't already cover. Both invite and
+  reset tokens are single-use (checked via a `used_at` timestamp) and
+  expire (48h / 24h).
+- **File upload surface, new this round**: profile photos are the first
+  file upload in this app. `app/photo.py` validates by actually decoding
+  the file with Pillow (a renamed non-image fails here regardless of its
+  declared Content-Type or extension), caps the raw upload at 5MB before
+  decoding anything, and re-encodes to a fresh JPEG capped at 800px --
+  which is also what strips EXIF/metadata (Pillow's `save()` doesn't
+  carry the source's metadata forward unless it's explicitly passed back
+  in). No image-hosting/CDN service is involved -- photos are stored as
+  bytes directly in Postgres and served from a dedicated endpoint, so
+  there's no separate storage-service credential or bucket-permission
+  surface to get wrong.
+- **XSS on the new free-text profile fields** (`bio`, `year_or_major`,
+  `why_care`, `fun_fact`): same defense as the Archive's `reflection_text`
+  in the original review below -- React's default escaping, plus
+  server-side length caps. Not run through `app/moderation.py`'s spam/
+  profanity filter, unlike the Archive's fully-anonymous public input --
+  a Justice editing their own profile is an authenticated, identified,
+  small-roster action, not the anonymous-abuse surface that filter
+  exists for.
+- **User enumeration**: `POST /api/auth/forgot-password` always returns
+  the same generic response regardless of whether the email matches an
+  account -- the roster of 7-8 emails isn't sensitive exactly, but there's
+  no reason to let the endpoint confirm or deny membership either.
+
+## Original review (Phase 2 doc, Section 6)
 
 Written when the site gained authenticated write-power (recommendations
 trigger emails; attendance is real per-Justice state) and anonymous public

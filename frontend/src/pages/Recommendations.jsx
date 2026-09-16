@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
+import JusticeLink from "../components/JusticeLink.jsx";
 
 export default function Recommendations() {
   const [recs, setRecs] = useState(null);
@@ -40,7 +41,9 @@ export default function Recommendations() {
           </h3>
           <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
             Case {r.hearing_case_number} &middot; {r.hearing_date} &middot; recommended by{" "}
-            {r.justice_title ? `${r.justice_title} ${r.justice_display_name}` : r.justice_display_name}
+            <JusticeLink justiceId={r.justice_id}>
+              {r.justice_title ? `${r.justice_title} ${r.justice_display_name}` : r.justice_display_name}
+            </JusticeLink>
           </p>
           {r.note && <p className="blurb">{r.note}</p>}
           {admin?.isJustice && (

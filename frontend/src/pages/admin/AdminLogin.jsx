@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, storeAdmin } from "../../api.js";
 
 export default function AdminLogin() {
@@ -16,7 +16,7 @@ export default function AdminLogin() {
     try {
       const res = await api.adminLogin(email, password);
       storeAdmin({
-        token: res.access_token, role: res.role, email,
+        token: res.access_token, id: res.id, role: res.role, email,
         is_justice: res.is_justice, display_name: res.display_name, title: res.title,
       });
       // Curation-role accounts go to the review-queue dashboard; a
@@ -52,6 +52,9 @@ export default function AdminLogin() {
         </button>
         {error && <p className="message-error">{error}</p>}
       </form>
+      <p style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
+        <Link to="/forgot-password">Forgot your password?</Link>
+      </p>
     </article>
   );
 }

@@ -5,6 +5,8 @@ the admin/curation team ... none required to browse"). Simple email+password
 """
 from __future__ import annotations
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 
 from typing import Optional
@@ -108,3 +110,40 @@ def require_justice(user: AdminUser = Depends(get_current_admin)) -> AdminUser:
     if not user.is_justice:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Justice account required")
     return user
+
+
+# --- Phase-3 doc, Sections 1 & 2: invite links + password reset --------
+
+MIN_PASSWORD_LENGTH = 10
+
+
+def validate_password_strength(password: str) -> str:
+    """Shared by invite-accept and password-reset (app/schemas.py calls
+    this from a Pydantic validator). Deliberately simple -- length plus
+    "not just letters" -- rather than an arbitrary complexity checklist
+    (a required-uppercase-and-symbol rule mostly just pushes people
+    towards "Password1!"); the real strength lever for a small, invite-
+    only roster is length. Raises ValueError (Pydantic wraps that into a
+    422) rather than HTTPException, since it runs inside a validator."""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if password.isalpha() or password.isdigit():
+        raise ValueError("Password must mix letters and numbers (or other characters), not just one kind")
+    return password
+
+
+def generate_secure_token() -> str:
+    """A one-time invite/password-reset link's token -- high-entropy and
+    URL-safe. Returned to the caller (embedded in the emailed link) and
+    only ever stored as its hash (see hash_token) -- see AdminInvite's
+    docstring for why."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """SHA-256 is fine here (unlike passwords): these tokens are already
+    high-entropy random strings, not human-chosen secrets an attacker
+    could dictionary-guess, so there's no need for bcrypt's deliberate
+    slowness -- just a one-way transform so a database read alone can't
+    hand out a working invite/reset link."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

@@ -42,6 +42,7 @@ from app.models import (
     HearingAttendance,
     HearingRecommendation,
 )
+from app.routers.account import _justice_out
 from app.schemas import AttendanceIn, AttendanceOut, JusticeOut, RecommendationIn, RecommendationOut
 
 router = APIRouter(prefix="/api", tags=["justices"])
@@ -51,13 +52,28 @@ router = APIRouter(prefix="/api", tags=["justices"])
 def list_justices(db: Session = Depends(get_db)):
     """Public: the full roster, so the UI can show all 7 names on a
     hearing (with "no response yet" for anyone who hasn't set a status)
-    rather than only the ones who've already responded."""
+    rather than only the ones who've already responded. Phase-3 doc,
+    Section 3: this is also the "Meet the Justices" directory's data
+    source -- same shape, now carrying full profile fields too."""
     justices = (
         db.query(AdminUser)
         .filter(AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True))
         .all()
     )
-    return [JusticeOut(id=j.id, display_name=j.display_name or j.email, title=j.title) for j in justices]
+    return [_justice_out(j) for j in justices]
+
+
+@router.get("/justices/{justice_id}", response_model=JusticeOut)
+def get_justice(justice_id: str, db: Session = Depends(get_db)):
+    """Public: a single Justice's individual profile page (Section 3)."""
+    justice = (
+        db.query(AdminUser)
+        .filter(AdminUser.id == justice_id, AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True))
+        .first()
+    )
+    if not justice:
+        raise HTTPException(404, "Justice not found")
+    return _justice_out(justice)
 
 
 @router.put("/hearings/{hearing_id}/attendance", response_model=AttendanceOut)
@@ -108,6 +124,7 @@ def list_recommendations(hearing_id: Optional[str] = None, db: Session = Depends
         RecommendationOut(
             id=r.id, hearing_id=r.hearing_id, hearing_case_number=r.hearing.case_number,
             hearing_type_display=r.hearing.hearing_type_display, hearing_date=r.hearing.date,
+            justice_id=r.justice_id,
             justice_display_name=r.justice.display_name or r.justice.email, justice_title=r.justice.title,
             note=r.note, created_at=r.created_at,
         )
@@ -145,6 +162,7 @@ def create_recommendation(payload: RecommendationIn, db: Session = Depends(get_d
     return RecommendationOut(
         id=rec.id, hearing_id=hearing.id, hearing_case_number=hearing.case_number,
         hearing_type_display=hearing.hearing_type_display, hearing_date=hearing.date,
+        justice_id=justice.id,
         justice_display_name=justice.display_name or justice.email, justice_title=justice.title,
         note=rec.note, created_at=rec.created_at,
     )

@@ -139,3 +139,16 @@ ALERT_BACKEND = os.environ.get("ALERT_BACKEND", "console")
 # own open question #3 suggests 15-30 minutes as a starting point;
 # defaulted to the middle of that range.
 REFRESH_COOLDOWN_MINUTES = int(os.environ.get("REFRESH_COOLDOWN_MINUTES", "20"))
+
+# --- Justice accounts & profiles (Phase-3 doc) -------------------------------
+# Absolute base URL of the deployed frontend, used only to build clickable
+# links inside emailed invite/reset messages (e.g.
+# f"{FRONTEND_URL}/accept-invite/{token}"). Optional/empty in local dev --
+# same relative-link convention as the existing digest email's unsubscribe
+# links (app/jobs/digest.py) works fine there; a real deployment should set
+# this so the emailed (or console-logged, until real email delivery exists)
+# link is actually absolute and clickable.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
+
+INVITE_EXPIRE_HOURS = int(os.environ.get("INVITE_EXPIRE_HOURS", "48"))
+PASSWORD_RESET_EXPIRE_HOURS = int(os.environ.get("PASSWORD_RESET_EXPIRE_HOURS", "24"))

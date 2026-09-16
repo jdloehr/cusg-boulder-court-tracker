@@ -51,6 +51,34 @@ POSTGRES_MIGRATIONS = [
     "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS livestream_source_type "
     "livestreamsourcetype NOT NULL DEFAULT 'none';",
     "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS livestream_url VARCHAR(500);",
+
+    # Phase-3 doc, Section 3 (Justice public profiles): new columns on the
+    # pre-existing `admin_users` table. admin_invites and
+    # password_reset_tokens are brand-new tables, so create_all() creates
+    # those (and any enum types only they use) on its own -- no patch
+    # needed, same as ArchiveEntry's table in the Phase-2 round.
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS bio TEXT;",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS year_or_major VARCHAR(120);",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS why_care TEXT;",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS fun_fact VARCHAR(255);",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS photo_data BYTEA;",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS photo_content_type VARCHAR(40);",
+
+    # Phase-3 doc, Section 4 (linked names): new column on the
+    # pre-existing `archive_entries` table (itself new as of Phase 2, but
+    # already live in production by the time this shipped).
+    "ALTER TABLE archive_entries ADD COLUMN IF NOT EXISTS submitted_by_justice_id VARCHAR(36) "
+    "REFERENCES admin_users(id);",
+
+    # Phase-3 doc, Section 2's explicit "merge now" choice: every Justice
+    # account also gets full curation access. New Justices get
+    # role='editor' set directly at provisioning (routers/account.py);
+    # this is the one-time backfill for the original 7, seeded back in
+    # Phase 2 with role=NULL. Written to stay a true no-op on every future
+    # boot once applied (WHERE role IS NULL matches nothing the second
+    # time), not just "safe to run" -- same idempotence bar as every
+    # other statement in this list.
+    "UPDATE admin_users SET role = 'editor' WHERE is_justice = true AND role IS NULL;",
 ]
 
 

@@ -7,6 +7,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.auth import validate_password_strength
 from app.models import (
     AcademicPeriodType,
     AppearanceType,
@@ -48,9 +49,21 @@ class CommunitySubmissionOut(BaseModel):
 
 
 class JusticeOut(BaseModel):
+    """Shared shape for the public roster (GET /api/justices, used both by
+    the attendance UI's name list and the "Meet the Justices" directory)
+    and an individual profile page (GET /api/justices/{id}) -- same
+    fields either way, Section 3 just renders more of them on the
+    individual page. photo_url is None when no photo's been uploaded;
+    the raw bytes are never inlined here, only fetched via the dedicated
+    endpoint the URL points at."""
     id: str
     display_name: str
     title: Optional[str] = None
+    bio: Optional[str] = None
+    year_or_major: Optional[str] = None
+    why_care: Optional[str] = None
+    fun_fact: Optional[str] = None
+    photo_url: Optional[str] = None
 
 
 class AttendanceOut(BaseModel):
@@ -104,6 +117,7 @@ class RecommendationOut(BaseModel):
     hearing_case_number: str
     hearing_type_display: str
     hearing_date: date
+    justice_id: str
     justice_display_name: str
     justice_title: Optional[str] = None
     note: Optional[str] = None
@@ -236,6 +250,7 @@ class AdminLoginRequest(BaseModel):
 
 class AdminLoginResponse(BaseModel):
     access_token: str
+    id: str
     role: Optional[str] = None
     is_justice: bool = False
     display_name: Optional[str] = None
@@ -356,6 +371,20 @@ class ArchiveEntryUpdateIn(BaseModel):
     attendees: Optional[list[str]] = None
 
 
+class AttendeeOut(BaseModel):
+    """Phase-3 doc, Section 4: an Archive entry's attendee list should
+    link to a Justice's profile wherever the name is recognized as one.
+    `attendees` is still stored as plain display-name strings (see
+    ArchiveEntry.attendees and ArchiveEntryUpdateIn -- a Justice editing
+    the list can still type any name, including a non-Justice's), so
+    `justice_id` here is resolved at read time by matching the name
+    against the current roster (routers/archive.py::_resolve_attendees) --
+    None when it doesn't match a real Justice, which just renders as
+    plain, unlinked text."""
+    name: str
+    justice_id: Optional[str] = None
+
+
 class ArchiveEntryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -366,10 +395,111 @@ class ArchiveEntryOut(BaseModel):
     case_category: CaseCategory
     proceeding_stage: ProceedingStage
     judge_name: Optional[str] = None
-    attendees: list[str] = []
+    attendees: list[AttendeeOut] = []
     reflection_text: Optional[str] = None
     submitted_by_name: str
     submitted_by_role: ArchiveSubmitterRole
+    # Set only for entries created via the "Mark Attendance" path after
+    # this field existed -- see ArchiveEntry.submitted_by_justice_id.
+    submitted_by_justice_id: Optional[str] = None
     created_at: datetime
     # submitter_ip deliberately excluded -- internal-only, see
     # ArchiveEntry's docstring in app/models.py.
+
+
+# --- Phase-3 doc, Sections 1-3: invites, password reset, profiles ----------
+
+class InviteCreateIn(BaseModel):
+    email: str
+    display_name: str
+    title: Optional[str] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _require_name(cls, value):
+        stripped = (value or "").strip()
+        if not stripped:
+            raise ValueError("A name is required")
+        if len(stripped) > 120:
+            raise ValueError("Name must be under 120 characters")
+        return stripped
+
+
+class InviteOut(BaseModel):
+    """Returned to the inviting Editor only. invite_link is included
+    directly (not just emailed) so provisioning still works end-to-end
+    today, before a real transactional-email account exists (see
+    EMAIL_BACKEND in app/config.py) -- an Editor can copy/paste it by
+    hand. Safe: only an authenticated Editor/Justice ever sees this
+    response."""
+    email: str
+    display_name: str
+    expires_at: datetime
+    invite_link: str
+
+
+class InviteInfoOut(BaseModel):
+    """Public: what the accept-invite page shows before a password is
+    set. No token, no internal fields -- just enough to say "you've been
+    invited as ___" back to whoever opened the link."""
+    email: str
+    display_name: str
+    title: Optional[str] = None
+    expires_at: datetime
+
+
+class InviteAcceptIn(BaseModel):
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def _strong_password(cls, value):
+        return validate_password_strength(value)
+
+
+class ForgotPasswordIn(BaseModel):
+    email: str
+
+
+class ResetPasswordIn(BaseModel):
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def _strong_password(cls, value):
+        return validate_password_strength(value)
+
+
+class JusticeProfileIn(BaseModel):
+    """A Justice editing their own profile (routers/account.py) -- every
+    field optional so a partial save (e.g. just the bio) doesn't require
+    resending everything else. Length caps are the server-side half of
+    Section 5's "sanitize free-text fields" -- the actual XSS defense is
+    React's default escaping on render (same reasoning as the Archive's
+    reflection_text, see docs/SECURITY_REVIEW.md); these caps just keep a
+    profile from becoming an unbounded wall of text."""
+    bio: Optional[str] = None
+    year_or_major: Optional[str] = None
+    why_care: Optional[str] = None
+    fun_fact: Optional[str] = None
+
+    @field_validator("bio", "why_care")
+    @classmethod
+    def _cap_long_field(cls, value):
+        if value and len(value) > 2000:
+            raise ValueError("Must be under 2000 characters")
+        return value
+
+    @field_validator("year_or_major")
+    @classmethod
+    def _cap_year_or_major(cls, value):
+        if value and len(value) > 120:
+            raise ValueError("Must be under 120 characters")
+        return value
+
+    @field_validator("fun_fact")
+    @classmethod
+    def _cap_fun_fact(cls, value):
+        if value and len(value) > 300:
+            raise ValueError("Must be under 300 characters")
+        return value

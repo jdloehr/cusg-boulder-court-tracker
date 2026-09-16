@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
+import JusticeLink from "../components/JusticeLink.jsx";
 
 const STAGE_LABELS = {
   opening_statements: "Opening Statements",
@@ -91,8 +92,18 @@ export default function Archive() {
           {e.reflection_text && <p className="archive-entry-body">{e.reflection_text}</p>}
           <p className="archive-entry-byline">
             {e.submitted_by_role === "justice" ? "Justice " : ""}
-            {e.submitted_by_name}
-            {e.attendees?.length > 0 && ` · attended by ${e.attendees.join(", ")}`}
+            <JusticeLink justiceId={e.submitted_by_justice_id}>{e.submitted_by_name}</JusticeLink>
+            {e.attendees?.length > 0 && (
+              <>
+                {" · attended by "}
+                {e.attendees.map((a, i) => (
+                  <Fragment key={a.name + i}>
+                    {i > 0 && ", "}
+                    <JusticeLink justiceId={a.justice_id}>{a.name}</JusticeLink>
+                  </Fragment>
+                ))}
+              </>
+            )}
           </p>
           {admin?.isJustice && (
             <button className="btn btn-danger" onClick={() => remove(e.id)}>

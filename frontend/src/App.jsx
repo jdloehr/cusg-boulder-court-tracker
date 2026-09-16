@@ -7,8 +7,14 @@ import About from "./pages/About.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import Recommendations from "./pages/Recommendations.jsx";
 import Archive from "./pages/Archive.jsx";
+import Justices from "./pages/Justices.jsx";
+import JusticeProfile from "./pages/JusticeProfile.jsx";
+import EditJusticeProfile from "./pages/EditJusticeProfile.jsx";
 import AdminLogin from "./pages/admin/AdminLogin.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
+import AcceptInvite from "./pages/admin/AcceptInvite.jsx";
+import ForgotPassword from "./pages/admin/ForgotPassword.jsx";
+import ResetPassword from "./pages/admin/ResetPassword.jsx";
 import { clearAdmin, getStoredAdmin } from "./api.js";
 
 const FIRST_VISIT_KEY = "cusg_visited";
@@ -37,18 +43,23 @@ function FirstVisitRedirect() {
   return null;
 }
 
-function AccountNav() {
+// Phase-3 doc, Section 2: "a simple, unobtrusive 'Sign in' link ... the
+// public should never be prompted to log in." Moved out of the main nav
+// (where every other item is a public-facing page) into the footer --
+// still one click away, just not competing for attention with "Hearings"
+// or "Archive."
+function AccountFooterLink() {
   const admin = getStoredAdmin();
   const navigate = useNavigate();
 
-  if (!admin) return <NavLink to="/admin/login">Team Login</NavLink>;
+  if (!admin) return <NavLink to="/admin/login">Sign in</NavLink>;
 
   const label = admin.displayName || admin.email;
   return (
     <span>
-      {admin.role ? <NavLink to="/admin">{label}</NavLink> : <span>{label}</span>}{" "}
+      Signed in as {admin.role ? <NavLink to="/admin">{label}</NavLink> : <span>{label}</span>}{" "}
       <button
-        className="btn-nav-signout"
+        className="btn-footer-signout"
         onClick={() => {
           clearAdmin();
           navigate("/");
@@ -77,9 +88,9 @@ export default function App() {
             </NavLink>
             <NavLink to="/recommendations">Court Recommendations</NavLink>
             <NavLink to="/archive">Archive</NavLink>
+            <NavLink to="/justices">Meet the Justices</NavLink>
             <NavLink to="/subscribe">Subscribe</NavLink>
             <NavLink to="/about">Visiting a Courtroom</NavLink>
-            <AccountNav />
           </nav>
         </div>
       </header>
@@ -91,9 +102,15 @@ export default function App() {
           <Route path="/hearings/:id" element={<HearingDetail />} />
           <Route path="/recommendations" element={<Recommendations />} />
           <Route path="/archive" element={<Archive />} />
+          <Route path="/justices" element={<Justices />} />
+          <Route path="/justices/me/edit" element={<EditJusticeProfile />} />
+          <Route path="/justices/:id" element={<JusticeProfile />} />
           <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/about" element={<About />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/accept-invite/:token" element={<AcceptInvite />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
         </Routes>
       </main>
@@ -106,6 +123,9 @@ export default function App() {
             official Colorado Judicial Branch docket search
           </a>{" "}
           before attending.
+        </p>
+        <p className="site-footer-account">
+          <AccountFooterLink />
         </p>
       </footer>
     </>

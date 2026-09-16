@@ -16,12 +16,15 @@ public Archive; the feed now also covers the Colorado Supreme Court and
 Court of Appeals, restricted to cases already newsworthy or likely to
 become so; a first-visit welcome page explains how to use the tool; and
 the docket refreshes on a fixed daily schedule with a visible
-last-updated timestamp and a rate-limited manual-refresh button. See
-"Phase 2 additions" in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for
-the full list, including two access-model decisions made explicitly by
-the CUSG contact that reversed earlier choices in this same build
-(Justice actions now require real login; Justice identity and curation
-role are kept as separate, independent fields).
+last-updated timestamp and a rate-limited manual-refresh button; and
+Justices now get invite-provisioned accounts with a public profile
+(photo, bio, "why I care about court-watching") linked from their name
+everywhere it appears on the site. See "Phase 2 additions" and "Phase 3
+additions" in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full
+lists, including access-model decisions made explicitly by the CUSG
+contact that reversed earlier choices in this same build -- most
+recently, every Justice account now also gets full curation access
+(reversing Phase 2's "keep them separate" decision).
 
 **This was built and validated against real, live data, not mocks.**
 During this build the docket-pull job pulled real Boulder County court
@@ -48,6 +51,8 @@ and how they were fixed.
 | Livestream links | **Real, working** -- honest links to Colorado's real statewide courtroom-video portal and the U.S. Supreme Court's real live-audio page (neither offers a deep link to a specific hearing). Not in the original spec -- added on request. |
 | Archive & Reflections | **Real, working** -- anyone (Justice or public) can add a post-hearing writeup once its date has passed; publishes immediately with spam/profanity filtering and rate-limiting, no review queue. Not in the original spec -- added on request. |
 | Fixed daily auto-refresh + manual refresh | **Real, working** -- 7am America/Denver via APScheduler (DST-aware) and GitHub Actions cron (UTC, drifts across DST -- documented), plus a public "Refresh now" button with a global cooldown and per-IP rate limit. Not in the original spec -- added on request. |
+| Justice invite-link accounts + public profiles | **Real, working** -- an Editor/Justice invites a real person by email (one-time, expiring, single-use link); the Justice sets their own password and fills out a public profile (bio, year/major, why they care, a real uploaded photo -- validated and re-encoded via Pillow, EXIF stripped). Every Justice account now also gets full curation access (see "Phase 3 additions"). Not in the original spec -- added on request. |
+| Linked Justice names | **Real, working** -- a Justice's name links to their public profile wherever it appears (recommendation callout, attendance rows, Archive attendee lists/bylines), consistently styled. Not in the original spec -- added on request. |
 | Academic-calendar de-emphasis | **Real, working**, seeded with CU Boulder's actual published Fall 2026 dates. |
 | Email delivery | **Stubbed to console/log output.** No transactional-email account exists for this build; the digest-selection and suppression logic is fully implemented and testable, only the "send" call is a stand-in. See `app/jobs/digest.py`. |
 | Job-failure alerting | **Stubbed to console/log output**, same reasoning. See `app/alerting.py`. |

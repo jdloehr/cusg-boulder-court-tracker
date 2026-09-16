@@ -31,10 +31,12 @@ from app.models import (
     HearingStatus,
     HearingTypeCategory,
 )
+from app.rate_limit import reset_for_tests
 
 
 @pytest.fixture()
 def client():
+    reset_for_tests()  # login is now rate-limited per IP -- see routers/admin.py
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(bind=engine)
     TestSession = sessionmaker(bind=engine)

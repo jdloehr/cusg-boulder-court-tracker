@@ -215,6 +215,93 @@ New, purely additive features from that document:
   architecture (a JWT-bearer API, not cookie-session auth) and what
   doesn't.
 
+## Phase 3 additions (Justice accounts & public profiles)
+
+A third follow-up document, again specified once the Phase-2 features
+were already live. One decision from that document reverses a choice
+confirmed explicitly in the Phase-2 round above:
+
+- **Every Justice account now also gets full curation (Editor) access**,
+  reversing Phase 2's explicit "keep Justices and the Editor/Contributor
+  role separate" decision. Re-flagged and re-confirmed with the user
+  before building (the new document's Section 2 again assumed the two
+  were the same thing), same as Phase 2's own reversal was. Implemented
+  as a data fact, not a permission-check change: provisioning a Justice
+  (invite-accept, and a one-time startup backfill for the original 7)
+  sets `role=AdminRole.editor` directly, so `require_editor`'s own check
+  (`role == editor`) never had to change -- the real Editor-vs-Contributor
+  distinction for curation work is untouched. See `AdminUser`'s docstring
+  in `app/models.py`.
+
+New, purely additive features from that document:
+
+- **Invite-link provisioning** (`app/routers/account.py`, `AdminInvite`):
+  an Editor/Justice enters a real person's name+email
+  (`POST /api/admin/invites`); a one-time, 48-hour token (stored only as
+  its SHA-256 hash -- `app/auth.py::hash_token`) is emailed (and returned
+  directly in the API response too, since no real transactional-email
+  account exists yet -- see Email delivery below) as
+  `{FRONTEND_URL}/accept-invite/{token}`. Accepting it
+  (`POST /api/invites/{token}/accept`) creates or updates that email's
+  `AdminUser` and logs them straight in. Not open self-registration or a
+  shared code (the document's own Section 6.1 choice, confirmed) -- only
+  someone already holding curation access can mint an invite.
+- **Forgot/reset password** (`PasswordResetToken`,
+  `POST /api/auth/forgot-password` + `POST /api/auth/reset-password/
+  {token}`): same single-use, expiring, hashed-token pattern as invites.
+  `forgot-password` always returns an identical generic response whether
+  or not the email matches an account, so the endpoint can't be used to
+  enumerate the roster.
+- **Password strength + login rate-limiting**
+  (`app/auth.py::validate_password_strength`, wired into both the invite-
+  accept and password-reset schemas; `POST /api/admin/login` now calls
+  `check_rate_limit` per IP, 10 attempts/10 minutes) -- the doc's Section
+  5 carried Phase 2's security-review recommendations forward given
+  Justice accounts now have real write power (recommendations, editable
+  public profiles) plus, as of this round, an actual password-choosing
+  step for the first time (Phase 2's justices had random,
+  script-generated passwords only). 2FA is still explicitly deferred, same
+  reasoning as Phase 2's security review -- a small, invite-gated roster
+  is a narrow attack surface.
+- **Public Justice profiles** (new `AdminUser` columns: `bio`,
+  `year_or_major`, `why_care`, `fun_fact`, `photo_data`,
+  `photo_content_type`): a Justice edits only their own profile
+  (`PATCH /api/justices/me/profile`, identity from the login, never a
+  caller-supplied ID) via a "Meet the Justices" directory
+  (`GET /api/justices`, now returning full profile fields) and individual
+  profile pages (`GET /api/justices/{id}`) at a stable URL. Explicit
+  choice (Section 6.4): profiles are always public with no per-Justice
+  hide toggle.
+- **Real photo upload** (`app/photo.py`, explicit choice over an
+  avatar/emoji picker): validated by actually decoding it with Pillow
+  (not trusting the declared Content-Type or file extension), capped at
+  5MB raw / 800px on the long edge after resizing, and always re-encoded
+  to a fresh JPEG -- which is what actually strips EXIF/metadata (Pillow's
+  `save()` doesn't carry the source file's metadata forward unless you
+  explicitly pass it back in). Stored directly as bytes in Postgres
+  (`LargeBinary`), not a separate object-storage service this project
+  doesn't have provisioned -- a handful of re-encoded headshots is a
+  trivial amount of data for a database column at this scale.
+- **Linked Justice names everywhere one appears** (new shared
+  `components/JusticeLink.jsx` + one CSS class,
+  `.justice-link`/`styles.css`): the recommendation callout, attendance
+  rows, and an Archive entry's attendee list and byline all link a
+  Justice's name to their profile. `RecommendationOut` gained
+  `justice_id` (trivial -- always known at write time).
+  `HearingAttendance` rows already carried `justice_id`. Archive
+  attendees needed more care: `ArchiveEntry.attendees` stays a plain
+  JSON list of display-name strings (a Justice editing the list can
+  still type any name, including a non-Justice's -- changing that to
+  ID-only storage would have been a real behavior regression), so
+  `AttendeeOut` resolves each name against the *current* roster by exact
+  match at read time (`routers/archive.py::_resolve_attendees`) -- a name
+  that doesn't match just renders as plain, unlinked text, not an error.
+  The submitter byline uses a new `ArchiveEntry.submitted_by_justice_id`
+  column instead (set directly from the authenticated Justice at write
+  time, so it doesn't depend on name-matching, but only populated for
+  entries created after this column existed -- older entries' bylines
+  just don't link, an honest degradation rather than a backfill guess).
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

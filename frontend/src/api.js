@@ -134,6 +134,42 @@ export const api = {
   updateArchiveEntry: (id, payload) =>
     request(`/api/archive/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),
   deleteArchiveEntry: (id) => request(`/api/archive/${id}`, { method: "DELETE", headers: authHeaders() }),
+
+  // --- Phase-3: invite-link provisioning, password reset, public profiles ---
+  createInvite: (payload) =>
+    request("/api/admin/invites", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
+  getInvite: (token) => request(`/api/invites/${token}`),
+  acceptInvite: (token, password) =>
+    request(`/api/invites/${token}/accept`, { method: "POST", body: JSON.stringify({ password }) }),
+  forgotPassword: (email) =>
+    request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
+  resetPassword: (token, password) =>
+    request(`/api/auth/reset-password/${token}`, { method: "POST", body: JSON.stringify({ password }) }),
+  getJustice: (id) => request(`/api/justices/${id}`),
+  updateMyProfile: (payload) =>
+    request("/api/justices/me/profile", { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),
+  // Bypasses the shared request() helper: a photo upload is
+  // multipart/form-data, and the browser needs to set that header itself
+  // (with the multipart boundary) -- request() always forces
+  // application/json, which would break this call.
+  uploadMyPhoto: async (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_BASE}/api/justices/me/photo`, {
+      method: "PUT", headers: authHeaders(), body: form,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return res.json();
+  },
+  justicePhotoUrl: (id) => `${API_BASE}/api/justices/${id}/photo`,
 };
 
 export function getStoredAdmin() {
@@ -141,6 +177,7 @@ export function getStoredAdmin() {
   if (!token) return null;
   return {
     token,
+    id: localStorage.getItem("cusg_admin_id") || null,
     role: localStorage.getItem("cusg_admin_role") || null,
     email: localStorage.getItem("cusg_admin_email"),
     isJustice: localStorage.getItem("cusg_admin_is_justice") === "true",
@@ -149,8 +186,9 @@ export function getStoredAdmin() {
   };
 }
 
-export function storeAdmin({ token, role, email, is_justice, display_name, title }) {
+export function storeAdmin({ token, id, role, email, is_justice, display_name, title }) {
   localStorage.setItem("cusg_admin_token", token);
+  if (id) localStorage.setItem("cusg_admin_id", id);
   if (role) localStorage.setItem("cusg_admin_role", role);
   localStorage.setItem("cusg_admin_email", email);
   localStorage.setItem("cusg_admin_is_justice", is_justice ? "true" : "false");
@@ -159,7 +197,7 @@ export function storeAdmin({ token, role, email, is_justice, display_name, title
 }
 
 export function clearAdmin() {
-  for (const key of ["token", "role", "email", "is_justice", "display_name", "title"]) {
+  for (const key of ["token", "id", "role", "email", "is_justice", "display_name", "title"]) {
     localStorage.removeItem(`cusg_admin_${key}`);
   }
 }
