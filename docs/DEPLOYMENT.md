@@ -68,6 +68,15 @@ directly, I just can't create the GitHub repo or authenticate for you.)
 5. Deploy. Vercel gives you a `https://<project>.vercel.app` URL
    immediately; add a custom domain later from the project settings if
    CUSG has one.
+6. Back on Render (the backend service) -> **Environment** -> add
+   `FRONTEND_URL` = this Vercel URL (no trailing slash). Phase 3's
+   invite-link and password-reset emails build their links as
+   `{FRONTEND_URL}/accept-invite/{token}` etc. -- without this set, those
+   links come out as bare relative paths (`/accept-invite/...`, no
+   domain), which still work if pasted directly into a browser already on
+   the site but aren't a real clickable link in an email. Redeploy the
+   backend after adding it (Render env var changes need a redeploy to
+   take effect).
 
 ## 4. Scheduled jobs (free, via GitHub Actions)
 
