@@ -175,3 +175,14 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
 
 INVITE_EXPIRE_HOURS = int(os.environ.get("INVITE_EXPIRE_HOURS", "48"))
 PASSWORD_RESET_EXPIRE_HOURS = int(os.environ.get("PASSWORD_RESET_EXPIRE_HOURS", "24"))
+
+# One-time Justice login-email updates (e.g. switching a placeholder
+# ".local" address to someone's real @colorado.edu one), applied
+# automatically at startup -- see app/account_email_updates.py. A JSON
+# object as a string: {"old.email@example.com": "new.email@example.com", ...}.
+# Deliberately an env var, not a hardcoded mapping in this file: real
+# people's real university email addresses shouldn't live in this
+# public repository's source or git history, the same reasoning as
+# SENDGRID_API_KEY above. Safe to leave set indefinitely -- see that
+# module's docstring for why re-running it is a no-op once applied.
+JUSTICE_EMAIL_UPDATES = os.environ.get("JUSTICE_EMAIL_UPDATES", "")

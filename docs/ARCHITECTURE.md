@@ -423,6 +423,22 @@ to CUSG, not just a formality. The framed audience broadened from
 field of law" everywhere that copy appeared (header tagline, Welcome
 page, README, meta description/Open Graph tags).
 
+**Follow-up: real Justice login emails.** The 7 seeded accounts started
+on placeholder `@cusg-justices.local` addresses (Phase 2:
+`scripts/create_justices.py`'s own comment already anticipated this --
+"adjust to real CU email addresses whenever the team has them"). Once
+the real addresses existed, updating them ran through
+`app/account_email_updates.py`, driven by a `JUSTICE_EMAIL_UPDATES` env
+var (an old-email -> new-email JSON mapping) rather than a hardcoded
+mapping or a one-off script with real addresses typed into it -- real
+people's real email addresses have no reason to live in this public
+repository's source or git history, the same reasoning `SENDGRID_API_KEY`
+and `FRONTEND_URL` are env vars instead of constants. Runs automatically
+at every startup (same "no Shell access" reasoning as `app/
+migrations.py`) and is naturally idempotent: once an address has changed,
+the old one in the mapping no longer matches anything. See
+`docs/DEPLOYMENT.md`'s "Updating a Justice's login email."
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

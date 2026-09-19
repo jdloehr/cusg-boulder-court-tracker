@@ -192,6 +192,27 @@ Add these to the backend service's **Environment** tab (same place as
 Redeploy after adding either (env var changes need one, same as every
 other setting here).
 
+### Updating a Justice's login email
+
+`JUSTICE_EMAIL_UPDATES` -- a JSON object mapping each account's *current*
+email to its new one, e.g.:
+```
+{"dillon.rankin@cusg-justices.local": "real.address@colorado.edu"}
+```
+Applied automatically at every startup (`app/account_email_updates.py`)
+and safe to leave set indefinitely -- once an account's email has
+actually changed, the old address in the mapping no longer matches
+anything, so it becomes a silent no-op on every boot after that. The
+account itself (password, role, profile, attendance/recommendation
+history) is untouched; only the login address changes. If whoever's
+switching to the new address doesn't know the account's existing
+password, "Forgot your password?" on the sign-in page now works for the
+new address, same as it would for any account.
+
+Deliberately an env var, not something typed into a script or committed
+to this repo: real people's real email addresses shouldn't end up in
+this public repository's source or git history.
+
 ## 8. Email authentication (SPF/DKIM/DMARC) -- once a real sending domain exists
 
 Only relevant once `EMAIL_FROM_ADDRESS` (Section 5) is on a domain you

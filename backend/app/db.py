@@ -18,10 +18,16 @@ def init_db() -> None:
     what create_all() can't: ALTERing a table that already exists. See
     that module's docstring -- this project's Render plan has no Shell/
     one-off-job access, so a schema patch that isn't automatic at boot
-    doesn't have anywhere to run at all."""
+    doesn't have anywhere to run at all.
+
+    Also runs app.account_email_updates.run_from_env() -- same "no Shell
+    access" reasoning, but for one-time Justice login-email updates
+    driven by an env var instead of a schema change."""
     Base.metadata.create_all(bind=engine)
     from app.migrations import run_startup_migrations
     run_startup_migrations(engine)
+    from app.account_email_updates import run_from_env
+    run_from_env(engine)
 
 
 def get_db():
