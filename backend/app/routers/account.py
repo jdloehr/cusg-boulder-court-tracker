@@ -24,6 +24,7 @@ what require_editor checks. See AdminUser's docstring in app/models.py.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
@@ -33,10 +34,12 @@ from sqlalchemy.orm import Session
 from app.auth import (
     create_access_token,
     generate_secure_token,
+    get_current_admin,
     hash_password,
     hash_token,
     require_editor,
     require_justice,
+    verify_password,
 )
 from app.config import FRONTEND_URL, INVITE_EXPIRE_HOURS, PASSWORD_RESET_EXPIRE_HOURS
 from app.db import get_db
@@ -57,6 +60,18 @@ from app.schemas import (
     JusticeProfileIn,
     RequestInviteIn,
     ResetPasswordIn,
+    TotpConfirmIn,
+    TotpConfirmOut,
+    TotpDisableIn,
+    TotpSetupOut,
+)
+from app.totp import (
+    consume_backup_code,
+    generate_backup_codes,
+    generate_totp_secret,
+    provisioning_uri,
+    qr_code_data_uri,
+    verify_totp_code,
 )
 
 router = APIRouter(tags=["accounts"])
@@ -212,12 +227,18 @@ def get_invite(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/invites/{token}/accept", response_model=AdminLoginResponse)
-def accept_invite(token: str, payload: InviteAcceptIn, db: Session = Depends(get_db)):
+def accept_invite(token: str, payload: InviteAcceptIn, request: Request, db: Session = Depends(get_db)):
     """Public (the token itself is the credential). Creates the account
     if this email has none yet, or updates it in place if it does (a
     re-invite after a typo, or a deliberate reset) -- either way ends by
     logging the new Justice straight in, so they land on their own
-    profile-edit page without a second sign-in step."""
+    profile-edit page without a second sign-in step.
+
+    Rate-limited per IP (Phase-4 doc, Section 2.2) -- belt-and-suspenders
+    given the token itself is already a high-entropy secret, same
+    reasoning as reset_password below."""
+    if not check_rate_limit(f"invite-accept:{client_ip(request)}", max_requests=10, window_seconds=600):
+        raise HTTPException(429, "Too many attempts from this address -- try again in a few minutes.")
     invite = _load_valid_invite(db, token)
 
     user = db.query(AdminUser).filter(AdminUser.email == invite.email).first()
@@ -271,7 +292,12 @@ def forgot_password(payload: ForgotPasswordIn, request: Request, db: Session = D
 
 
 @router.post("/api/auth/reset-password/{token}")
-def reset_password(token: str, payload: ResetPasswordIn, db: Session = Depends(get_db)):
+def reset_password(token: str, payload: ResetPasswordIn, request: Request, db: Session = Depends(get_db)):
+    """Rate-limited per IP (Phase-4 doc, Section 2.2) -- belt-and-
+    suspenders given the token itself is already a high-entropy secret
+    (guessing it isn't computationally feasible either way)."""
+    if not check_rate_limit(f"reset-password:{client_ip(request)}", max_requests=10, window_seconds=600):
+        raise HTTPException(429, "Too many attempts from this address -- try again in a few minutes.")
     reset = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == hash_token(token)).first()
     if not reset:
         raise HTTPException(404, "Reset link not found")
@@ -337,3 +363,50 @@ def get_justice_photo(justice_id: str, db: Session = Depends(get_db)):
     if not justice or not justice.photo_data:
         raise HTTPException(404, "No photo")
     return Response(content=justice.photo_data, media_type=justice.photo_content_type or "image/jpeg")
+
+
+# --- Phase-4 doc, Section 2.3: two-factor authentication --------------------
+# Available to any authenticated account (Justice or curation-only Editor/
+# Contributor) via get_current_admin -- not require_justice/require_editor,
+# since account security isn't specific to either role.
+
+@router.post("/api/account/2fa/setup", response_model=TotpSetupOut)
+def setup_2fa(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """Generates a new secret and returns it as both a QR code and plain
+    text for manual entry -- doesn't take effect until confirm_2fa proves
+    the account holder actually has it working. Calling this again before
+    confirming just replaces the pending secret (e.g. the QR code expired
+    off-screen, or scanning failed) -- harmless since nothing is enabled
+    yet either way."""
+    secret = generate_totp_secret()
+    admin.totp_secret = secret
+    db.commit()
+    uri = provisioning_uri(secret, admin.email)
+    return TotpSetupOut(secret=secret, provisioning_uri=uri, qr_code_data_uri=qr_code_data_uri(uri))
+
+
+@router.post("/api/account/2fa/confirm", response_model=TotpConfirmOut)
+def confirm_2fa(payload: TotpConfirmIn, db: Session = Depends(get_db),
+                 admin: AdminUser = Depends(get_current_admin)):
+    if not admin.totp_secret:
+        raise HTTPException(400, "Start setup first (POST /api/account/2fa/setup)")
+    if not verify_totp_code(admin.totp_secret, payload.code):
+        raise HTTPException(400, "That code didn't match -- check your authenticator app and try again")
+
+    plaintext_codes, hashed_codes = generate_backup_codes()
+    admin.totp_enabled = True
+    admin.totp_backup_code_hashes = json.dumps(hashed_codes)
+    db.commit()
+    return TotpConfirmOut(backup_codes=plaintext_codes)
+
+
+@router.post("/api/account/2fa/disable")
+def disable_2fa(payload: TotpDisableIn, db: Session = Depends(get_db),
+                 admin: AdminUser = Depends(get_current_admin)):
+    if not verify_password(payload.password, admin.hashed_password):
+        raise HTTPException(401, "Incorrect password")
+    admin.totp_secret = None
+    admin.totp_enabled = False
+    admin.totp_backup_code_hashes = None
+    db.commit()
+    return {"status": "disabled"}

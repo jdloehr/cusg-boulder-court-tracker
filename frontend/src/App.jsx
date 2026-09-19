@@ -16,6 +16,8 @@ import AcceptInvite from "./pages/admin/AcceptInvite.jsx";
 import ForgotPassword from "./pages/admin/ForgotPassword.jsx";
 import ResetPassword from "./pages/admin/ResetPassword.jsx";
 import RequestInvite from "./pages/admin/RequestInvite.jsx";
+import AboutProject from "./pages/AboutProject.jsx";
+import Privacy from "./pages/Privacy.jsx";
 import { clearAdmin, getStoredAdmin } from "./api.js";
 
 const FIRST_VISIT_KEY = "cusg_visited";
@@ -80,7 +82,7 @@ export default function App() {
         <div className="inner">
           <NavLink to="/" className="wordmark">
             CUSG Boulder Court Tracker
-            <small>Court-watching for the CUSG Supreme Court &amp; pre-law students</small>
+            <small>Court-watching for the CUSG Supreme Court, pre-law students, and anyone interested in the field of law</small>
           </NavLink>
           <nav className="site-nav">
             <NavLink to="/welcome">Welcome</NavLink>
@@ -92,6 +94,7 @@ export default function App() {
             <NavLink to="/justices">Meet the Justices</NavLink>
             <NavLink to="/subscribe">Subscribe</NavLink>
             <NavLink to="/about">Visiting a Courtroom</NavLink>
+            <NavLink to="/about-project">About</NavLink>
           </nav>
         </div>
       </header>
@@ -108,6 +111,8 @@ export default function App() {
           <Route path="/justices/:id" element={<JusticeProfile />} />
           <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/about" element={<About />} />
+          <Route path="/about-project" element={<AboutProject />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/accept-invite/:token" element={<AcceptInvite />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -125,6 +130,13 @@ export default function App() {
             official Colorado Judicial Branch docket search
           </a>{" "}
           before attending.
+        </p>
+        <p className="site-footer-affiliation">
+          A project of the{" "}
+          <a href="https://www.colorado.edu/cusg/about-us/judicial-branch" target="_blank" rel="noreferrer">
+            CUSG Judicial Branch
+          </a>
+          . <NavLink to="/about-project">About</NavLink> &middot; <NavLink to="/privacy">Privacy</NavLink>
         </p>
         <p className="site-footer-account">
           <AccountFooterLink />

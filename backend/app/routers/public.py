@@ -16,6 +16,7 @@ from app.academic_calendar import current_period
 from app.config import REFRESH_COOLDOWN_MINUTES
 from app.db import SessionLocal, get_db
 from app.jobs.docket_pull import run_docket_pull
+from app.moderation import is_likely_spam_or_profane
 from app.rate_limit import check_rate_limit, client_ip
 from app.models import (
     AppearanceType,
@@ -105,13 +106,22 @@ def get_hearing(hearing_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/hearings/{hearing_id}/submissions", status_code=201)
-def submit_community_details(hearing_id: str, payload: CommunitySubmissionIn, db: Session = Depends(get_db)):
+def submit_community_details(hearing_id: str, payload: CommunitySubmissionIn, request: Request,
+                              db: Session = Depends(get_db)):
     """Let a visitor add details (a case summary, a judge's name, etc.)
     they know about a hearing. Not published immediately -- goes to the
     admin review queue (Section 4's guardrails apply to visitor-submitted
     content just as much as to the automated pipelines; see
     docs/EXCLUSION_LOGIC.md). An Editor approving it is what actually
-    updates the public-facing Hearing.judge_name or surfaces the summary."""
+    updates the public-facing Hearing.judge_name or surfaces the summary.
+
+    Phase-4 doc, Section 2.2/2.5: rate-limited and spam-filtered like
+    every other public write path now, even though this one already sits
+    behind a review queue -- keeps the queue itself from filling up with
+    obvious spam an Editor then has to manually clear."""
+    if not check_rate_limit(f"community-submission:{client_ip(request)}", max_requests=5, window_seconds=600):
+        raise HTTPException(429, "Too many submissions from this address -- try again in a few minutes.")
+
     hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
     if not hearing:
         raise HTTPException(404, "Hearing not found")
@@ -121,6 +131,10 @@ def submit_community_details(hearing_id: str, payload: CommunitySubmissionIn, db
 
     if not (payload.summary_text or "").strip() and not (payload.judge_name or "").strip():
         raise HTTPException(400, "Provide a summary, a judge's name, or both")
+
+    for field, value in (("summary_text", payload.summary_text), ("judge_name", payload.judge_name)):
+        if is_likely_spam_or_profane(value or ""):
+            raise HTTPException(400, f"{field} looks like spam -- please rewrite it")
 
     submission = CommunitySubmission(
         hearing_id=hearing.id,
@@ -166,7 +180,12 @@ def academic_calendar_current(db: Session = Depends(get_db)):
 
 
 @router.post("/subscriptions", response_model=SubscriptionOut)
-def create_subscription(payload: SubscriptionCreate, db: Session = Depends(get_db)):
+def create_subscription(payload: SubscriptionCreate, request: Request, db: Session = Depends(get_db)):
+    """Phase-4 doc, Section 2.2: rate-limited per IP like every other
+    public write path -- nothing stopped someone from mass-creating
+    subscription rows before this."""
+    if not check_rate_limit(f"subscribe:{client_ip(request)}", max_requests=10, window_seconds=600):
+        raise HTTPException(429, "Too many requests -- try again in a few minutes.")
     sub = Subscription(
         email=payload.email,
         filter_type=payload.filter_type,

@@ -175,10 +175,60 @@ breaks the feature that triggered it -- it's logged loudly
 (`app/jobs/digest.py::_send_via_sendgrid`) and the app moves on; an
 invite's link is still shown directly in the response either way.
 
-## 6. What's still manual after this
+## 7. Phase 4: production hardening flags to set on Render
+
+Add these to the backend service's **Environment** tab (same place as
+`FRONTEND_URL`/`SENDGRID_API_KEY`):
+
+- `ENVIRONMENT` = `production` -- disables the interactive API docs
+  (`/docs`, `/redoc`); real attack-surface reduction now that this is
+  linked from an official page, and no external integrator needs them.
+- `ALLOWED_ORIGINS` = your real frontend URL(s), comma-separated, if it's
+  ever anything other than the default baked into `app/config.py`
+  (`https://cusg-boulder-court-tracker.vercel.app` plus localhost) -- e.g.
+  once a custom domain exists, add it here too or the browser will block
+  the frontend's own API calls with a CORS error.
+
+Redeploy after adding either (env var changes need one, same as every
+other setting here).
+
+## 8. Email authentication (SPF/DKIM/DMARC) -- once a real sending domain exists
+
+Only relevant once `EMAIL_FROM_ADDRESS` (Section 5) is on a domain you
+actually control DNS for -- SendGrid's own shared sending domain (the
+default if you verify a Single Sender on, say, a personal Gmail address)
+doesn't give you DNS records to add at all, so this step is genuinely
+blocked until CUSG has its own domain to send from. Once one exists:
+
+1. SendGrid dashboard -> **Settings -> Sender Authentication -> Authenticate
+   Your Domain** -- walks through adding CNAME records (this is what
+   actually sets up SPF and DKIM alignment for that domain) at whatever
+   registrar hosts the domain's DNS.
+2. DMARC is a separate TXT record (`_dmarc.yourdomain.com`) you add
+   yourself -- SendGrid's docs have exact syntax; start with a
+   monitor-only policy (`p=none`) and tighten it once you've confirmed
+   mail is landing correctly.
+
+Without this, mail still sends (via SendGrid's own shared infrastructure,
+which has its own baseline reputation/authentication) -- this step is
+about *this project's* domain being able to authenticate its own mail,
+not a requirement for email to work at all.
+
+## 9. Worth checking before the link goes live on the official CUSG site
+
+Not a technical step -- flagged because it depends on CU's own internal
+policy, not something to guess at in a build spec: check whether CU
+Boulder's IT department or CUSG's advisor has an existing security/
+compliance review process for student-built tools being linked from an
+official page. If one exists, this document (plus `docs/SECURITY_
+REVIEW.md`) is a reasonable starting point to bring to that review, but
+isn't a substitute for it.
+
+## 10. What's still manual after this
 - **A CUSG custom domain**, if you want one, is a DNS change plus adding
   it in the Vercel (and optionally Render) project settings -- not
-  something I can do without access to CUSG's domain registrar.
+  something I can do without access to CUSG's domain registrar. Also
+  update `ALLOWED_ORIGINS` (Section 7) once you have one.
 - **Render's free Postgres** is fine to start, but check Render's current
   free-tier database retention policy before relying on it long-term (this
   has changed over time across providers); upgrading to a paid instance

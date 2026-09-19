@@ -166,6 +166,15 @@ class ArchiveSubmitterRole(str, enum.Enum):
     regular_user = "regular_user"
 
 
+class ReportTargetType(str, enum.Enum):
+    """Phase-4 doc, Section 2.5: the two kinds of unmoderated public
+    content a "Report" link can flag -- an Archive entry (publishes
+    immediately, no review) or a recommendation (also unmoderated free
+    text)."""
+    archive_entry = "archive_entry"
+    recommendation = "recommendation"
+
+
 class AdminRole(str, enum.Enum):
     editor = "editor"
     contributor = "contributor"
@@ -450,6 +459,28 @@ class ArchiveEntry(Base):
     hearing: Mapped["Hearing"] = relationship()
 
 
+class ContentReport(Base):
+    """Phase-4 doc, Section 2.5: a "Report" link on every public Archive
+    entry and recommendation, since both publish with no pre-review.
+    Doesn't remove or hide anything itself -- just notifies every
+    Justice (Section 5.4's explicit choice over a single designated
+    moderator, same audience as a new recommendation) and lands in the
+    admin dashboard's Reports queue for a Justice to look at and act on
+    by hand (edit/delete the Archive entry, delete the recommendation --
+    the tools for both already exist)."""
+    __tablename__ = "content_reports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    target_type: Mapped[ReportTargetType] = mapped_column(Enum(ReportTargetType), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Internal-only, never exposed via ReportOut -- same reasoning as
+    # ArchiveEntry.submitter_ip.
+    reporter_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
@@ -528,6 +559,27 @@ class AdminUser(Base):
     # *Out schema; served only via GET /api/justices/{id}/photo.
     photo_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     photo_content_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+
+    # --- Phase-4 doc, Section 2.3: account lockout + 2FA ----------------
+    # Reset to 0 on any successful login; a failed one increments it, and
+    # hitting LOCKOUT_THRESHOLD (app/routers/admin.py) sets locked_until
+    # and resets the counter -- belt-and-suspenders alongside the
+    # existing per-IP login rate limit (that one stops one IP hammering
+    # any account; this one stops a distributed attempt against one
+    # specific account from many IPs).
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # TOTP secret is set (but totp_enabled left False) the moment setup
+    # starts, and only takes effect at login once confirm_2fa verifies a
+    # real code against it -- an abandoned setup just leaves an unused
+    # secret sitting here, harmless since totp_enabled gates everything.
+    totp_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # JSON-encoded list of *hashed* one-time backup codes (same
+    # sha256-via-hash_token treatment as invite/reset tokens -- these are
+    # also high-entropy random strings, not human-chosen secrets).
+    # Consuming one removes it from the list.
+    totp_backup_code_hashes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class AdminInvite(Base):

@@ -96,11 +96,18 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   color: var(--ink-soft);
   text-align: center;
 }
+/* Phase-4 doc, Section 3: affiliation credit, text-only (no CU Boulder
+   logo/wordmark/trademarked colors -- see docs/ARCHITECTURE.md). */
+.site-footer-affiliation {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+}
+
 /* Phase-3 doc, Section 2: "a simple, unobtrusive Sign in link" -- lives
    in the footer, not the main nav, so browsing never looks like it
    expects a login. */
 .site-footer-account {
-  margin-top: 0.6rem;
+  margin-top: 0.4rem;
   font-size: 0.78rem;
 }
 .btn-footer-signout {
@@ -327,6 +334,20 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .btn-danger { border-color: #a33; background: #a33; }
 .btn-danger:hover { background: #822; border-color: #822; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Phase-4 doc, Section 2.5: deliberately unobtrusive -- a plain text
+   link, not a button, so it doesn't compete visually with real content
+   or read as an invitation, but stays findable when someone needs it. */
+.report-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.report-link:hover { color: var(--ink); }
 
 /* --- Detail view --- */
 

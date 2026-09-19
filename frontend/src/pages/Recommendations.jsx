@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import JusticeLink from "../components/JusticeLink.jsx";
+import ReportLink from "../components/ReportLink.jsx";
 
 export default function Recommendations() {
   const [recs, setRecs] = useState(null);
@@ -51,6 +52,9 @@ export default function Recommendations() {
               Remove
             </button>
           )}
+          <div style={{ marginTop: "0.5rem" }}>
+            <ReportLink targetType="recommendation" targetId={r.id} />
+          </div>
         </div>
       ))}
     </article>

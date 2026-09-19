@@ -324,6 +324,105 @@ New, purely additive features from that document:
   (invite creation especially) already has a fallback: the invite link
   itself is also returned directly in the API response.
 
+## Phase 4 additions (security hardening + CUSG Judicial Branch branding)
+
+A fourth follow-up document, prompted by the site being about to be
+linked from the official CU Boulder CUSG website -- a real change in risk
+profile (more traffic, implicit official association, more attractive to
+casual probing) even though nothing about the app's own purpose changed.
+Explicitly a security-and-copy pass layered on top of everything already
+built, not a rebuild -- every existing feature keeps working unchanged.
+
+**Security (Section 2):**
+
+- **Response security headers** (`app/security_headers.py`,
+  `SecurityHeadersMiddleware`): `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-
+  origin`, HSTS, and a locked-down `Content-Security-Policy` (`default-
+  src 'none'`, since this is a JSON API with no scripts/styles/frames of
+  its own to allow) on every backend response. FastAPI's own interactive
+  docs (`/docs`, `/redoc`) are disabled outright in production
+  (`ENVIRONMENT=production`) rather than exempted from the CSP for real --
+  no external integrators need them, and they're pure attack-surface once
+  linked from an official page. The frontend gets its own, separately-
+  tuned CSP via `frontend/vercel.json`'s `headers` block (needs `'unsafe-
+  inline'` for `style-src` -- React's `style={{...}}` prop sets CSS
+  properties through the CSSOM, not the HTML `style=""` attribute, so it
+  isn't actually gated by CSP either way, but this wasn't verified
+  rigorously enough to risk tightening further and silently breaking the
+  site's layout; `script-src 'self'` stays strict, which is where nearly
+  all of CSP's real XSS-prevention value comes from anyway).
+- **A real CORS allow-list** (`ALLOWED_ORIGINS` in `app/config.py`)
+  replaces `allow_origins=["*"]` -- a gap flagged as far back as the
+  original build ("tighten... in production") and left alone until this
+  round gave a concrete reason to close it.
+- **Every public write endpoint is now rate-limited and length/format-
+  validated**, not just the ones earlier phases happened to cover:
+  `POST /api/subscriptions` and `POST /api/hearings/{id}/submissions`
+  (the community "add case details" form) were the two real gaps --
+  `POST /api/invites/{token}/accept` and `POST /api/auth/reset-password/
+  {token}` also got a per-IP rate limit as belt-and-suspenders, even
+  though their tokens are already high-entropy enough that guessing
+  isn't computationally feasible. A shared `validate_email_format()`
+  (`app/schemas.py`) -- a practical `word@word.word` check plus a length
+  cap, not a new `email-validator` dependency for full RFC grammar -- is
+  now applied to every email field in the API, including ones (login,
+  invite/allowlist emails) that had none before. The community-
+  submission endpoint also now runs through `app/moderation.py`'s spam/
+  profanity filter, same as the Archive's public path already did.
+- **Account lockout** (`AdminUser.failed_login_attempts` /
+  `locked_until`, `app/routers/admin.py`): 10 failed attempts locks an
+  account for 15 minutes, regardless of which IP the attempts came from
+  -- layered on top of the existing per-IP login rate limit (that one
+  stops one address hammering any account; this one stops a distributed
+  attempt spread across many IPs aimed at one specific account).
+- **Real TOTP two-factor authentication** (`app/totp.py`, using `pyotp`
+  for the RFC 6238 math and `qrcode` -- already-installed `Pillow` does
+  the image encoding -- for a scannable setup QR code): `POST /api/
+  account/2fa/setup` → `.../confirm` → enabled, available to any
+  authenticated account via `get_current_admin` (not Justice-specific).
+  Login gets a third outcome beyond 200/401: **428** ("right password,
+  now send a code") so the frontend can prompt for one without it
+  counting as a failed attempt. Eight single-use backup codes are
+  generated at confirm time, shown once, and stored only as hashes
+  (`hash_token`, same treatment as invite/reset tokens) -- losing a phone
+  shouldn't mean losing an account on a small, invite-gated roster where
+  that's a real support burden, not a hypothetical one.
+- **"Report" flagging** (`ContentReport`, `app/routers/reports.py`): a
+  public, rate-limited `POST /api/reports` on every Archive entry and
+  recommendation (both publish with no pre-review), notifying every
+  Justice -- Section 5.4's explicit choice over a single designated
+  moderator, same audience/reasoning as the existing new-recommendation
+  email. Doesn't remove or hide content itself; lands in the dashboard's
+  new Reports queue (`GET/POST /api/admin/reports...`) with a content
+  summary for triage, and an Editor resolves it by hand using the
+  edit/delete tools that already exist for both content types.
+- **Email authentication (SPF/DKIM/DMARC) and the CU IT/CUSG-advisor
+  review process** (Sections 2.4 and 2.7) are explicitly *not* code --
+  the first needs DNS control over whatever domain `EMAIL_FROM_ADDRESS`
+  is on (SendGrid's dashboard walks through the exact records once a
+  domain is chosen), and the second depends on CU's own internal policy,
+  which nothing in this codebase can determine. Both flagged for the
+  CUSG team to actually do, not guessed at here.
+- **Privacy notice** (`frontend/src/pages/Privacy.jsx`, linked from the
+  footer): plain-language, not a legal document -- what's collected
+  (emails, names, IPs on unmoderated paths, profile photos), why, and how
+  to get it removed.
+
+**Branding (Section 3):** a text-only affiliation credit ("A project of
+the CUSG Judicial Branch," footer + a new `/about-project` page) and a
+link to the real, verified official CUSG Judicial Branch page
+(`colorado.edu/cusg/about-us/judicial-branch`) -- confirmed live and
+current (same Chief Justice/Deputy Chief Justice names already seeded in
+`scripts/create_justices.py`) rather than assumed. Explicit choice
+(confirmed with the user): no CU Boulder logo/wordmark/trademarked colors
+at all, matching the doc's own stated default -- using official university
+marks without clearance from CU's brand office was flagged as a real risk
+to CUSG, not just a formality. The framed audience broadened from
+"pre-law students" to "pre-law students, or anyone else interested in the
+field of law" everywhere that copy appeared (header tagline, Welcome
+page, README, meta description/Open Graph tags).
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

@@ -12,7 +12,7 @@ coordinate without duplicating work (Section 5.4's "Activity log").
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -22,6 +22,7 @@ from app.auth import create_access_token, get_current_admin, require_editor, ver
 from app.db import get_db
 from app.jobs.appellate_supplement import PRESET_COURTS, search_candidates
 from app.rate_limit import check_rate_limit, client_ip
+from app.totp import consume_backup_code, verify_totp_code
 from app.models import (
     AcademicCalendarPeriod,
     ActivityLogEntry,
@@ -62,6 +63,14 @@ def _log(db: Session, admin: AdminUser, action: str, target_type: str,
                              target_type=target_type, target_id=target_id, detail=detail))
 
 
+# Phase-4 doc, Section 2.3: account lockout, layered on top of the
+# existing per-IP rate limit below (that one stops one address hammering
+# any account; this one stops a distributed attempt -- many IPs -- aimed
+# at one specific account).
+LOCKOUT_THRESHOLD = 10
+LOCKOUT_MINUTES = 15
+
+
 @router.post("/login", response_model=AdminLoginResponse)
 def login(payload: AdminLoginRequest, request: Request, db: Session = Depends(get_db)):
     """Single login for both curation-team accounts (Editor/Contributor)
@@ -73,12 +82,55 @@ def login(payload: AdminLoginRequest, request: Request, db: Session = Depends(ge
     Phase-3 doc, Section 5: rate-limited per IP (not per email -- the
     roster is only 7-8 people, so a per-IP budget is enough to stop
     brute-forcing any one of those accounts without needing to track a
-    separate counter per email address)."""
+    separate counter per email address).
+
+    Phase-4 doc, Section 2.3 adds: account lockout after repeated failed
+    attempts (regardless of IP), and a second factor for accounts that
+    have TOTP enabled -- a 428 response (not 401) signals "right password,
+    now send a code" so the frontend can prompt for one without treating
+    it as a failed login."""
     if not check_rate_limit(f"login:{client_ip(request)}", max_requests=10, window_seconds=600):
         raise HTTPException(429, "Too many login attempts from this address -- try again in a few minutes.")
+
     user = db.query(AdminUser).filter(AdminUser.email == payload.email).first()
+    now = datetime.utcnow()
+
+    if user and user.locked_until and user.locked_until > now:
+        retry_at = user.locked_until.isoformat(timespec="minutes")
+        raise HTTPException(
+            423, f"Account temporarily locked after repeated failed attempts. Try again after {retry_at}Z."
+        )
+
+    def _register_failure() -> None:
+        if not user:
+            return
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= LOCKOUT_THRESHOLD:
+            user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
+            user.failed_login_attempts = 0
+        db.commit()
+
     if not user or not verify_password(payload.password, user.hashed_password):
+        _register_failure()
         raise HTTPException(401, "Invalid credentials")
+
+    if user.totp_enabled:
+        if not payload.totp_code:
+            raise HTTPException(428, "2FA code required")
+        if not verify_totp_code(user.totp_secret, payload.totp_code):
+            remaining = consume_backup_code(
+                json.loads(user.totp_backup_code_hashes) if user.totp_backup_code_hashes else [],
+                payload.totp_code,
+            )
+            if remaining is None:
+                _register_failure()
+                raise HTTPException(401, "Invalid 2FA code")
+            user.totp_backup_code_hashes = json.dumps(remaining)
+
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    db.commit()
+
     return AdminLoginResponse(
         access_token=create_access_token(user),
         id=user.id,

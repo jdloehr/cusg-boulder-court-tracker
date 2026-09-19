@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import JusticeLink from "../components/JusticeLink.jsx";
+import ReportLink from "../components/ReportLink.jsx";
 
 const STAGE_LABELS = {
   opening_statements: "Opening Statements",
@@ -110,6 +111,9 @@ export default function Archive() {
               Remove
             </button>
           )}
+          <div style={{ marginTop: "0.5rem" }}>
+            <ReportLink targetType="archive_entry" targetId={e.id} />
+          </div>
         </article>
       ))}
     </article>

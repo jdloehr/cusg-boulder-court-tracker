@@ -2,12 +2,33 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.auth import validate_password_strength
+
+# Phase-4 doc, Section 2.2: "enforce reasonable length limits on all text
+# fields" -- applies to every email field in this file, not just the
+# ones already covered (invite/reset flows). Deliberately a practical
+# format check (has an @, something on each side, a dot after the @)
+# rather than a full RFC 5322 grammar or an added email-validator
+# dependency -- this is input hygiene against garbage/abuse, not the
+# thing that confirms an address is real (only actually receiving mail
+# there does that).
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_EMAIL_MAX_LENGTH = 320  # matches every `email` column's String(320) in app/models.py
+
+
+def validate_email_format(value: str) -> str:
+    stripped = (value or "").strip()
+    if len(stripped) > _EMAIL_MAX_LENGTH:
+        raise ValueError(f"Email must be under {_EMAIL_MAX_LENGTH} characters")
+    if not _EMAIL_RE.match(stripped):
+        raise ValueError("Enter a valid email address")
+    return stripped
 from app.models import (
     AcademicPeriodType,
     AppearanceType,
@@ -21,6 +42,7 @@ from app.models import (
     LivestreamSourceType,
     MatchStatus,
     ProceedingStage,
+    ReportTargetType,
     SubmissionStatus,
     SubscriptionFilterType,
     SubscriptionFrequency,
@@ -212,6 +234,18 @@ class SubscriptionCreate(BaseModel):
     filter_value: str
     frequency: SubscriptionFrequency
 
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value):
+        return validate_email_format(value)
+
+    @field_validator("filter_value")
+    @classmethod
+    def _cap_filter_value(cls, value):
+        if value and len(value) > 255:  # matches Subscription.filter_value's String(255)
+            raise ValueError("filter_value must be under 255 characters")
+        return value
+
 
 class SubscriptionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -246,6 +280,15 @@ class AcademicCalendarPeriodOut(AcademicCalendarPeriodIn):
 class AdminLoginRequest(BaseModel):
     email: str
     password: str
+    # Present only when the account has 2FA enabled (Phase-4 doc, Section
+    # 2.3) -- see routers/admin.py::login for the two-step flow this
+    # supports without a separate endpoint.
+    totp_code: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value):
+        return validate_email_format(value)
 
 
 class AdminLoginResponse(BaseModel):
@@ -414,6 +457,11 @@ class InviteCreateIn(BaseModel):
     display_name: str
     title: Optional[str] = None
 
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value):
+        return validate_email_format(value)
+
     @field_validator("display_name")
     @classmethod
     def _require_name(cls, value):
@@ -448,6 +496,11 @@ class AllowlistEntryIn(BaseModel):
     display_name: str
     title: Optional[str] = None
 
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value):
+        return validate_email_format(value)
+
     @field_validator("display_name")
     @classmethod
     def _require_name(cls, value):
@@ -473,6 +526,11 @@ class RequestInviteIn(BaseModel):
     link' page."""
     email: str
 
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value):
+        return validate_email_format(value)
+
 
 class InviteInfoOut(BaseModel):
     """Public: what the accept-invite page shows before a password is
@@ -495,6 +553,11 @@ class InviteAcceptIn(BaseModel):
 
 class ForgotPasswordIn(BaseModel):
     email: str
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value):
+        return validate_email_format(value)
 
 
 class ResetPasswordIn(BaseModel):
@@ -539,3 +602,67 @@ class JusticeProfileIn(BaseModel):
         if value and len(value) > 300:
             raise ValueError("Must be under 300 characters")
         return value
+
+
+# --- Phase-4 doc, Section 2.3: two-factor authentication --------------------
+
+class TotpSetupOut(BaseModel):
+    """The secret is included alongside the QR code for manual entry
+    (some authenticator apps/situations don't support scanning) -- not a
+    security regression, since 2FA isn't active at all until
+    POST /api/account/2fa/confirm proves the account holder actually has
+    it working."""
+    secret: str
+    provisioning_uri: str
+    qr_code_data_uri: str
+
+
+class TotpConfirmIn(BaseModel):
+    code: str
+
+
+class TotpConfirmOut(BaseModel):
+    """backup_codes is shown exactly once -- only the hash is ever
+    persisted (see app/totp.py). Losing them means falling back to an
+    Editor resetting the account, same as losing a password."""
+    backup_codes: list[str]
+
+
+class TotpDisableIn(BaseModel):
+    """Requires the current password, not just an authenticated session --
+    turning off 2FA is a real reduction in an account's security, worth
+    the same confirmation a password change would get."""
+    password: str
+
+
+# --- Phase-4 doc, Section 2.5: "Report" flagging ----------------------------
+
+class ReportIn(BaseModel):
+    target_type: ReportTargetType
+    target_id: str
+    reason: Optional[str] = None
+    # Honeypot, same pattern as ArchiveEntryIn/CommunitySubmissionIn.
+    website: Optional[str] = None
+
+    @field_validator("reason")
+    @classmethod
+    def _cap_reason(cls, value):
+        if value and len(value) > 1000:
+            raise ValueError("reason must be under 1000 characters")
+        return value
+
+
+class ReportQueueOut(BaseModel):
+    """What an Editor sees in the dashboard's Reports queue -- includes
+    enough of the reported content (target_summary) to triage without a
+    separate lookup, but never reporter_ip (internal-only, see
+    ContentReport's docstring in app/models.py)."""
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    target_type: ReportTargetType
+    target_id: str
+    reason: Optional[str] = None
+    resolved: bool
+    created_at: datetime
+    target_summary: Optional[str] = None
+    target_url: Optional[str] = None

@@ -79,6 +79,15 @@ POSTGRES_MIGRATIONS = [
     # time), not just "safe to run" -- same idempotence bar as every
     # other statement in this list.
     "UPDATE admin_users SET role = 'editor' WHERE is_justice = true AND role IS NULL;",
+
+    # Phase-4 doc, Section 2.3 (account lockout + 2FA): new columns on the
+    # pre-existing `admin_users` table. content_reports (Section 2.5) is a
+    # brand-new table, so create_all() handles it on its own.
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64);",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false;",
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_backup_code_hashes TEXT;",
 ]
 
 

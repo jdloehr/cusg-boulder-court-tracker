@@ -28,10 +28,12 @@ from app.models import (
     HearingStatus,
     HearingTypeCategory,
 )
+from app.rate_limit import reset_for_tests
 
 
 @pytest.fixture()
 def client():
+    reset_for_tests()  # submissions are rate-limited per IP (Phase-4 doc, Section 2.2)
     # StaticPool: without it, every new Session() grabs a fresh (and
     # separately empty) `:memory:` database instead of sharing the one
     # this fixture seeds.

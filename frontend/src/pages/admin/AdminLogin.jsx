@@ -5,6 +5,11 @@ import { api, storeAdmin } from "../../api.js";
 export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  // Set once the server confirms email+password are correct but a 2FA
+  // code is also required (Phase-4 doc, Section 2.3) -- a 428 response,
+  // not a failed login, so it doesn't count against account lockout.
+  const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
@@ -14,7 +19,7 @@ export default function AdminLogin() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.adminLogin(email, password);
+      const res = await api.adminLogin(email, password, needsTotp ? totpCode : undefined);
       storeAdmin({
         token: res.access_token, id: res.id, role: res.role, email,
         is_justice: res.is_justice, display_name: res.display_name, title: res.title,
@@ -25,7 +30,16 @@ export default function AdminLogin() {
       // up inline on hearing detail pages.
       navigate(res.role ? "/admin" : "/");
     } catch (err) {
-      setError("Invalid credentials.");
+      if (err.status === 428) {
+        setNeedsTotp(true);
+        setError(null);
+      } else if (err.status === 423 || err.status === 429) {
+        setError(err.message); // account-lockout / rate-limit messages are already user-safe
+      } else if (needsTotp) {
+        setError("That code didn't match. Check your authenticator app (or use a backup code) and try again.");
+      } else {
+        setError("Invalid credentials.");
+      }
     } finally {
       setBusy(false);
     }
@@ -41,14 +55,23 @@ export default function AdminLogin() {
       <form className="form-grid" onSubmit={onSubmit}>
         <div>
           <label htmlFor="email">Email</label>
-          <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input id="email" type="email" required disabled={needsTotp} value={email}
+                 onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div>
           <label htmlFor="password">Password</label>
-          <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input id="password" type="password" required disabled={needsTotp} value={password}
+                 onChange={(e) => setPassword(e.target.value)} />
         </div>
+        {needsTotp && (
+          <div>
+            <label htmlFor="totpCode">Authenticator code (or a backup code)</label>
+            <input id="totpCode" required autoFocus value={totpCode}
+                   onChange={(e) => setTotpCode(e.target.value)} />
+          </div>
+        )}
         <button className="btn" type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? "Signing in…" : needsTotp ? "Verify" : "Sign in"}
         </button>
         {error && <p className="message-error">{error}</p>}
       </form>

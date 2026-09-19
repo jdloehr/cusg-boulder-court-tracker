@@ -16,7 +16,14 @@ async function request(path, options = {}) {
     } catch {
       /* ignore */
     }
-    throw new Error(detail || `Request failed (${res.status})`);
+    const err = new Error(detail || `Request failed (${res.status})`);
+    // Attached, not a change to the error contract every existing
+    // `catch (err) { ... err.message ... }` caller relies on -- lets a
+    // caller that needs to distinguish status codes do so (e.g. 428
+    // "2FA code required" during login, Phase-4 doc Section 2.3) without
+    // parsing the message string.
+    err.status = res.status;
+    throw err;
   }
   if (res.status === 204) return null;
   const text = await res.text();
@@ -47,8 +54,10 @@ export const api = {
   unsubscribe: (token) => request(`/api/subscriptions/${token}`, { method: "DELETE" }),
 
   // --- admin ---
-  adminLogin: (email, password) =>
-    request("/api/admin/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  adminLogin: (email, password, totpCode) =>
+    request("/api/admin/login", {
+      method: "POST", body: JSON.stringify({ email, password, totp_code: totpCode || undefined }),
+    }),
   reviewQueueHearings: () => request("/api/admin/review-queue/hearings", { headers: authHeaders() }),
   reviewQueueNewsMentions: () => request("/api/admin/review-queue/news-mentions", { headers: authHeaders() }),
   reviewQueueCommunitySubmissions: () =>
@@ -178,6 +187,18 @@ export const api = {
     return res.json();
   },
   justicePhotoUrl: (id) => `${API_BASE}/api/justices/${id}/photo`,
+
+  // --- Phase-4: reporting, 2FA ---
+  createReport: (payload) => request("/api/reports", { method: "POST", body: JSON.stringify(payload) }),
+  listReports: (resolved = false) => request(`/api/admin/reports?resolved=${resolved}`, { headers: authHeaders() }),
+  resolveReport: (id) => request(`/api/admin/reports/${id}/resolve`, { method: "POST", headers: authHeaders() }),
+  setup2fa: () => request("/api/account/2fa/setup", { method: "POST", headers: authHeaders() }),
+  confirm2fa: (code) =>
+    request("/api/account/2fa/confirm", { method: "POST", headers: authHeaders(), body: JSON.stringify({ code }) }),
+  disable2fa: (password) =>
+    request("/api/account/2fa/disable", {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ password }),
+    }),
 };
 
 export function getStoredAdmin() {

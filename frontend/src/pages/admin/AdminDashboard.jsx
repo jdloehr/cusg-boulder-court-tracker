@@ -6,9 +6,11 @@ const TABS = [
   { key: "hearings", label: "Review Queue: Hearings" },
   { key: "news", label: "Review Queue: News" },
   { key: "community", label: "Review Queue: Community" },
+  { key: "reports", label: "Reports" },
   { key: "federal", label: "Appellate Supplement" },
   { key: "calendar", label: "Academic Calendar" },
   { key: "justices", label: "Justice Accounts" },
+  { key: "security", label: "Account Security" },
   { key: "activity", label: "Activity Log" },
 ];
 
@@ -51,7 +53,9 @@ export default function AdminDashboard() {
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
           {tab === "federal" && <AppellateSupplement admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
+          {tab === "reports" && <ReportsQueue />}
           {tab === "justices" && <JusticeInvites admin={admin} />}
+          {tab === "security" && <TwoFactorSettings />}
           {tab === "activity" && <ActivityLog />}
         </div>
       </div>
@@ -676,6 +680,189 @@ function JusticeAllowlist() {
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+// --- Phase-4 doc, Section 2.5: "Report" flagging queue ---
+
+const REPORT_TARGET_LABELS = { archive_entry: "Archive entry", recommendation: "Recommendation" };
+
+function ReportsQueue() {
+  const [reports, setReports] = useState(null);
+  const [showResolved, setShowResolved] = useState(false);
+
+  function load() {
+    api.listReports(showResolved).then(setReports).catch(() => setReports([]));
+  }
+  useEffect(load, [showResolved]);
+
+  async function resolve(id) {
+    await api.resolveReport(id);
+    load();
+  }
+
+  if (!reports) return <p>Loading&hellip;</p>;
+
+  return (
+    <div>
+      <h2>Reported content</h2>
+      <p className="disclaimer">
+        Flagged by a visitor via the "Report" link on the Archive or the recommendations board. This
+        doesn't remove or hide anything by itself -- use the existing edit/delete tools on{" "}
+        <Link to="/archive">Archive</Link> or <Link to="/recommendations">Court Recommendations</Link>{" "}
+        if action is needed, then mark it resolved here.
+      </p>
+      <label style={{ fontSize: "0.85rem" }}>
+        <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} />{" "}
+        Show resolved
+      </label>
+      {reports.length === 0 && <p>Nothing {showResolved ? "resolved" : "open"} right now.</p>}
+      {reports.map((r) => (
+        <div className="card" key={r.id}>
+          <h3>{REPORT_TARGET_LABELS[r.target_type] || r.target_type}</h3>
+          <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+            Reported {new Date(r.created_at).toLocaleString()}
+            {r.target_url && (
+              <>
+                {" "}&middot; <Link to={r.target_url}>view on the site</Link>
+              </>
+            )}
+          </p>
+          <p className="blurb">"{r.target_summary}"</p>
+          {r.reason && <p><strong>Reason given:</strong> {r.reason}</p>}
+          {!r.resolved && (
+            <button className="btn btn-secondary" onClick={() => resolve(r.id)}>
+              Mark resolved
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- Phase-4 doc, Section 2.3: two-factor authentication ---
+
+function TwoFactorSettings() {
+  const [status, setStatus] = useState(null); // "off" | "setting-up" | "on"
+  const [setupData, setSetupData] = useState(null);
+  const [code, setCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState(null);
+  const [disablePassword, setDisablePassword] = useState("");
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function startSetup() {
+    setError(null);
+    setBusy(true);
+    try {
+      const data = await api.setup2fa();
+      setSetupData(data);
+      setStatus("setting-up");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmSetup(e) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await api.confirm2fa(code);
+      setBackupCodes(res.backup_codes);
+      setStatus("on");
+      setCode("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable(e) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api.disable2fa(disablePassword);
+      setStatus("off");
+      setSetupData(null);
+      setBackupCodes(null);
+      setDisablePassword("");
+      setMessage("Two-factor authentication turned off.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <h2>Two-factor authentication</h2>
+      <p className="disclaimer">
+        Recommended for every account, Justice or curation-only -- Justice accounts in particular
+        control public recommendations, attendance records, and public profiles. Uses any standard
+        authenticator app (Google Authenticator, Authy, 1Password, etc.).
+      </p>
+
+      {message && <p className="message-success">{message}</p>}
+      {error && <p className="message-error">{error}</p>}
+
+      {backupCodes ? (
+        <div className="card">
+          <h3>Two-factor authentication is on</h3>
+          <p>
+            Save these backup codes somewhere safe -- each works once, and they're the only way back
+            into your account if you lose your authenticator. <strong>They won't be shown again.</strong>
+          </p>
+          <pre style={{ background: "var(--paper)", padding: "0.75rem", fontSize: "0.95rem" }}>
+            {backupCodes.join("\n")}
+          </pre>
+        </div>
+      ) : status === "setting-up" && setupData ? (
+        <div className="card">
+          <h3>Scan this code</h3>
+          <p>Scan with your authenticator app, or enter the key manually, then enter the 6-digit code it shows.</p>
+          <img src={setupData.qr_code_data_uri} alt="2FA setup QR code" style={{ display: "block", margin: "0.75rem 0" }} />
+          <p style={{ fontFamily: "monospace", fontSize: "0.9rem" }}>{setupData.secret}</p>
+          <form className="form-grid" onSubmit={confirmSetup}>
+            <div>
+              <label htmlFor="totpConfirmCode">6-digit code</label>
+              <input id="totpConfirmCode" required value={code} onChange={(e) => setCode(e.target.value)} />
+            </div>
+            <button className="btn" type="submit" disabled={busy}>
+              {busy ? "Verifying…" : "Verify & turn on"}
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div>
+          <button className="btn" onClick={startSetup} disabled={busy}>
+            {busy ? "Starting…" : "Set up two-factor authentication"}
+          </button>
+          <details style={{ marginTop: "1rem" }}>
+            <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+              Already have it on and want to turn it off?
+            </summary>
+            <form className="form-grid" onSubmit={disable} style={{ marginTop: "0.75rem" }}>
+              <div>
+                <label htmlFor="disablePw">Current password</label>
+                <input id="disablePw" type="password" required value={disablePassword}
+                       onChange={(e) => setDisablePassword(e.target.value)} />
+              </div>
+              <button className="btn btn-danger" type="submit" disabled={busy}>
+                Turn off two-factor authentication
+              </button>
+            </form>
+          </details>
+        </div>
       )}
     </div>
   );

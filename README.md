@@ -1,11 +1,13 @@
 # CUSG Boulder Court Tracker
 
-A tool for the **CUSG Supreme Court** (and pre-law students more broadly)
-to find upcoming, in-person Boulder-area court proceedings worth sitting in
-on -- jury trials, oral arguments, and motions hearings -- planned at least
-a week or two out, plus anything getting real local news coverage. Full
-spec in the original build prompt; this README covers what was actually
-built and how to run it.
+A tool for the **CUSG Supreme Court** (and pre-law students, or anyone
+else interested in the field of law, more broadly -- broadened from
+"pre-law students" specifically as of the Phase 4 round, see
+`docs/ARCHITECTURE.md`) to find upcoming, in-person Boulder-area court
+proceedings worth sitting in on -- jury trials, oral arguments, and
+motions hearings -- planned at least a week or two out, plus anything
+getting real local news coverage. Full spec in the original build
+prompt; this README covers what was actually built and how to run it.
 
 Beyond the original spec: logged-in Justices can RSVP their own attendance
 to a hearing and recommend hearings on a shared board (recommending emails

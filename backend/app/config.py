@@ -8,6 +8,22 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# --- Environment / CORS (Phase-4 doc, Section 2.1) ---------------------------
+# "production" disables the interactive API docs (app/main.py) and is
+# meant to be set explicitly on the real deployment (Render) -- defaults
+# to "development" so nothing changes for local `uvicorn --reload` use.
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
+# Real, closed allow-list instead of "*" -- this API only has one real
+# frontend client. Comma-separated env var so the actual Vercel URL (or a
+# future custom domain) can be set without a code change; the defaults
+# cover this project's known production frontend plus local dev.
+ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "https://cusg-boulder-court-tracker.vercel.app,http://localhost:5173,http://localhost:3000",
+    ).split(",") if o.strip()
+]
+
 # --- Database ---------------------------------------------------------------
 # Local dev/demo default: file-based SQLite so this runs with zero external
 # services. Production: set DATABASE_URL to a postgresql+psycopg2:// DSN.

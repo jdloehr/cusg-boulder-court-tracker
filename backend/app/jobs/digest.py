@@ -243,3 +243,22 @@ def notify_all_justices_of_new_recommendation(db: Session, recommendation) -> in
         )
         send_email(j.email, subject, body)
     return len(justices)
+
+
+def notify_all_justices_of_report(db: Session, target_type: str, target_id: str,
+                                   reason: str | None, admin_url: str) -> int:
+    """Phase-4 doc, Section 2.5/5.4: a "Report" flag on an Archive entry
+    or recommendation notifies every Justice (the explicit choice over a
+    single designated moderator) rather than routing to one person --
+    same reasoning/audience as notify_all_justices_of_new_recommendation
+    above."""
+    justices = db.query(AdminUser).filter(AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True)).all()
+    for j in justices:
+        subject = f"Content reported: {target_type.replace('_', ' ')}"
+        body = (
+            f"Someone reported a {target_type.replace('_', ' ')} (id {target_id}).\n\n"
+            f"Reason given: {reason or '(none provided)'}\n\n"
+            f"Review it in the dashboard's Reports queue: {admin_url}"
+        )
+        send_email(j.email, subject, body)
+    return len(justices)

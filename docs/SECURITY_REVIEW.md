@@ -1,4 +1,48 @@
-# Security Review (Phase 2 doc, Section 6; Phase 3 addendum below)
+# Security Review (Phase 2 doc, Section 6; Phase 3 and 4 addenda below)
+
+## Phase 4 addendum
+
+Prompted by a real change in circumstances, not a routine re-check: the
+site is about to be linked from the official CU Boulder CUSG website,
+which the Phase-4 doc correctly frames as raising the stakes (more
+traffic, implicit official association, more attractive to casual
+probing) even though nothing about what the app *does* changed. Where
+this lands relative to the Phase 2/3 items below:
+
+- **2FA, upgraded from "worth doing before heavier use" to actually
+  built.** The Phase 2 review deferred this given a 7-9 person,
+  script-gated roster; Phase 3 kept deferring it even after invite-link
+  self-service passwords arrived. Official visibility is the concrete
+  trigger that changes the calculus -- see `app/totp.py` and
+  `docs/ARCHITECTURE.md`'s Phase 4 section for what got built (real RFC
+  6238 TOTP, backup codes, a 428 login step).
+- **Account lockout**, new this round: repeated failed logins now lock
+  the specific account for 15 minutes regardless of source IP, on top of
+  the existing per-IP rate limit. Closes the gap where a slow, IP-rotated
+  attempt against one specific account wouldn't have tripped the
+  IP-based limit at all.
+- **CORS's `allow_origins=["*"]`** -- flagged as a known gap since the
+  very first deploy ("public read API; tighten... in production" was
+  the code comment, literally since Phase 1) -- is now a real,
+  environment-configured allow-list (`ALLOWED_ORIGINS`). This was always
+  going to get fixed eventually; official linkage is what made "eventually"
+  become "now."
+- **Response security headers and a real CSP**, genuinely new: nothing in
+  Phase 2/3 set `X-Frame-Options`, HSTS, or a `Content-Security-Policy`
+  anywhere. See `app/security_headers.py` (backend) and
+  `frontend/vercel.json` (frontend, which needed its own separately-
+  reasoned CSP since it's the actual HTML/JS-serving origin).
+- **Rate-limiting closed out for real**, not just "the ones we thought of
+  so far": `POST /api/subscriptions` and the community "add case details"
+  form had no rate limit at all before this round -- a real gap, not a
+  hypothetical one, since nothing else about those endpoints would have
+  caught abuse.
+- **The two items this review still can't do anything about**: SPF/DKIM/
+  DMARC records need DNS control over whatever domain sends the mail, and
+  a CU IT/CUSG-advisor review process (if one exists) depends on CU's own
+  internal policy. Both are flagged as action items for the CUSG team in
+  `docs/DEPLOYMENT.md` and `docs/ARCHITECTURE.md` -- genuinely not things
+  this codebase can determine or configure on its own.
 
 ## Phase 3 addendum
 
