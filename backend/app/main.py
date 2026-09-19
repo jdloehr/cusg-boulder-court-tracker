@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import FastAPI
@@ -9,6 +10,19 @@ from app.config import ALLOWED_ORIGINS, ENVIRONMENT
 from app.db import init_db
 from app.routers import account, admin, archive, justices, public, reports
 from app.security_headers import SecurityHeadersMiddleware
+
+# Real bug, found while debugging a live production issue: every
+# app.jobs.digest.send_email() call, every app.account_email_updates.py
+# log line, every logging.getLogger(__name__).info(...) anywhere in this
+# codebase was silently going nowhere. Uvicorn configures handlers for
+# its own named loggers ("uvicorn", "uvicorn.access", "uvicorn.error")
+# but never touches the root logger, so any other logger in the process
+# has no handler at all and its INFO-level messages are dropped before
+# they'd even reach one -- invisible in Render's log stream, invisible
+# locally, invisible everywhere. force=True guarantees this actually
+# takes effect regardless of whether Uvicorn's own logging setup already
+# ran first (it usually has, by the time this module is imported).
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s", force=True)
 
 # Phase-4 doc, Section 2.1/2.7: interactive API docs are a real, if minor,
 # attack-surface/probing target once this is linked from an official CUSG
