@@ -154,9 +154,11 @@ also work but expect a verified domain for real use.
 
 1. Create a free SendGrid account.
 2. **Settings -> Sender Authentication -> Verify a Single Sender.** Use
-   an email address you can actually receive mail at (your own, or a
-   CUSG address) -- SendGrid sends a confirmation link there and refuses
-   to send *from* this address until you click it.
+   a personal email address you can actually receive mail at -- a Gmail,
+   Outlook.com, etc. address you own. **Do not use a `@colorado.edu`
+   address here** (see the real incident below for exactly why) --
+   SendGrid sends a confirmation link there and refuses to send *from*
+   this address until you click it.
 3. **Settings -> API Keys -> Create API Key** (Restricted Access is fine
    -- it only needs "Mail Send" permission). Copy the key now; SendGrid
    only shows it once.
@@ -174,6 +176,30 @@ A failed send (bad key, unverified sender, SendGrid briefly down) never
 breaks the feature that triggered it -- it's logged loudly
 (`app/jobs/digest.py::_send_via_sendgrid`) and the app moves on; an
 invite's link is still shown directly in the response either way.
+
+**Real incident, worth reading before picking `EMAIL_FROM_ADDRESS`:**
+this doc originally suggested "your own, or a CUSG address" for step 2.
+A CUSG contact tried exactly that -- a `@colorado.edu` sender -- and
+every password-reset email to another `@colorado.edu` recipient came
+back hard-rejected:
+```
+550 5.7.509 Access denied, sending domain colorado.edu does not pass
+DMARC verification and has a DMARC policy of reject.
+```
+This is CU Boulder's own mail system (hosted on Microsoft 365) correctly
+doing its job: `colorado.edu` publishes a strict DMARC policy that
+rejects any mail claiming to be from `@colorado.edu` that isn't sent
+through infrastructure the university's own DNS explicitly authorizes --
+exactly the anti-spoofing protection that policy exists for, and
+SendGrid (a third party the university hasn't authorized) trips it every
+time. There's no way around this short of CU's own IT department adding
+SendGrid to `colorado.edu`'s SPF/DKIM records, which isn't something a
+student project can arrange on its own. Use a personal, non-`.edu` sender address instead --
+SendGrid's own Activity Feed (Activity -> search the recipient address)
+is the fastest way to confirm the real outcome of any send: "Delivered"
+means it actually reached the recipient's mail server; "Blocked" (with a
+full SMTP response like the one above) or "Bounced" tells you exactly
+why it didn't.
 
 ## 7. Phase 4: production hardening flags to set on Render
 
