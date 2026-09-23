@@ -86,7 +86,7 @@ def test_real_colorado_sun_feed_court_article_has_no_clean_case_number_and_queue
     monkeypatch.setattr("app.jobs.news_monitor.fetch_article_text", lambda url: None)
 
     feed_text = (FIXTURES / "real_coloradosun_feed.xml").read_text()
-    seen, matched, queued = process_feed(db, "Colorado Sun", feed_text, __import__("datetime").datetime.utcnow())
+    seen, matched, suggested, queued, discarded = process_feed(db, "Colorado Sun", feed_text, __import__("datetime").datetime.utcnow())
 
     assert seen > 0
     mentions = db.query(NewsMention).filter(NewsMention.source_name == "Colorado Sun").all()
@@ -101,7 +101,7 @@ def test_real_colorado_sun_feed_court_article_has_no_clean_case_number_and_queue
 def test_real_9news_feed_court_articles_are_found_and_queued(db, monkeypatch):
     monkeypatch.setattr("app.jobs.news_monitor.fetch_article_text", lambda url: None)
     feed_text = (FIXTURES / "real_9news_feed.xml").read_text()
-    seen, matched, queued = process_feed(db, "9News", feed_text, __import__("datetime").datetime.utcnow())
+    seen, matched, suggested, queued, discarded = process_feed(db, "9News", feed_text, __import__("datetime").datetime.utcnow())
     assert seen > 0
     headlines = [m.headline for m in db.query(NewsMention).filter(NewsMention.source_name == "9News").all()]
     assert any("sentenced" in h.lower() or "morphew" in h.lower() for h in headlines)
@@ -110,14 +110,14 @@ def test_real_9news_feed_court_articles_are_found_and_queued(db, monkeypatch):
 def test_real_boulder_reporting_lab_feed_parses_without_error(db, monkeypatch):
     monkeypatch.setattr("app.jobs.news_monitor.fetch_article_text", lambda url: None)
     feed_text = (FIXTURES / "real_boulderreportinglab_feed.xml").read_text()
-    seen, matched, queued = process_feed(db, "Boulder Reporting Lab", feed_text, __import__("datetime").datetime.utcnow())
+    seen, matched, suggested, queued, discarded = process_feed(db, "Boulder Reporting Lab", feed_text, __import__("datetime").datetime.utcnow())
     assert seen == 10  # feed had 10 items as of the 2026-09-08 fetch
 
 
 def test_real_cu_independent_feed_parses_without_error(db, monkeypatch):
     monkeypatch.setattr("app.jobs.news_monitor.fetch_article_text", lambda url: None)
     feed_text = (FIXTURES / "real_cuindependent_feed.xml").read_text()
-    seen, matched, queued = process_feed(db, "CU Independent", feed_text, __import__("datetime").datetime.utcnow())
+    seen, matched, suggested, queued, discarded = process_feed(db, "CU Independent", feed_text, __import__("datetime").datetime.utcnow())
     assert seen == 10
 
 
@@ -135,7 +135,7 @@ def test_daily_camera_wp_json_source_real_data(db, monkeypatch):
     force-matched to some unrelated Boulder hearing."""
     monkeypatch.setattr("app.jobs.news_monitor.fetch_article_text", lambda url: None)
     raw_json = (FIXTURES / "real_dailycamera_wp_json_posts.json").read_text()
-    seen, matched, queued = process_feed(
+    seen, matched, suggested, queued, discarded = process_feed(
         db, "Daily Camera", raw_json, __import__("datetime").datetime.utcnow(), source_type="wp_json"
     )
     assert seen == 10
@@ -182,9 +182,9 @@ def test_synthetic_article_with_case_number_auto_matches(db, monkeypatch):
     db.add(hearing)
     db.commit()
 
-    seen, matched, queued = process_feed(db, "Synthetic Test Feed", _SYNTHETIC_CASE_NUMBER_FEED,
+    seen, matched, suggested, queued, discarded = process_feed(db, "Synthetic Test Feed", _SYNTHETIC_CASE_NUMBER_FEED,
                                           __import__("datetime").datetime.utcnow())
-    assert (seen, matched, queued) == (1, 1, 0)
+    assert (seen, matched, suggested, queued, discarded) == (1, 1, 0, 0, 0)
 
     mention = db.query(NewsMention).filter(NewsMention.article_url.contains("synthetic-article-1")).one()
     assert mention.match_status == MatchStatus.auto_matched
@@ -198,9 +198,9 @@ def test_synthetic_article_matches_via_party_name_when_no_case_number(db, monkey
     db.add(hearing)
     db.commit()
 
-    seen, matched, queued = process_feed(db, "Synthetic Test Feed", _SYNTHETIC_PARTY_NAME_FEED,
+    seen, matched, suggested, queued, discarded = process_feed(db, "Synthetic Test Feed", _SYNTHETIC_PARTY_NAME_FEED,
                                           __import__("datetime").datetime.utcnow())
-    assert (seen, matched, queued) == (1, 1, 0)
+    assert (seen, matched, suggested, queued, discarded) == (1, 1, 0, 0, 0)
 
     mention = db.query(NewsMention).filter(NewsMention.article_url.contains("synthetic-article-2")).one()
     assert mention.match_status == MatchStatus.auto_matched
@@ -211,8 +211,8 @@ def test_reprocessing_same_feed_does_not_duplicate_mentions(db, monkeypatch):
     monkeypatch.setattr("app.jobs.news_monitor.fetch_article_text", lambda url: None)
     now = __import__("datetime").datetime.utcnow()
     process_feed(db, "Synthetic Test Feed", _SYNTHETIC_CASE_NUMBER_FEED, now)
-    seen, matched, queued = process_feed(db, "Synthetic Test Feed", _SYNTHETIC_CASE_NUMBER_FEED, now)
-    assert (seen, matched, queued) == (0, 0, 0)  # already-seen article_url is skipped
+    seen, matched, suggested, queued, discarded = process_feed(db, "Synthetic Test Feed", _SYNTHETIC_CASE_NUMBER_FEED, now)
+    assert (seen, matched, suggested, queued, discarded) == (0, 0, 0, 0, 0)  # already-seen article_url is skipped
     assert db.query(NewsMention).count() == 1
 
 
@@ -240,3 +240,100 @@ def test_run_news_monitor_with_fixture_feed_texts_end_to_end(db, monkeypatch):
     assert isinstance(job, JobRun)
     assert job.success is True
     assert job.rows_seen >= 2
+
+
+# --- Phase-6 doc, Section 5: retroactive re-matching -------------------------
+
+def test_retroactive_rematch_promotes_a_previously_unmatched_article(db):
+    """The exact scenario Section 5 describes: an article ran before its
+    case's docket entry existed. First pull: no hearing yet, so it lands
+    in unmatched_review. A hearing is added afterward (as a later docket
+    pull would add one). Second call: the same evaluation now finds it."""
+    import datetime as dt
+    from app.jobs.news_monitor import retroactively_rematch
+
+    published = dt.datetime(2026, 9, 10)
+    mention = NewsMention(
+        article_url="https://example.test/retro-1", source_name="Test Source",
+        headline="Alex Dawson case draws attention ahead of trial",
+        published_at=published, extracted_case_numbers=json.dumps([]),
+        extracted_party_candidates=json.dumps(["Alex Dawson"]),
+        match_status=MatchStatus.unmatched_review, fetched_at=dt.datetime.utcnow(),
+    )
+    db.add(mention)
+    db.commit()
+
+    # No hearing exists yet -- confirm this really is unresolved at first.
+    checked, promoted = retroactively_rematch(db, dt.datetime.utcnow())
+    assert (checked, promoted) == (1, 0)
+    db.refresh(mention)
+    assert mention.match_status == MatchStatus.unmatched_review
+
+    # Now the docket pull adds the matching hearing.
+    hearing = _make_hearing("2026CR009999", ["Alex Dawson"])
+    hearing.date = dt.date(2026, 9, 15)  # within the date window of `published`
+    db.add(hearing)
+    db.commit()
+
+    checked, promoted = retroactively_rematch(db, dt.datetime.utcnow())
+    assert (checked, promoted) == (1, 1)
+    db.refresh(mention)
+    assert mention.match_status == MatchStatus.auto_matched
+    assert mention.hearing_id == hearing.id
+
+
+def test_retroactive_rematch_never_demotes_or_rediscards(db):
+    """Only ever promotes toward a more confident outcome -- a human may
+    already be looking at a suggested/unmatched row, so this pass never
+    moves one backward (e.g. to discarded) even if re-evaluating would
+    otherwise land there."""
+    import datetime as dt
+    from app.jobs.news_monitor import retroactively_rematch
+
+    mention = NewsMention(
+        article_url="https://example.test/retro-2", source_name="Test Source",
+        headline="Some genuinely unrelated headline with no signal at all",
+        extracted_case_numbers=json.dumps([]), extracted_party_candidates=json.dumps([]),
+        match_status=MatchStatus.unmatched_review, fetched_at=dt.datetime.utcnow(),
+    )
+    db.add(mention)
+    db.commit()
+
+    checked, promoted = retroactively_rematch(db, dt.datetime.utcnow())
+    assert (checked, promoted) == (1, 0)
+    db.refresh(mention)
+    assert mention.match_status == MatchStatus.unmatched_review  # not discarded
+
+
+def test_retroactive_rematch_ignores_rows_outside_the_window(db):
+    import datetime as dt
+    from app.jobs.news_monitor import retroactively_rematch
+
+    old_mention = NewsMention(
+        article_url="https://example.test/retro-old", source_name="Test Source", headline="Old article",
+        extracted_case_numbers=json.dumps([]), extracted_party_candidates=json.dumps([]),
+        match_status=MatchStatus.unmatched_review, fetched_at=dt.datetime.utcnow() - dt.timedelta(days=60),
+    )
+    db.add(old_mention)
+    db.commit()
+
+    checked, promoted = retroactively_rematch(db, dt.datetime.utcnow(), window_days=30)
+    assert (checked, promoted) == (0, 0)
+
+
+def test_retroactive_rematch_skips_already_resolved_rows(db):
+    import datetime as dt
+    from app.jobs.news_monitor import retroactively_rematch
+
+    hearing = _make_hearing("2026CR000001", ["Someone Else"])
+    resolved = NewsMention(
+        article_url="https://example.test/retro-resolved", hearing_id=None, source_name="Test Source",
+        headline="Already handled", extracted_case_numbers=json.dumps([]),
+        extracted_party_candidates=json.dumps([]), match_status=MatchStatus.discarded,
+        fetched_at=dt.datetime.utcnow(),
+    )
+    db.add_all([hearing, resolved])
+    db.commit()
+
+    checked, promoted = retroactively_rematch(db, dt.datetime.utcnow())
+    assert (checked, promoted) == (0, 0)

@@ -92,13 +92,23 @@ def test_time_sort_key_blank_or_unparseable_sorts_last():
 
 def test_api_returns_same_day_hearings_in_chronological_order(client_factory):
     """Full-stack check: GET /api/hearings on a day with the exact
-    real problem times returns them in the right order, not DB order."""
+    real problem times returns them in the right order, not DB order.
+
+    Uses today's date, not the fixed 2026-09-22 the rest of this file
+    documents -- GET /api/hearings defaults to date >= today, so a fixed
+    past date here would silently start returning zero results (and this
+    test passing vacuously, or failing for an unrelated reason) the
+    moment real time passed it, independent of whether the actual
+    chronological-sort fix still works."""
     client, db = client_factory
+    today = date.today()
     for t in ["10:00 AM", "1:00 PM", "9:00 AM"]:
-        db.add(_hearing(t, case_number=f"2026CR00{t[:2].strip(':')}"))
+        h = _hearing(t, case_number=f"2026CR00{t[:2].strip(':')}")
+        h.date = today
+        db.add(h)
     db.commit()
 
-    resp = client.get("/api/hearings", params={"date_to": "2026-10-01", "show_all_types": "true"})
+    resp = client.get("/api/hearings", params={"date_to": str(today), "show_all_types": "true"})
     assert resp.status_code == 200
     times = [h["time"] for h in resp.json()]
     assert times == ["9:00 AM", "10:00 AM", "1:00 PM"]

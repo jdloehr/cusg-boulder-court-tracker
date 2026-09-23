@@ -395,6 +395,20 @@ def run_docket_pull(db: Session, window_days: int = DOCKET_PULL_WINDOW_DAYS,
         db.commit()
         logger.info("docket_pull: %d rows seen, %d upserted, %d marked cancelled",
                     len(rows), upserted, cancelled)
+
+        # Phase-6 doc, Section 5: retroactive news re-matching, run right
+        # after new/updated hearings land -- exactly when a previously-
+        # unresolved article is most likely to turn into a real match.
+        # Wrapped so a failure here (already-committed docket pull) never
+        # gets reported as this job failing.
+        try:
+            from app.jobs.news_monitor import retroactively_rematch
+            checked, promoted = retroactively_rematch(db, now)
+            if checked:
+                logger.info("retroactive news re-match: %d checked, %d promoted", checked, promoted)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("retroactive news re-match failed (docket pull itself still succeeded): %s", exc)
+
         return job_run
 
     except Exception as exc:  # noqa: BLE001 - deliberately broad: this is a job boundary

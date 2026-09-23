@@ -17,6 +17,15 @@ const TABS = [
 export default function AdminDashboard() {
   const admin = getStoredAdmin();
   const [tab, setTab] = useState("hearings");
+  // Phase-6 doc, Section 4: "surface a visible count ... so it isn't easy
+  // to forget about" -- fetched once on mount, independent of which tab
+  // is selected, so the badge shows up even before a curator ever opens
+  // the News tab. Refreshed via onCountChange whenever that tab's own
+  // actions (confirm/reject/link/discard) change the queue.
+  const [newsQueueCount, setNewsQueueCount] = useState(null);
+  useEffect(() => {
+    api.reviewQueueNewsMentionsCount().then((r) => setNewsQueueCount(r.count)).catch(() => {});
+  }, []);
 
   if (!admin) return <Navigate to="/admin/login" replace />;
 
@@ -44,12 +53,15 @@ export default function AdminDashboard() {
           {TABS.map((t) => (
             <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>
               {t.label}
+              {t.key === "news" && !!newsQueueCount && (
+                <span className="queue-count-badge">{newsQueueCount}</span>
+              )}
             </button>
           ))}
         </nav>
         <div>
           {tab === "hearings" && <HearingReviewQueue admin={admin} />}
-          {tab === "news" && <NewsReviewQueue />}
+          {tab === "news" && <NewsReviewQueue onCountChange={setNewsQueueCount} />}
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
           {tab === "federal" && <AppellateSupplement admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
@@ -136,22 +148,44 @@ function HearingReviewQueue({ admin }) {
   );
 }
 
-// --- Unmatched news articles ---
+// --- News articles awaiting a match decision (Phase-6 doc, Section 4) ------
+// Two real states now, not one: a *suggested* match (the algorithm found
+// a real candidate, just not confidently enough to auto-attach -- one
+// click to confirm or reject) and the original no-candidate-at-all
+// unmatched_review (link by case number, or discard).
 
-function NewsReviewQueue() {
+function NewsReviewQueue({ onCountChange }) {
   const [mentions, setMentions] = useState(null);
   const [error, setError] = useState(null);
-  const [hearingIdInput, setHearingIdInput] = useState({});
+  const [caseNumberInput, setCaseNumberInput] = useState({});
+  const [linkError, setLinkError] = useState({});
 
   function load() {
-    api.reviewQueueNewsMentions().then(setMentions).catch((e) => setError(e.message));
+    api.reviewQueueNewsMentions().then((data) => {
+      setMentions(data);
+      onCountChange?.(data.length);
+    }).catch((e) => setError(e.message));
   }
   useEffect(load, []);
 
-  async function link(id) {
-    if (!hearingIdInput[id]) return;
-    await api.linkNewsMention(id, hearingIdInput[id]);
+  async function confirm(id) {
+    await api.confirmSuggestedNewsMention(id);
     load();
+  }
+  async function reject(id) {
+    await api.rejectSuggestedNewsMention(id);
+    load();
+  }
+  async function linkByCaseNumber(id) {
+    const caseNumber = caseNumberInput[id]?.trim();
+    if (!caseNumber) return;
+    setLinkError((s) => ({ ...s, [id]: null }));
+    try {
+      await api.linkNewsMention(id, { case_number: caseNumber });
+      load();
+    } catch (err) {
+      setLinkError((s) => ({ ...s, [id]: err.message }));
+    }
   }
   async function discard(id) {
     await api.discardNewsMention(id);
@@ -161,52 +195,90 @@ function NewsReviewQueue() {
   if (error) return <p className="message-error">{error}</p>;
   if (!mentions) return <p>Loading&hellip;</p>;
 
+  const suggested = mentions.filter((m) => m.match_status === "suggested_pending_review");
+  const unmatched = mentions.filter((m) => m.match_status !== "suggested_pending_review");
+
   return (
     <div>
-      <h2>News articles that couldn't be auto-matched to a hearing</h2>
+      <h2>News review queue</h2>
       <p className="disclaimer">
-        No case number was found in the article (common -- reporters don't always print one). Link it
-        to the right hearing by pasting that hearing's ID, or discard it if it's not Boulder-court
-        relevant.
+        Articles that publish automatically only when a case number is found, or a strong name +
+        date match agrees -- everything else lands here for a quick human decision. Articles with no
+        case number, no name candidate, and no court-relevant language at all are discarded
+        automatically and never reach this queue.
       </p>
       {mentions.length === 0 && <p>Nothing in the queue right now.</p>}
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Headline</th>
-            <th>Source</th>
-            <th>Link to hearing ID</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {mentions.map((m) => (
-            <tr key={m.id}>
-              <td>
-                <a href={m.article_url} target="_blank" rel="noreferrer">
-                  {m.headline}
-                </a>
-              </td>
-              <td>{m.source_name}</td>
-              <td>
-                <input
-                  placeholder="hearing UUID"
-                  style={{ width: "100%" }}
-                  onChange={(e) => setHearingIdInput((s) => ({ ...s, [m.id]: e.target.value }))}
-                />
-              </td>
-              <td style={{ display: "flex", gap: "0.4rem" }}>
-                <button className="btn btn-secondary" onClick={() => link(m.id)}>
-                  Link
-                </button>
-                <button className="btn btn-danger" onClick={() => discard(m.id)}>
-                  Discard
-                </button>
-              </td>
-            </tr>
+
+      {suggested.length > 0 && (
+        <>
+          <h3>Suggested matches</h3>
+          {suggested.map((m) => (
+            <div className="card" key={m.id}>
+              <h4 style={{ marginBottom: "0.3rem" }}>
+                <a href={m.article_url} target="_blank" rel="noreferrer">{m.headline}</a>
+              </h4>
+              <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+                {m.source_name}
+                {m.match_confidence && ` · ${m.match_confidence} confidence`}
+                {m.extracted_party_candidates.length > 0 &&
+                  ` · candidate name(s): ${m.extracted_party_candidates.join(", ")}`}
+              </p>
+              {m.suggested_hearing && (
+                <p className="blurb">
+                  Suggested: <strong>{m.suggested_hearing.case_number}</strong> -- {m.suggested_hearing.hearing_type_display}
+                  {" "}({m.suggested_hearing.date}), parties: {m.suggested_hearing.party_names.join(", ")}
+                </p>
+              )}
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button className="btn" onClick={() => confirm(m.id)}>Confirm match</button>
+                <button className="btn btn-secondary" onClick={() => reject(m.id)}>Reject</button>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </>
+      )}
+
+      {unmatched.length > 0 && (
+        <>
+          <h3 style={{ marginTop: suggested.length > 0 ? "1.5rem" : 0 }}>No candidate found</h3>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Headline</th>
+                <th>Source</th>
+                <th>Link by case number</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {unmatched.map((m) => (
+                <tr key={m.id}>
+                  <td>
+                    <a href={m.article_url} target="_blank" rel="noreferrer">{m.headline}</a>
+                  </td>
+                  <td>{m.source_name}</td>
+                  <td>
+                    <input
+                      placeholder="e.g. 2026CR001452"
+                      style={{ width: "100%" }}
+                      onChange={(e) => setCaseNumberInput((s) => ({ ...s, [m.id]: e.target.value }))}
+                    />
+                    {linkError[m.id] && <p className="message-error" style={{ fontSize: "0.78rem" }}>{linkError[m.id]}</p>}
+                  </td>
+                  <td style={{ display: "flex", gap: "0.4rem" }}>
+                    <button className="btn btn-secondary" onClick={() => linkByCaseNumber(m.id)}>
+                      Link
+                    </button>
+                    <button className="btn btn-danger" onClick={() => discard(m.id)}>
+                      Discard
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   );
 }

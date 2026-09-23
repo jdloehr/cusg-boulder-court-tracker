@@ -13,7 +13,7 @@ only *discovered* by later running this same pipeline against the real
 live export (see docs/DATA_SOURCE_FINDINGS.md) and are reproduced here in
 miniature so they stay covered by a fast, deterministic test.
 """
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from app.jobs.docket_pull import (
@@ -188,7 +188,23 @@ def test_run_docket_pull_detects_reschedule_as_changed(db):
     assert dawson.courtroom == "G"
 
 
-def test_run_docket_pull_marks_disappeared_hearing_cancelled(db):
+def test_run_docket_pull_marks_disappeared_hearing_cancelled(db, monkeypatch):
+    # The fixture's dates (see sample_docket_export.csv) are fixed
+    # calendar dates, and mark_missing_as_cancelled only considers
+    # hearings with date >= "now" -- pin "now" to before every date in
+    # the fixture so this test keeps working regardless of how much real
+    # wall-clock time has passed since the fixture was authored (real
+    # bug, caught live: this test silently started failing once today's
+    # actual date passed 2026-09-22, the fixture's first/earliest date).
+    import app.jobs.docket_pull as docket_pull_module
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def utcnow(cls):
+            return datetime(2026, 9, 20, 12, 0, 0)
+
+    monkeypatch.setattr(docket_pull_module, "datetime", _FixedDatetime)
+
     run_docket_pull(db, window_days=45, csv_text=FIXTURE)
 
     lines = FIXTURE.splitlines()
@@ -210,3 +226,28 @@ def test_run_docket_pull_raises_and_records_failure_on_empty_result(db):
     job = db.query(JobRun).order_by(JobRun.started_at.desc()).first()
     assert job.success is False
     assert "zero rows" in job.error_message
+
+
+def test_run_docket_pull_triggers_retroactive_news_rematch(db, monkeypatch):
+    """Phase-6 doc, Section 5: retroactive re-matching runs right after
+    a successful docket pull, exactly when new hearings are most likely
+    to turn a previously-unresolved article into a real match."""
+    calls = []
+    monkeypatch.setattr(
+        "app.jobs.news_monitor.retroactively_rematch",
+        lambda db, now, **kwargs: calls.append(now) or (0, 0),
+    )
+    run_docket_pull(db, window_days=45, csv_text=FIXTURE)
+    assert len(calls) == 1
+
+
+def test_docket_pull_still_succeeds_if_retroactive_rematch_blows_up(db, monkeypatch):
+    """A bug in the re-match pass must never turn a successful docket
+    pull into a reported failure -- the docket data already committed
+    successfully by the time this runs."""
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated re-match failure")
+
+    monkeypatch.setattr("app.jobs.news_monitor.retroactively_rematch", _boom)
+    job = run_docket_pull(db, window_days=45, csv_text=FIXTURE)
+    assert job.success is True

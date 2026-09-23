@@ -110,6 +110,26 @@ class MatchStatus(str, enum.Enum):
     auto_matched = "auto_matched"
     manually_linked = "manually_linked"
     unmatched_review = "unmatched_review"
+    # Phase-6 doc, Section 3/6: a medium-confidence name match -- a real
+    # candidate hearing is pre-selected (NewsMention.hearing_id is set),
+    # but it needs a Justice's one-click confirm/reject rather than being
+    # auto-attached outright.
+    suggested_pending_review = "suggested_pending_review"
+    # Real evidence, not the doc's original guess, drove this one: pulling
+    # production's actual review queue found it dominated by articles with
+    # no case number, no extractable party name, AND no court-relevance
+    # language at all (school board votes, weather, opinion columns) --
+    # general-purpose news feeds aren't filtered to court content before
+    # this pipeline sees them. Those get discarded outright instead of
+    # silently inflating an already-unworkable queue; a real court story
+    # missing extractable details still lands in unmatched_review, not here.
+    discarded = "discarded"
+
+
+class MatchConfidence(str, enum.Enum):
+    high = "high"
+    medium = "medium"
+    low = "low"
 
 
 class SubscriptionFilterType(str, enum.Enum):
@@ -285,7 +305,12 @@ class Hearing(Base):
 
     @property
     def has_news_mention(self) -> bool:
-        return any(nm.match_status != MatchStatus.unmatched_review for nm in self.news_mentions)
+        # Phase-6 doc: explicit allowlist, not "!= unmatched_review" --
+        # that used to also count a merely-*suggested* match (not yet
+        # confirmed by a Justice) or a discarded one as "in the news,"
+        # which the new confidence-tiered statuses made actually wrong.
+        confirmed = (MatchStatus.auto_matched, MatchStatus.manually_linked)
+        return any(nm.match_status in confirmed for nm in self.news_mentions)
 
     @property
     def time_sort_key(self) -> int:
@@ -322,7 +347,22 @@ class NewsMention(Base):
     extracted_party_candidates: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
 
     match_status: Mapped[MatchStatus] = mapped_column(Enum(MatchStatus), nullable=False, index=True)
+    # Phase-6 doc, Section 6: null until a match attempt actually scored
+    # something (a pure case-number match doesn't need a confidence tier
+    # at all -- it's always high). match_signals is the diagnosis tool
+    # Section 1 asked for: exactly which signals fired and their raw
+    # values, not just the final tier -- see
+    # app/jobs/news_matching.py::MatchEvaluation.signals for the shape.
+    match_confidence: Mapped[Optional[MatchConfidence]] = mapped_column(Enum(MatchConfidence), nullable=True)
+    match_signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object
     fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    # Phase-6 doc, Section 5: retroactive re-matching needs to know which
+    # rows are still worth re-attempting (unmatched_review/
+    # suggested_pending_review, not auto_matched/manually_linked/
+    # discarded) without re-scanning every row ever seen -- tracked
+    # directly rather than inferred solely from match_status so a future
+    # status value doesn't silently break the re-match query.
+    last_match_attempt_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     hearing: Mapped["Optional[Hearing]"] = relationship(back_populates="news_mentions")
 

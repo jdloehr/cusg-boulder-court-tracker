@@ -220,6 +220,58 @@ build produced real, useful results, and also caught a real bug:
   The unmatched/review-queue path, by contrast, **is** demonstrated end to
   end with real, live-fetched articles.
 
+### 4a. Phase-6 diagnosis: why real matches still weren't happening, weeks into production
+
+The original finding above ("no real automated match ... during build ...
+an honest data fact, not a bug") held for the initial build window. Weeks
+later, with the site live and both pipelines running daily in
+production, a Phase-6 follow-up doc came in assuming the cause was a
+party-name **format mismatch** -- specifically, that Colorado's docket
+export stores names as `LASTNAME, FIRSTNAME MIDDLE` while news articles
+write `Firstname Lastname`, and that a naive exact-string comparison was
+silently failing on the order difference. Checked directly against real
+production data before writing a line of new matching logic, per that
+doc's own Section 1 instruction ("confirm rather than guess"):
+
+- **The format assumption was wrong.** Every one of 4,672 real, live
+  production `Hearing.party_names` entries checked is `FIRSTNAME [MIDDLE]
+  LASTNAME`, all caps (e.g. `JOHN CARLSTROM`, `ABEL CHAVARRIA
+  MORQUECHO`) -- already the same word order news articles use. The
+  existing `ilike` comparison already handled the case difference. Word
+  order was never the problem.
+- **Cross-referencing all 487 real articles then sitting in production's
+  `unmatched_review` queue against those same 4,672 real hearing names,
+  looking for any genuine same-person full-name co-occurrence, found
+  zero.** Consistent with the original build-time finding above: on any
+  given day, there just isn't much natural overlap between what's
+  currently in the rolling docket window and what local news happens to
+  cover.
+- **The queue's real problem was noise, not silently-discarded good
+  matches.** Sampling that 487-item queue found it overwhelmingly
+  non-court content -- a Boulder Valley school board vote, a corn-and-
+  potato-chowder recipe, a governor's dog's obituary, opinion columns,
+  redistricting politics. The RSS/WordPress feeds this pipeline polls
+  (Section 4 above) aren't pre-filtered to court/crime content before
+  this pipeline ever sees them -- only Daily Camera's WordPress source is
+  scoped to a "Crime and Public Safety" category at the source; the
+  others hand over everything. A confidence-tiering fix alone (Phase-6
+  doc, Section 3) would not have touched this -- it needed an explicit
+  relevance gate, which is what `should_discard`
+  (`app/jobs/news_matching.py`) actually is: an article with no case
+  number, no extractable party-name candidate, *and* no court-relevant
+  language at all is discarded automatically rather than added to an
+  already-unworkable queue.
+
+None of this means the matching logic itself had nothing worth
+improving -- fuzzy first-name/middle-initial tolerance, date-proximity
+gating, and category-consistency downweighting (all now in
+`app/jobs/news_matching.py`) are real, worthwhile improvements on their
+own merits. The point of checking first was narrowing which of the
+Phase-6 doc's proposed fixes was actually addressing the observed
+problem, rather than assuming the doc's own diagnosis and possibly
+missing the real one (queue noise) entirely. See
+`docs/ARCHITECTURE.md`'s Phase 6 section for what was built.
+
 ## 5. CourtListener federal supplement -- real, working, no token needed for search
 
 `courtlistener.com`'s free search API worked reliably throughout build

@@ -439,6 +439,84 @@ migrations.py`) and is naturally idempotent: once an address has changed,
 the old one in the mapping no longer matches anything. See
 `docs/DEPLOYMENT.md`'s "Updating a Justice's login email."
 
+## Phase 6 additions (news-to-case matching fix)
+
+A fifth follow-up document: the news-monitoring pipeline was pulling
+articles, but almost none were ending up linked to hearings. The doc's
+own diagnosis-first instruction (Section 1) was followed literally,
+against real production data, before writing any new matching logic --
+see `docs/DATA_SOURCE_FINDINGS.md` section 4a for the full account. Short
+version: the doc's assumed root cause (a `LASTNAME, FIRSTNAME` vs
+`Firstname Lastname` format mismatch) turned out to be wrong -- real
+production data confirmed both sides already use the same word order --
+and the real problem was the review queue being overwhelmed with non-
+court content from unfiltered general-news feeds, not silently-discarded
+good matches.
+
+- **Matching logic moved to a new module**, `app/jobs/news_matching.py`,
+  shared between ingestion (`app/jobs/news_monitor.py`) and the
+  retroactive re-match pass (below) so both use identical scoring:
+  - `name_match_score()`: last name must match exactly (the anchor
+    signal); first name tolerates an exact match, an initial-vs-full-name
+    match, or a fuzzy/nickname difference (`difflib.SequenceMatcher`) --
+    real improvements over the old exact-substring check, just not the
+    fix for the format assumption that turned out to be correct already.
+  - Date-proximity gating (`DATE_WINDOW_DAYS = 21`): a name candidate is
+    only scored against hearings within three weeks of the article's
+    publish date, applied as a SQL-level pre-filter (not just a post-hoc
+    check) for real query-cost reasons at this project's actual scale
+    (thousands of hearings).
+  - Category-consistency downweighting: an article whose language clearly
+    reads as one category disagreeing with the candidate hearing's actual
+    category demotes an otherwise-strong match from high to medium
+    confidence rather than blocking it outright (Section 2's own
+    framing: "a signal to lower confidence, not auto-match").
+  - `has_court_relevance()`: the relevance gate that came out of the real
+    diagnosis, not the doc's original ask -- an article with no case
+    number, no name candidate, and no court-relevant language at all
+    (`should_discard`) is discarded outright rather than queued, which is
+    what actually made the queue usable again.
+- **Confidence tiers** (`MatchStatus.suggested_pending_review`,
+  `MatchStatus.discarded` -- two new enum values on the pre-existing
+  `matchstatus` type, plus a new `matchconfidence` type/column): case
+  number match, or a strong name match with date-proximity agreement, is
+  `auto_matched`; a real but less-certain candidate is
+  `suggested_pending_review` (hearing_id set, awaiting a one-click
+  confirm/reject); no case number/no name/no court-relevant language is
+  `discarded`. `Hearing.has_news_mention` was quietly wrong under the old
+  "anything but unmatched_review counts" logic once these new statuses
+  existed (a merely-suggested or discarded mention would have counted as
+  "in the news") -- fixed to an explicit allowlist
+  (`auto_matched`/`manually_linked`).
+- **Review queue UX** (`app/routers/admin.py`,
+  `frontend/.../AdminDashboard.jsx`): the queue now shows suggested
+  matches with their candidate hearing front and center and one-click
+  confirm/reject, a "link by case number" field (no more pasting a raw
+  hearing UUID) alongside the still-supported hearing-ID path, and a
+  visible pending-count badge on the sidebar tab itself -- visible before
+  ever opening the tab, directly answering Section 4's "so it isn't easy
+  to forget about."
+- **Retroactive re-matching** (`app/jobs/news_monitor.py::
+  retroactively_rematch`, called from `app/jobs/docket_pull.py` right
+  after every successful pull): re-scores unresolved rows from the last
+  30 days against the *current* Hearing table, since a story can run
+  before its case's docket entry exists yet. Only ever promotes toward a
+  more confident outcome, never demotes or re-discards a row a human may
+  already be looking at. Wrapped so a failure here never turns a
+  successful docket pull into a reported one.
+- **Diagnosis logging** (Section 1's own ask): one structured log line
+  per article -- case numbers found, party candidates found, the full
+  match-evaluation signals dict, and the final outcome -- plus those same
+  signals persisted on `NewsMention.match_signals` (JSON) so this is
+  inspectable after the fact, not just at the moment a log line scrolled
+  by.
+- **Two pre-existing, unrelated flaky tests fixed along the way**
+  (`test_hearing_sorting.py`, `test_docket_pull.py`): both hardcoded a
+  fixed calendar date as a stand-in for "today," which broke the moment
+  real wall-clock time passed that date -- caught because the full test
+  suite was run as part of this phase's own verification, not something
+  this phase's changes caused.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

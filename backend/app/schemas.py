@@ -40,6 +40,7 @@ from app.models import (
     HearingStatus,
     HearingTypeCategory,
     LivestreamSourceType,
+    MatchConfidence,
     MatchStatus,
     ProceedingStage,
     ReportTargetType,
@@ -49,7 +50,38 @@ from app.models import (
 )
 
 
+class LinkNewsMentionIn(BaseModel):
+    """Phase-6 doc, Section 4: link by case number directly from the
+    queue, not just a raw hearing UUID (still supported for the rare
+    case a curator already knows it)."""
+    hearing_id: Optional[str] = None
+    case_number: Optional[str] = None
+
+
+class SuggestedHearingOut(BaseModel):
+    """The candidate hearing a suggested_pending_review NewsMention is
+    proposing -- shown directly in the review queue (Phase-6 doc, Section
+    4) so confirming/rejecting doesn't need a second lookup."""
+    id: str
+    case_number: str
+    hearing_type_display: str
+    date: date
+    party_names: list[str] = []
+
+    @field_validator("party_names", mode="before")
+    @classmethod
+    def _parse_party_names(cls, value):
+        if isinstance(value, str):
+            return json.loads(value) if value else []
+        return value or []
+
+
 class NewsMentionOut(BaseModel):
+    """Phase-6 doc, Section 1: extracted_case_numbers/
+    extracted_party_candidates/match_confidence/match_signals are exactly
+    the diagnosis this phase started from not having visible anywhere --
+    exposed here (Editor-only; this schema is never used on a public
+    endpoint) rather than left sitting in the DB unexamined."""
     model_config = ConfigDict(from_attributes=True)
     id: str
     article_url: str
@@ -57,6 +89,25 @@ class NewsMentionOut(BaseModel):
     headline: str
     published_at: Optional[datetime]
     match_status: MatchStatus
+    match_confidence: Optional[MatchConfidence] = None
+    extracted_case_numbers: list[str] = []
+    extracted_party_candidates: list[str] = []
+    match_signals: Optional[dict] = None
+    suggested_hearing: Optional[SuggestedHearingOut] = None
+
+    @field_validator("extracted_case_numbers", "extracted_party_candidates", mode="before")
+    @classmethod
+    def _parse_json_list(cls, value):
+        if isinstance(value, str):
+            return json.loads(value) if value else []
+        return value or []
+
+    @field_validator("match_signals", mode="before")
+    @classmethod
+    def _parse_json_object(cls, value):
+        if isinstance(value, str):
+            return json.loads(value) if value else None
+        return value
 
 
 class CommunitySubmissionOut(BaseModel):

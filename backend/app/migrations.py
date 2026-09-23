@@ -88,18 +88,50 @@ POSTGRES_MIGRATIONS = [
     "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64);",
     "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_backup_code_hashes TEXT;",
+
+    # Phase-6 doc, Section 3/6 (news-matching confidence tiers): two new
+    # values on the pre-existing `matchstatus` enum type (create_all()
+    # never adds a value to an enum type that already exists, the same
+    # class of drift scripts/check_enum_drift.py was originally built
+    # for -- see that script's docstring), a brand-new `matchconfidence`
+    # enum type (needed by a column on the pre-existing `news_mentions`
+    # table, so create_all() won't create it on its own either -- same
+    # reasoning as livestreamsourcetype in the Phase-2 entry above), and
+    # the new columns themselves.
+    "ALTER TYPE matchstatus ADD VALUE IF NOT EXISTS 'suggested_pending_review';",
+    "ALTER TYPE matchstatus ADD VALUE IF NOT EXISTS 'discarded';",
+    """
+    DO $$ BEGIN
+        CREATE TYPE matchconfidence AS ENUM ('high', 'medium', 'low');
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    """,
+    "ALTER TABLE news_mentions ADD COLUMN IF NOT EXISTS match_confidence matchconfidence;",
+    "ALTER TABLE news_mentions ADD COLUMN IF NOT EXISTS match_signals TEXT;",
+    "ALTER TABLE news_mentions ADD COLUMN IF NOT EXISTS last_match_attempt_at TIMESTAMP "
+    "NOT NULL DEFAULT CURRENT_TIMESTAMP;",
 ]
 
 
 def run_startup_migrations(engine) -> None:
     """No-op against SQLite (local dev/demo just wipes and recreates the
     file when the schema changes -- see docs/ARCHITECTURE.md). Against
-    Postgres, applies every patch above inside one transaction; each
-    statement is written to be a true no-op if already applied, so this
-    is safe to run on literally every startup, including ones where
-    nothing changed."""
+    Postgres, applies every patch above; each statement is written to be
+    a true no-op if already applied, so this is safe to run on literally
+    every startup, including ones where nothing changed.
+
+    Each statement gets its own transaction (a fresh `engine.begin()`
+    per statement, not one big transaction for the whole list) for two
+    reasons: `ALTER TYPE ... ADD VALUE` -- needed since Phase 6 added one
+    to this list -- has real cross-version quirks around running inside a
+    transaction block with other DDL (pre-Postgres-12 disallowed it
+    entirely; 12+ allows it but forbids *using* the new value in that
+    same transaction), so isolating it sidesteps depending on exactly
+    which Postgres version production runs. It also means a failure
+    partway through this list doesn't roll back statements that already
+    succeeded -- strictly safer for a list that runs, unconditionally, on
+    every single boot forever."""
     if engine.dialect.name != "postgresql":
         return
-    with engine.begin() as conn:
-        for statement in POSTGRES_MIGRATIONS:
+    for statement in POSTGRES_MIGRATIONS:
+        with engine.begin() as conn:
             conn.execute(text(statement))

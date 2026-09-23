@@ -408,6 +408,19 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .admin-nav a.active, .admin-nav button.active { background: var(--navy); color: #fff; }
 .admin-nav a:hover, .admin-nav button:hover { background: var(--accent-soft); }
 
+/* Phase-6 doc, Section 4: a visible pending-review count, so a queue
+   full of real work doesn't just sit there unnoticed. */
+.queue-count-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 table.data-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 table.data-table th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); border-bottom: 1px solid var(--navy); padding: 0.4rem 0.5rem; }
 table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }

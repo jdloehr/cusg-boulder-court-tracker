@@ -60,17 +60,24 @@ export const api = {
     }),
   reviewQueueHearings: () => request("/api/admin/review-queue/hearings", { headers: authHeaders() }),
   reviewQueueNewsMentions: () => request("/api/admin/review-queue/news-mentions", { headers: authHeaders() }),
+  reviewQueueNewsMentionsCount: () =>
+    request("/api/admin/review-queue/news-mentions/count", { headers: authHeaders() }),
   reviewQueueCommunitySubmissions: () =>
     request("/api/admin/review-queue/community-submissions", { headers: authHeaders() }),
   approveCommunitySubmission: (id) =>
     request(`/api/admin/community-submissions/${id}/approve`, { method: "POST", headers: authHeaders() }),
   rejectCommunitySubmission: (id) =>
     request(`/api/admin/community-submissions/${id}/reject`, { method: "POST", headers: authHeaders() }),
-  linkNewsMention: (mentionId, hearingId) =>
-    request(`/api/admin/news-mentions/${mentionId}/link?hearing_id=${encodeURIComponent(hearingId)}`, {
-      method: "POST",
-      headers: authHeaders(),
+  // Phase-6 doc, Section 4: link by case number OR hearing_id -- pass
+  // exactly one of the two fields in `payload` ({case_number} or {hearing_id}).
+  linkNewsMention: (mentionId, payload) =>
+    request(`/api/admin/news-mentions/${mentionId}/link`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify(payload),
     }),
+  confirmSuggestedNewsMention: (mentionId) =>
+    request(`/api/admin/news-mentions/${mentionId}/confirm`, { method: "POST", headers: authHeaders() }),
+  rejectSuggestedNewsMention: (mentionId) =>
+    request(`/api/admin/news-mentions/${mentionId}/reject`, { method: "POST", headers: authHeaders() }),
   discardNewsMention: (mentionId) =>
     request(`/api/admin/news-mentions/${mentionId}`, { method: "DELETE", headers: authHeaders() }),
   draftBlurb: (hearingId, text) =>

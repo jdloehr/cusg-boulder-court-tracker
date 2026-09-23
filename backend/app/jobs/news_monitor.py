@@ -1,9 +1,14 @@
 """
 Phase 2 (Section 2.2 / 11): poll local news RSS feeds, extract case numbers
 and candidate party names from each article, and cross-reference against
-the Hearing table. A match attaches a NewsMention row (match_status=
-auto_matched); no match queues the article for manual curator review
-(match_status=unmatched_review) per Section 2.2's "No-match handling".
+the Hearing table.
+
+Phase 6: matching itself (scoring, confidence tiers, the relevance gate
+that decides whether an unmatched article is worth a human's attention at
+all) now lives in app/jobs/news_matching.py, shared with the retroactive
+re-match pass below -- this module stays responsible for fetching/
+parsing feeds and turning a match evaluation into a persisted NewsMention
+row, plus the per-article diagnosis logging Phase 6, Section 1 asked for.
 
 This is a secondary *enrichment* signal layered on the docket-export
 pipeline (jobs/docket_pull.py) -- it never creates Hearing rows itself.
@@ -14,7 +19,7 @@ import html
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import feedparser
 import httpx
@@ -23,11 +28,16 @@ from sqlalchemy.orm import Session
 from app.alerting import alert_job_failure
 from app.case_categories import find_case_numbers_in_text
 from app.config import NEWS_SOURCES, NEWS_SOURCES_DISABLED
-from app.models import Hearing, HearingStatus, JobRun, MatchStatus, NewsMention
+from app.jobs.news_matching import evaluate_match
+from app.models import JobRun, MatchConfidence, MatchStatus, NewsMention
 
 logger = logging.getLogger(__name__)
 
 JOB_NAME = "news_monitor"
+# Phase-6 doc, Section 5: how far back to look when retrying previously-
+# unresolved articles against hearings that didn't exist (or weren't
+# matchable) the first time around.
+RETRO_MATCH_WINDOW_DAYS = 30
 
 # Very lightweight proper-noun-run extractor for candidate party names, used
 # only as a fallback when no case number is found in the text. Looks for
@@ -135,30 +145,19 @@ def _parse_wp_json_entries(raw_content: str) -> list[dict]:
     return entries
 
 
-def match_article_to_hearing(db: Session, case_numbers: list[str], party_candidates: list[str]) -> Hearing | None:
-    for case_number in case_numbers:
-        hearing = (
-            db.query(Hearing)
-            .filter(Hearing.case_number.ilike(case_number), Hearing.status != HearingStatus.cancelled)
-            .first()
-        )
-        if hearing:
-            return hearing
-
-    for candidate in party_candidates:
-        hearing = (
-            db.query(Hearing)
-            .filter(Hearing.party_names.ilike(f"%{candidate}%"), Hearing.status != HearingStatus.cancelled)
-            .first()
-        )
-        if hearing:
-            return hearing
-    return None
+def _status_for(evaluation) -> MatchStatus:
+    if evaluation.hearing is None:
+        return MatchStatus.discarded if evaluation.should_discard else MatchStatus.unmatched_review
+    return (
+        MatchStatus.auto_matched if evaluation.confidence == MatchConfidence.high
+        else MatchStatus.suggested_pending_review
+    )
 
 
 def process_feed(db: Session, source_name: str, raw_content: str, now: datetime,
-                  source_type: str = "rss") -> tuple[int, int, int]:
-    """Returns (articles_seen, auto_matched, queued_for_review).
+                  source_type: str = "rss") -> tuple[int, int, int, int, int]:
+    """Returns (articles_seen, auto_matched, suggested, queued_for_review,
+    discarded).
 
     `source_type` is "rss" (feedparser, the common case) or "wp_json" (a
     WordPress REST API posts response -- see _parse_wp_json_entries)."""
@@ -167,7 +166,7 @@ def process_feed(db: Session, source_name: str, raw_content: str, now: datetime,
     else:
         entries = _parse_rss_entries(raw_content)
 
-    seen = matched = queued = 0
+    seen = auto_matched = suggested = queued = discarded = 0
 
     for entry in entries:
         url = entry["url"]
@@ -190,26 +189,107 @@ def process_feed(db: Session, source_name: str, raw_content: str, now: datetime,
         case_numbers = find_case_numbers_in_text(text_for_matching)
         party_candidates = extract_party_candidates(f"{headline}\n{summary}")
 
-        hearing = match_article_to_hearing(db, case_numbers, party_candidates)
+        evaluation = evaluate_match(db, case_numbers, party_candidates, published_at, text_for_matching)
+        status = _status_for(evaluation)
+
+        # Phase-6 doc, Section 1: exactly what was found, what was
+        # attempted, and the final outcome -- one line per article, the
+        # diagnosis tool this whole phase started from not having.
+        logger.info(
+            "news_matching url=%s case_numbers=%s party_candidates=%s outcome=%s confidence=%s signals=%s",
+            url, case_numbers, party_candidates, status.value,
+            evaluation.confidence.value if evaluation.confidence else None, evaluation.signals,
+        )
 
         mention = NewsMention(
-            hearing_id=hearing.id if hearing else None,
+            hearing_id=evaluation.hearing.id if evaluation.hearing else None,
             article_url=url,
             source_name=source_name,
             headline=headline,
             published_at=published_at,
             extracted_case_numbers=json.dumps(case_numbers),
             extracted_party_candidates=json.dumps(party_candidates),
-            match_status=MatchStatus.auto_matched if hearing else MatchStatus.unmatched_review,
+            match_status=status,
+            match_confidence=evaluation.confidence if evaluation.hearing else None,
+            match_signals=json.dumps(evaluation.signals),
             fetched_at=now,
+            last_match_attempt_at=now,
         )
         db.add(mention)
-        if hearing:
-            matched += 1
+        if status == MatchStatus.auto_matched:
+            auto_matched += 1
+        elif status == MatchStatus.suggested_pending_review:
+            suggested += 1
+        elif status == MatchStatus.discarded:
+            discarded += 1
         else:
             queued += 1
 
-    return seen, matched, queued
+    return seen, auto_matched, suggested, queued, discarded
+
+
+def retroactively_rematch(db: Session, now: datetime,
+                           window_days: int = RETRO_MATCH_WINDOW_DAYS) -> tuple[int, int]:
+    """Phase-6 doc, Section 5: a story can run before its case's docket
+    entry exists yet, or before enough is known to match confidently.
+    Called from the docket-pull job (app/jobs/docket_pull.py) after each
+    successful pull -- exactly when new/updated hearings are most likely
+    to turn a previously-unresolved article into a real match -- rather
+    than only ever evaluating an article once, at ingestion.
+
+    Re-scores using each row's already-extracted case numbers/party
+    candidates (no need to re-fetch the article itself) against the
+    *current* Hearing table. Only ever moves a row toward a more
+    confident outcome (unmatched/suggested -> suggested/auto-matched);
+    never re-discards or demotes a row a human might already be looking
+    at. Returns (rows_checked, rows_promoted)."""
+    cutoff = now - timedelta(days=window_days)
+    candidates = (
+        db.query(NewsMention)
+        .filter(
+            NewsMention.match_status.in_([MatchStatus.unmatched_review, MatchStatus.suggested_pending_review]),
+            NewsMention.fetched_at >= cutoff,
+        )
+        .all()
+    )
+
+    checked = promoted = 0
+    for mention in candidates:
+        checked += 1
+        case_numbers = json.loads(mention.extracted_case_numbers) if mention.extracted_case_numbers else []
+        party_candidates = json.loads(mention.extracted_party_candidates) if mention.extracted_party_candidates else []
+        # Only the headline is available this long after ingestion (the
+        # full article body/summary was never persisted -- see
+        # NewsMention in app/models.py) -- an honest approximation for
+        # the court-relevance/category-consistency signals, not the full
+        # text the original evaluation had.
+        full_text = mention.headline
+
+        evaluation = evaluate_match(db, case_numbers, party_candidates, mention.published_at, full_text)
+        new_status = _status_for(evaluation)
+
+        # Only promote -- an unmatched/suggested row moving to
+        # auto_matched or suggested_pending_review with a real candidate
+        # now attached. Never move a row *backwards* (e.g. to discarded)
+        # here; a human may already be looking at it, and this pass's
+        # only job is catching cases that have since become matchable.
+        rank = {MatchStatus.unmatched_review: 0, MatchStatus.suggested_pending_review: 1, MatchStatus.auto_matched: 2}
+        if rank.get(new_status, -1) > rank.get(mention.match_status, -1):
+            logger.info(
+                "news_rematch url=%s old_status=%s new_status=%s confidence=%s signals=%s",
+                mention.article_url, mention.match_status.value, new_status.value,
+                evaluation.confidence.value if evaluation.confidence else None, evaluation.signals,
+            )
+            mention.hearing_id = evaluation.hearing.id if evaluation.hearing else mention.hearing_id
+            mention.match_status = new_status
+            mention.match_confidence = evaluation.confidence
+            mention.match_signals = json.dumps(evaluation.signals)
+            promoted += 1
+        mention.last_match_attempt_at = now
+
+    if candidates:
+        db.commit()
+    return checked, promoted
 
 
 def run_news_monitor(db: Session, feed_texts: dict[str, str] | None = None) -> JobRun:
@@ -224,7 +304,7 @@ def run_news_monitor(db: Session, feed_texts: dict[str, str] | None = None) -> J
     db.add(job_run)
     db.flush()
 
-    total_seen = total_matched = total_queued = 0
+    total_seen = total_auto_matched = total_suggested = total_queued = total_discarded = 0
     per_source_errors: dict[str, str] = {}
 
     if feed_texts is not None:
@@ -242,18 +322,25 @@ def run_news_monitor(db: Session, feed_texts: dict[str, str] | None = None) -> J
                 resp.raise_for_status()
                 raw_content = resp.text
 
-            seen, matched, queued = process_feed(db, source_name, raw_content, now, source_type=source["type"])
+            seen, auto_matched, suggested, queued, discarded = process_feed(
+                db, source_name, raw_content, now, source_type=source["type"]
+            )
             total_seen += seen
-            total_matched += matched
+            total_auto_matched += auto_matched
+            total_suggested += suggested
             total_queued += queued
-            logger.info("news_monitor[%s]: %d new articles, %d matched, %d queued for review",
-                        source_name, seen, matched, queued)
+            total_discarded += discarded
+            logger.info(
+                "news_monitor[%s]: %d new articles, %d auto-matched, %d suggested, "
+                "%d queued for review, %d discarded (no signal)",
+                source_name, seen, auto_matched, suggested, queued, discarded,
+            )
         except Exception as exc:  # noqa: BLE001 - one bad source shouldn't kill the whole run
             logger.warning("news_monitor[%s] failed: %s", source_name, exc)
             per_source_errors[source_name] = str(exc)
 
     job_run.rows_seen = total_seen
-    job_run.rows_upserted = total_matched + total_queued
+    job_run.rows_upserted = total_auto_matched + total_suggested + total_queued
     job_run.finished_at = datetime.utcnow()
 
     if per_source_errors and len(per_source_errors) == len(sources):
