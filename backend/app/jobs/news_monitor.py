@@ -292,6 +292,69 @@ def retroactively_rematch(db: Session, now: datetime,
     return checked, promoted
 
 
+def backfill_rematch_all(db: Session, now: datetime) -> dict:
+    """An explicit, admin-triggered sweep (`POST /api/admin/news-mentions/
+    backfill-rematch`) -- distinct from the automatic
+    retroactively_rematch() above in two ways: no 30-day window (covers
+    every unresolved row, however old), and it's allowed to move a row in
+    *either* direction, including newly discarding one, since a curator
+    consciously running this understands it may reclassify the backlog.
+    retroactively_rematch() never discards precisely because it runs
+    silently in the background where a human might already be mid-review;
+    this one is a deliberate, visible action.
+
+    Exists because of a real, concrete situation: this endpoint shipped
+    the same day as the confidence-tiering/relevance-gate logic itself,
+    so production had 487 pre-existing unmatched_review rows evaluated
+    under the *old* all-or-nothing logic -- almost entirely non-court
+    noise (see docs/DATA_SOURCE_FINDINGS.md section 4a) that the new
+    should_discard gate would now correctly filter out, but that gate
+    only runs on newly-ingested articles without this. Returns a summary
+    dict rather than a bare tuple since there are more outcomes worth
+    reporting here than the 2-value promote/no-op of the automatic pass."""
+    rows = (
+        db.query(NewsMention)
+        .filter(NewsMention.match_status.in_([MatchStatus.unmatched_review, MatchStatus.suggested_pending_review]))
+        .all()
+    )
+
+    summary = {"checked": len(rows), "discarded": 0, "promoted_to_suggested": 0, "promoted_to_auto_matched": 0,
+               "unchanged": 0}
+    for mention in rows:
+        case_numbers = json.loads(mention.extracted_case_numbers) if mention.extracted_case_numbers else []
+        party_candidates = json.loads(mention.extracted_party_candidates) if mention.extracted_party_candidates else []
+        full_text = mention.headline  # see retroactively_rematch's docstring for why only the headline
+
+        evaluation = evaluate_match(db, case_numbers, party_candidates, mention.published_at, full_text)
+        new_status = _status_for(evaluation)
+
+        if new_status == mention.match_status:
+            summary["unchanged"] += 1
+            mention.last_match_attempt_at = now
+            continue
+
+        logger.info(
+            "news_backfill_rematch url=%s old_status=%s new_status=%s confidence=%s signals=%s",
+            mention.article_url, mention.match_status.value, new_status.value,
+            evaluation.confidence.value if evaluation.confidence else None, evaluation.signals,
+        )
+        mention.hearing_id = evaluation.hearing.id if evaluation.hearing else None
+        mention.match_status = new_status
+        mention.match_confidence = evaluation.confidence
+        mention.match_signals = json.dumps(evaluation.signals)
+        mention.last_match_attempt_at = now
+        if new_status == MatchStatus.discarded:
+            summary["discarded"] += 1
+        elif new_status == MatchStatus.suggested_pending_review:
+            summary["promoted_to_suggested"] += 1
+        elif new_status == MatchStatus.auto_matched:
+            summary["promoted_to_auto_matched"] += 1
+
+    if rows:
+        db.commit()
+    return summary
+
+
 def run_news_monitor(db: Session, feed_texts: dict[str, str] | None = None) -> JobRun:
     """Pass feed_texts (source_name -> raw RSS/XML) to run against fixtures
     (tests) instead of hitting the live network for every configured

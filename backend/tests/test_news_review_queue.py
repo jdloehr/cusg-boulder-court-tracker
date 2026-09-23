@@ -202,6 +202,36 @@ def test_link_by_hearing_id_still_works(ctx):
     assert r.json()["match_status"] == "manually_linked"
 
 
+def test_backfill_rematch_endpoint_discards_the_noise_row(ctx):
+    client, Session = ctx
+    r = client.post("/api/admin/news-mentions/backfill-rematch", headers=_auth(client))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # mention-unmatched's headline ("Former deputy pleads guilty") reads
+    # as court-relevant, so it should survive; mention-discarded was
+    # already terminal and untouched (checked stays 2: suggested + unmatched).
+    assert body["checked"] == 2
+    assert body["discarded"] == 0
+
+    db = Session()
+    still_there = db.query(NewsMention).filter(NewsMention.id == "mention-unmatched").first()
+    assert still_there.match_status == MatchStatus.unmatched_review
+    db.close()
+
+
+def test_backfill_rematch_requires_editor(ctx):
+    client, Session = ctx
+    db = Session()
+    db.add(AdminUser(email="contributor@test.local", hashed_password=hash_password("pw"),
+                      role=AdminRole.contributor))
+    db.commit()
+    db.close()
+    login = client.post("/api/admin/login", json={"email": "contributor@test.local", "password": "pw"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    r = client.post("/api/admin/news-mentions/backfill-rematch", headers=headers)
+    assert r.status_code == 403
+
+
 def test_discard_endpoint_still_deletes_the_row_outright(ctx):
     client, Session = ctx
     r = client.delete("/api/admin/news-mentions/mention-unmatched", headers=_auth(client))

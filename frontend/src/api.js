@@ -80,6 +80,8 @@ export const api = {
     request(`/api/admin/news-mentions/${mentionId}/reject`, { method: "POST", headers: authHeaders() }),
   discardNewsMention: (mentionId) =>
     request(`/api/admin/news-mentions/${mentionId}`, { method: "DELETE", headers: authHeaders() }),
+  backfillRematchNewsMentions: () =>
+    request("/api/admin/news-mentions/backfill-rematch", { method: "POST", headers: authHeaders() }),
   draftBlurb: (hearingId, text) =>
     request(`/api/admin/hearings/${hearingId}/draft-blurb`, {
       method: "PATCH",

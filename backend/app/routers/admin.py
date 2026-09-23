@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.auth import create_access_token, get_current_admin, require_editor, verify_password
 from app.db import get_db
 from app.jobs.appellate_supplement import PRESET_COURTS, search_candidates
+from app.jobs.news_monitor import backfill_rematch_all
 from app.rate_limit import check_rate_limit, client_ip
 from app.totp import consume_backup_code, verify_totp_code
 from app.models import (
@@ -287,6 +288,23 @@ def link_news_mention(mention_id: str, payload: LinkNewsMentionIn, db: Session =
     db.commit()
     db.refresh(mention)
     return _news_mention_out(mention)
+
+
+@router.post("/news-mentions/backfill-rematch")
+def backfill_rematch_news_mentions(db: Session = Depends(get_db), admin: AdminUser = Depends(require_editor)):
+    """Explicit, on-demand: re-evaluates every unresolved (unmatched/
+    suggested) NewsMention under the *current* matching logic -- for
+    when that logic has changed since some of the backlog was first
+    ingested (see app/jobs/news_monitor.py::backfill_rematch_all's
+    docstring for the real situation this shipped to fix: 487 rows
+    evaluated under pre-confidence-tiering logic, almost all genuine
+    noise the new relevance gate now correctly discards). Editor-only --
+    unlike confirm/reject/link, this can reclassify a large chunk of the
+    queue in bulk, worth gating a notch more than the routine actions."""
+    summary = backfill_rematch_all(db, datetime.utcnow())
+    _log(db, admin, "backfilled_news_mention_rematch", "news_mention", None, json.dumps(summary))
+    db.commit()
+    return summary
 
 
 @router.delete("/news-mentions/{mention_id}")

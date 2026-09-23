@@ -321,6 +321,90 @@ def test_retroactive_rematch_ignores_rows_outside_the_window(db):
     assert (checked, promoted) == (0, 0)
 
 
+def test_backfill_rematch_all_discards_zero_signal_rows(db):
+    """The real situation this shipped for: an existing unmatched_review
+    row that predates the relevance gate, with no case number, no name
+    candidate, and no court-relevant language at all -- the new gate
+    should now discard it."""
+    import datetime as dt
+    from app.jobs.news_monitor import backfill_rematch_all
+
+    mention = NewsMention(
+        article_url="https://example.test/backfill-1", source_name="Test Source",
+        headline="Boulder Valley school board votes to close four elementary schools",
+        extracted_case_numbers=json.dumps([]), extracted_party_candidates=json.dumps([]),
+        match_status=MatchStatus.unmatched_review, fetched_at=dt.datetime.utcnow(),
+    )
+    db.add(mention)
+    db.commit()
+
+    summary = backfill_rematch_all(db, dt.datetime.utcnow())
+    assert summary == {"checked": 1, "discarded": 1, "promoted_to_suggested": 0,
+                        "promoted_to_auto_matched": 0, "unchanged": 0}
+    db.refresh(mention)
+    assert mention.match_status == MatchStatus.discarded
+
+
+def test_backfill_rematch_all_leaves_genuinely_court_relevant_rows_alone(db):
+    import datetime as dt
+    from app.jobs.news_monitor import backfill_rematch_all
+
+    mention = NewsMention(
+        article_url="https://example.test/backfill-2", source_name="Test Source",
+        headline="Former deputy accused of punching wife in Longmont gets probation as part of plea",
+        extracted_case_numbers=json.dumps([]), extracted_party_candidates=json.dumps([]),
+        match_status=MatchStatus.unmatched_review, fetched_at=dt.datetime.utcnow(),
+    )
+    db.add(mention)
+    db.commit()
+
+    summary = backfill_rematch_all(db, dt.datetime.utcnow())
+    assert summary["discarded"] == 0
+    assert summary["unchanged"] == 1
+    db.refresh(mention)
+    assert mention.match_status == MatchStatus.unmatched_review
+
+
+def test_backfill_rematch_all_can_also_promote(db):
+    import datetime as dt
+    from app.jobs.news_monitor import backfill_rematch_all
+
+    hearing = _make_hearing("2026CR009999", ["Alex Dawson"])
+    hearing.date = dt.date(2026, 9, 15)
+    published = dt.datetime(2026, 9, 10)
+    mention = NewsMention(
+        article_url="https://example.test/backfill-3", source_name="Test Source",
+        headline="Alex Dawson case draws attention ahead of trial", published_at=published,
+        extracted_case_numbers=json.dumps([]), extracted_party_candidates=json.dumps(["Alex Dawson"]),
+        match_status=MatchStatus.unmatched_review, fetched_at=dt.datetime.utcnow(),
+    )
+    db.add_all([hearing, mention])
+    db.commit()
+
+    summary = backfill_rematch_all(db, dt.datetime.utcnow())
+    assert summary["promoted_to_auto_matched"] == 1
+    db.refresh(mention)
+    assert mention.match_status == MatchStatus.auto_matched
+    assert mention.hearing_id == hearing.id
+
+
+def test_backfill_rematch_all_ignores_already_resolved_rows(db):
+    import datetime as dt
+    from app.jobs.news_monitor import backfill_rematch_all
+
+    resolved = NewsMention(
+        article_url="https://example.test/backfill-4", source_name="Test Source",
+        headline="Already handled", extracted_case_numbers=json.dumps([]),
+        extracted_party_candidates=json.dumps([]), match_status=MatchStatus.discarded,
+        fetched_at=dt.datetime.utcnow(),
+    )
+    db.add(resolved)
+    db.commit()
+
+    summary = backfill_rematch_all(db, dt.datetime.utcnow())
+    assert summary["checked"] == 0
+
+
 def test_retroactive_rematch_skips_already_resolved_rows(db):
     import datetime as dt
     from app.jobs.news_monitor import retroactively_rematch

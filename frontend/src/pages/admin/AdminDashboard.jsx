@@ -61,7 +61,7 @@ export default function AdminDashboard() {
         </nav>
         <div>
           {tab === "hearings" && <HearingReviewQueue admin={admin} />}
-          {tab === "news" && <NewsReviewQueue onCountChange={setNewsQueueCount} />}
+          {tab === "news" && <NewsReviewQueue admin={admin} onCountChange={setNewsQueueCount} />}
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
           {tab === "federal" && <AppellateSupplement admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
@@ -154,11 +154,13 @@ function HearingReviewQueue({ admin }) {
 // click to confirm or reject) and the original no-candidate-at-all
 // unmatched_review (link by case number, or discard).
 
-function NewsReviewQueue({ onCountChange }) {
+function NewsReviewQueue({ admin, onCountChange }) {
   const [mentions, setMentions] = useState(null);
   const [error, setError] = useState(null);
   const [caseNumberInput, setCaseNumberInput] = useState({});
   const [linkError, setLinkError] = useState({});
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
 
   function load() {
     api.reviewQueueNewsMentions().then((data) => {
@@ -191,6 +193,17 @@ function NewsReviewQueue({ onCountChange }) {
     await api.discardNewsMention(id);
     load();
   }
+  async function backfillRematch() {
+    setBackfillBusy(true);
+    setBackfillResult(null);
+    try {
+      const result = await api.backfillRematchNewsMentions();
+      setBackfillResult(result);
+      load();
+    } finally {
+      setBackfillBusy(false);
+    }
+  }
 
   if (error) return <p className="message-error">{error}</p>;
   if (!mentions) return <p>Loading&hellip;</p>;
@@ -207,6 +220,26 @@ function NewsReviewQueue({ onCountChange }) {
         case number, no name candidate, and no court-relevant language at all are discarded
         automatically and never reach this queue.
       </p>
+      {admin?.role === "editor" && (
+        <div className="card" style={{ marginBottom: "1rem" }}>
+          <p style={{ fontSize: "0.85rem" }}>
+            Re-checks every item below against the current matching logic -- useful after a change to
+            that logic, or to clear out older items (like this queue's original backlog) that predate
+            an improvement.
+          </p>
+          <button className="btn btn-secondary" onClick={backfillRematch} disabled={backfillBusy}>
+            {backfillBusy ? "Re-evaluating…" : "Re-evaluate all under current matching logic"}
+          </button>
+          {backfillResult && (
+            <p className="message-success" style={{ marginTop: "0.5rem" }}>
+              Checked {backfillResult.checked} -- discarded {backfillResult.discarded}, promoted to
+              suggested {backfillResult.promoted_to_suggested}, auto-matched{" "}
+              {backfillResult.promoted_to_auto_matched}, unchanged {backfillResult.unchanged}.
+            </p>
+          )}
+        </div>
+      )}
+
       {mentions.length === 0 && <p>Nothing in the queue right now.</p>}
 
       {suggested.length > 0 && (
