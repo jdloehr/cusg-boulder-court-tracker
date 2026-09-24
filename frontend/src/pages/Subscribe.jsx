@@ -1,13 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import AvailabilityBlockEditor from "../components/AvailabilityBlockEditor.jsx";
+import { useVisitorAvailability } from "../useVisitorAvailability.js";
 
 export default function Subscribe() {
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [filterType, setFilterType] = useState("hearing_type_category");
   const [filterValue, setFilterValue] = useState("jury_trial");
   const [frequency, setFrequency] = useState("weekly_digest");
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Phase-6.2 doc, Section 6: a visitor who already entered personal
+  // availability (Section 5, browser-local) can turn it into a standing
+  // email -- prefilled here rather than re-typed from scratch.
+  const visitorAvailability = useVisitorAvailability();
+  const [availabilityBlocks, setAvailabilityBlocks] = useState(visitorAvailability.blocks);
+
+  useEffect(() => {
+    if (searchParams.get("filterType") === "personal_availability") {
+      onFilterTypeChange("personal_availability");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function onFilterTypeChange(value) {
     setFilterType(value);
@@ -19,6 +35,10 @@ export default function Subscribe() {
       // (see SubscriptionFilterType.new_recommendation in app/models.py).
       setFilterValue("all");
       setFrequency("realtime_for_followed_case");
+    } else if (value === "personal_availability") {
+      setFilterValue("n/a"); // unused for this type too, same reasoning
+      setFrequency("weekly_digest");
+      if (availabilityBlocks.length === 0) setAvailabilityBlocks(visitorAvailability.blocks);
     } else {
       setFilterValue("");
     }
@@ -29,7 +49,13 @@ export default function Subscribe() {
     setBusy(true);
     setStatus(null);
     try {
-      await api.createSubscription({ email, filter_type: filterType, filter_value: filterValue, frequency });
+      await api.createSubscription({
+        email,
+        filter_type: filterType,
+        filter_value: filterValue,
+        frequency,
+        availability_blocks: filterType === "personal_availability" ? availabilityBlocks : undefined,
+      });
       setStatus({
         ok: true,
         message:
@@ -67,6 +93,7 @@ export default function Subscribe() {
             <option value="case_number">A specific case number</option>
             <option value="keyword">Keyword</option>
             <option value="new_recommendation">New court recommendations</option>
+            <option value="personal_availability">My personal availability</option>
           </select>
         </div>
 
@@ -97,8 +124,17 @@ export default function Subscribe() {
             <a href="/recommendations">recommendations board</a>.
           </p>
         )}
+        {filterType === "personal_availability" && (
+          <div>
+            <label>Your free time</label>
+            <p className="disclaimer" style={{ margin: "0 0 0.75rem" }}>
+              We'll only email you about hearings that overlap one of these blocks.
+            </p>
+            <AvailabilityBlockEditor blocks={availabilityBlocks} onChange={setAvailabilityBlocks} />
+          </div>
+        )}
 
-        {filterType !== "new_recommendation" && (
+        {filterType !== "new_recommendation" && filterType !== "personal_availability" && (
           <div>
             <label htmlFor="frequency">Frequency</label>
             <select id="frequency" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
@@ -110,7 +146,11 @@ export default function Subscribe() {
           </div>
         )}
 
-        <button className="btn" type="submit" disabled={busy}>
+        <button
+          className="btn"
+          type="submit"
+          disabled={busy || (filterType === "personal_availability" && availabilityBlocks.length === 0)}
+        >
           {busy ? "Subscribing…" : "Subscribe"}
         </button>
 

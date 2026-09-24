@@ -29,7 +29,7 @@ export default function HearingDetail() {
   return (
     <article>
       <p>
-        <Link to="/">&larr; Back to all hearings</Link>
+        <Link to="/hearings">&larr; Back to all hearings</Link>
       </p>
 
       <div className="detail-header">

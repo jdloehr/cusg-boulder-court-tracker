@@ -109,6 +109,16 @@ POSTGRES_MIGRATIONS = [
     "ALTER TABLE news_mentions ADD COLUMN IF NOT EXISTS match_signals TEXT;",
     "ALTER TABLE news_mentions ADD COLUMN IF NOT EXISTS last_match_attempt_at TIMESTAMP "
     "NOT NULL DEFAULT CURRENT_TIMESTAMP;",
+
+    # Phase-6.2 doc, Section 4 (Justice availability meter): new column on
+    # the pre-existing `admin_users` table.
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS availability_blocks TEXT;",
+
+    # Phase-6.2 doc, Section 6 (newsletter opt-in matched to schedule): a
+    # new value on the pre-existing `subscriptionfiltertype` enum type, and
+    # a new column on the pre-existing `subscriptions` table.
+    "ALTER TYPE subscriptionfiltertype ADD VALUE IF NOT EXISTS 'personal_availability';",
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS availability_blocks TEXT;",
 ]
 
 

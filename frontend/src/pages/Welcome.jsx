@@ -5,15 +5,15 @@ export default function Welcome() {
     <article>
       <h1>Welcome to the CUSG Boulder Court Tracker</h1>
       <p className="disclaimer">
-        A quick tour -- this page is always here (bottom of the "Hearings" page, or just bookmark it)
-        if you want to come back to it.
+        A quick tour -- this page is always here (the site footer, or just bookmark it) if you want to
+        come back to it.
       </p>
 
       <div className="card">
         <h3>What this is</h3>
         <p>
           A planning tool for finding real, upcoming, in-person Boulder-area court proceedings worth
-          sitting in on -- built for the CUSG Supreme Court, and open to any pre-law student or anyone
+          sitting in on -- built for the CUSG Court, and open to any pre-law student or anyone
           else interested in the field of law. Every hearing listed comes from the actual Colorado
           court docket (or, for federal and Colorado appellate cases, a real, currently-scheduled
           case), pulled and checked automatically most days.
@@ -23,7 +23,7 @@ export default function Welcome() {
       <div className="card">
         <h3>Finding a hearing</h3>
         <p>
-          The <Link to="/">Hearings</Link> page defaults to <strong>jury trials and oral arguments /
+          The <Link to="/hearings">Hearings</Link> page defaults to <strong>jury trials and oral arguments /
           motions hearings</strong> -- the two hearing types most worth watching as an observer,
           since they involve actual argument or testimony rather than a two-minute scheduling
           check-in. Use "Show all types" in the Hearing type filter to see everything on the docket,
@@ -113,7 +113,7 @@ export default function Welcome() {
       <div className="card">
         <h3>How fresh is this data?</h3>
         <p>
-          The bar at the top of the <Link to="/">Hearings</Link> page shows when the docket was last
+          The bar at the top of the <Link to="/hearings">Hearings</Link> page shows when the docket was last
           pulled -- it refreshes automatically every morning, and anyone can trigger an early refresh
           by hand if something seems out of date (limited to one every so often, so it can't be
           hammered).

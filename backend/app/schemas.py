@@ -6,9 +6,10 @@ import re
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.auth import validate_password_strength
+from app.availability import WEEKDAY_ABBRS
 
 # Phase-4 doc, Section 2.2: "enforce reasonable length limits on all text
 # fields" -- applies to every email field in this file, not just the
@@ -279,11 +280,40 @@ class HearingOut(BaseModel):
         return cls.model_validate(hearing)
 
 
+class AvailabilityBlock(BaseModel):
+    """Phase-6.2 doc, Section 4/5/6: one recurring weekly free-time block
+    -- the exact same shape used by a Justice's own availability
+    (AdminUser.availability_blocks), a subscriber's personal-availability
+    digest filter (Subscription.availability_blocks), and mirrored
+    client-side (frontend/src/availabilityMatch.js) for the public,
+    browser-local matching in Section 5."""
+    day_of_week: str
+    start_time: str
+    end_time: str
+
+    @field_validator("day_of_week")
+    @classmethod
+    def _valid_day(cls, value):
+        if value not in WEEKDAY_ABBRS:
+            raise ValueError(f"day_of_week must be one of {WEEKDAY_ABBRS}")
+        return value
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _valid_time(cls, value):
+        if not re.match(r"^\d{2}:\d{2}$", value or ""):
+            raise ValueError("time must be in HH:MM 24-hour format")
+        return value
+
+
 class SubscriptionCreate(BaseModel):
     email: str
     filter_type: SubscriptionFilterType
     filter_value: str
     frequency: SubscriptionFrequency
+    # Only used (and required) when filter_type == personal_availability --
+    # see the model validator below.
+    availability_blocks: Optional[list[AvailabilityBlock]] = None
 
     @field_validator("email")
     @classmethod
@@ -297,6 +327,15 @@ class SubscriptionCreate(BaseModel):
             raise ValueError("filter_value must be under 255 characters")
         return value
 
+    @model_validator(mode="after")
+    def _availability_only_for_personal(self):
+        is_personal = self.filter_type == SubscriptionFilterType.personal_availability
+        if is_personal and not self.availability_blocks:
+            raise ValueError("availability_blocks is required for filter_type=personal_availability")
+        if not is_personal and self.availability_blocks:
+            raise ValueError("availability_blocks is only used with filter_type=personal_availability")
+        return self
+
 
 class SubscriptionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -306,6 +345,14 @@ class SubscriptionOut(BaseModel):
     filter_value: str
     frequency: SubscriptionFrequency
     unsubscribe_token: str
+    availability_blocks: list[AvailabilityBlock] = []
+
+    @field_validator("availability_blocks", mode="before")
+    @classmethod
+    def _parse_availability_blocks(cls, value):
+        if isinstance(value, str):
+            return json.loads(value) if value else []
+        return value or []
 
 
 class DataStatusOut(BaseModel):
@@ -653,6 +700,52 @@ class JusticeProfileIn(BaseModel):
         if value and len(value) > 300:
             raise ValueError("Must be under 300 characters")
         return value
+
+
+# --- Phase-6.2 doc, Section 4: Justice-only recurring availability ---------
+# Deliberately separate from JusticeProfileIn/JusticeOut -- those are
+# shared with (or the basis for) the public roster/profile response, and
+# availability must never appear there (Section 4: "completely invisible
+# to non-Justice/public users, both in the UI and in any API response").
+
+class JusticeAvailabilityIn(BaseModel):
+    """Full-replace semantics: send the complete current block list, not
+    an incremental add/remove."""
+    blocks: list[AvailabilityBlock] = []
+
+    @field_validator("blocks")
+    @classmethod
+    def _cap_block_count(cls, value):
+        if len(value) > 50:
+            raise ValueError("Too many availability blocks")
+        return value
+
+
+class JusticeAvailabilityOut(BaseModel):
+    blocks: list[AvailabilityBlock] = []
+
+
+class AvailabilitySummaryRequest(BaseModel):
+    """The hearing_ids the frontend already has from its own
+    GET /api/hearings call -- passed explicitly rather than a
+    date_from/date_to range so this can never disagree with whatever
+    filters (type/category/court/news-only) that other endpoint applied.
+    See routers/account.py::hearings_availability_summary."""
+    hearing_ids: list[str]
+
+    @field_validator("hearing_ids")
+    @classmethod
+    def _cap_hearing_count(cls, value):
+        if len(value) > 200:
+            raise ValueError("Too many hearing_ids in one request")
+        return value
+
+
+class AvailabilitySummaryEntry(BaseModel):
+    free_count: int
+    total: int
+    free_justice_names: list[str]
+    time_known: bool
 
 
 # --- Phase-4 doc, Section 2.3: two-factor authentication --------------------

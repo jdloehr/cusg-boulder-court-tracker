@@ -30,7 +30,7 @@ export default function RequestInvite() {
     <article>
       <h1>Request your CUSG Justice account</h1>
       <p className="disclaimer">
-        For the 7-8 current CUSG Supreme Court Justices. Enter the email an Editor already has on
+        For the 7-8 current CUSG Court Justices. Enter the email an Editor already has on
         file for you, and a one-time signup link will be sent there.
       </p>
       {message ? (

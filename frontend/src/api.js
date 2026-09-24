@@ -174,6 +174,16 @@ export const api = {
   getJustice: (id) => request(`/api/justices/${id}`),
   updateMyProfile: (payload) =>
     request("/api/justices/me/profile", { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),
+  // --- Phase-6.2 doc, Section 4: Justice-only recurring availability ---
+  getMyAvailability: () => request("/api/justices/me/availability", { headers: authHeaders() }),
+  updateMyAvailability: (blocks) =>
+    request("/api/justices/me/availability", {
+      method: "PATCH", headers: authHeaders(), body: JSON.stringify({ blocks }),
+    }),
+  hearingsAvailabilitySummary: (hearingIds) =>
+    request("/api/hearings/availability-summary", {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ hearing_ids: hearingIds }),
+    }),
   // Bypasses the shared request() helper: a photo upload is
   // multipart/form-data, and the browser needs to set that header itself
   // (with the multipart boundary) -- request() always forces

@@ -1,5 +1,5 @@
 """
-CUSG Supreme Court Justice features -- not in the original build prompt,
+CUSG Court Justice features -- not in the original build prompt,
 added on request once it became clear the tool's primary users are the
 court's own 7 Justices, not just pre-law students generally:
 

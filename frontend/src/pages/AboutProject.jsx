@@ -14,7 +14,7 @@ export default function AboutProject() {
         <h3>What this is</h3>
         <p>
           The CUSG Boulder Court Tracker is a planning tool for finding real, upcoming, in-person
-          Boulder-area court proceedings worth sitting in on -- built for the CUSG Supreme Court, and
+          Boulder-area court proceedings worth sitting in on -- built for the CUSG Court, and
           open to any pre-law student, or anyone else interested in the field of law. Every hearing
           listed comes from the actual Colorado court docket, or, for federal and Colorado appellate
           cases, a real, currently-scheduled case.

@@ -27,6 +27,19 @@ export const COURT_LOCATION_TAG = {
   unknown: "Unconfirmed",
 };
 
+// Shared with HearingList.jsx and Home.jsx (Phase-6.2 doc, Section 3's
+// homepage spotlight/weekly-list both need the same labels).
+export const CASE_CATEGORY_LABELS = {
+  criminal: "Criminal (felony)",
+  misdemeanor: "Misdemeanor",
+  traffic: "Traffic",
+  civil: "Civil",
+  domestic_relations: "Domestic Relations",
+  probate: "Probate",
+  juvenile: "Juvenile",
+  other: "Other",
+};
+
 export const COURT_INFO = {
   boulder_county: {
     name: "Boulder County Justice Center",

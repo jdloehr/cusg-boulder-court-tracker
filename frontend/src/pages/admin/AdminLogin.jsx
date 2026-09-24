@@ -28,7 +28,7 @@ export default function AdminLogin() {
       // justice-only account (no curation role) just returns to the
       // hearings list, where attendance/recommendation controls now show
       // up inline on hearing detail pages.
-      navigate(res.role ? "/admin" : "/");
+      navigate(res.role ? "/admin" : "/hearings");
     } catch (err) {
       if (err.status === 428) {
         setNeedsTotp(true);
@@ -49,7 +49,7 @@ export default function AdminLogin() {
     <article>
       <h1>CUSG Team Login</h1>
       <p className="disclaimer">
-        For CUSG Supreme Court Justices and the curation team (Editors and Contributors) only.
+        For CUSG Court Justices and the curation team (Editors and Contributors) only.
         Browsing the tracker doesn't require an account.
       </p>
       <form className="form-grid" onSubmit={onSubmit}>

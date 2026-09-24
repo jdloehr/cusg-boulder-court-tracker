@@ -28,6 +28,8 @@ from sqlalchemy import (
 
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.availability import parse_hearing_time
+
 
 class Base(DeclarativeBase):
     pass
@@ -142,6 +144,9 @@ class SubscriptionFilterType(str, enum.Enum):
     # type (the frontend sends a placeholder) since there's nothing to
     # filter -- every new recommendation qualifies.
     new_recommendation = "new_recommendation"
+    # Phase-6.2 doc, Section 6: filter_value is unused (same reasoning as
+    # new_recommendation above) -- the real filter is availability_blocks.
+    personal_availability = "personal_availability"
 
 
 class SubscriptionFrequency(str, enum.Enum):
@@ -320,15 +325,13 @@ class Hearing(Base):
         sorts it *alphabetically*, not chronologically. Real bug, caught
         against real live data: a day mixing "10:00 AM", "1:00 PM", and
         "9:00 AM" rendered in that exact wrong order, since '1' < '9' as
-        the first character. Unparseable or missing times sort last."""
-        raw = (self.time or "").strip().upper()
-        for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
-            try:
-                parsed = datetime.strptime(raw, fmt)
-                return parsed.hour * 60 + parsed.minute
-            except ValueError:
-                continue
-        return 24 * 60  # unparseable/blank -- after every real time, not before
+        the first character. Unparseable or missing times sort last.
+
+        Delegates to app.availability.parse_hearing_time, the one shared
+        home for this parsing logic (also used by the Phase-6.2 Justice
+        availability meter and digest matching)."""
+        parsed = parse_hearing_time(self.time)
+        return parsed if parsed is not None else 24 * 60  # unparseable/blank -- after every real time, not before
 
 
 class NewsMention(Base):
@@ -532,6 +535,12 @@ class Subscription(Base):
     unsubscribe_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, default=_uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Phase-6.2 doc, Section 6: JSON-encoded list of {day_of_week,
+    # start_time, end_time} blocks, only used when filter_type ==
+    # personal_availability. Same shape/format as AdminUser.availability_blocks
+    # below, and matched with the same app.availability.hearing_matches_blocks
+    # function the Justice-only meter uses.
+    availability_blocks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class AcademicCalendarPeriod(Base):
@@ -546,7 +555,7 @@ class AcademicCalendarPeriod(Base):
 
 class AdminUser(Base):
     """One login covers both possible "hats" (Section 5.4's curation
-    Editor/Contributor roles, and being a CUSG Supreme Court Justice with
+    Editor/Contributor roles, and being a CUSG Court Justice with
     attendance/recommendation privileges) rather than forcing two separate
     accounts for the same real person. `role` and `is_justice` stay
     separate *fields* -- is_justice is identity ("this account is one of
@@ -620,6 +629,13 @@ class AdminUser(Base):
     # also high-entropy random strings, not human-chosen secrets).
     # Consuming one removes it from the list.
     totp_backup_code_hashes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # --- Phase-6.2 doc, Section 4: recurring weekly availability --------
+    # JSON-encoded list of {day_of_week, start_time, end_time} blocks --
+    # Justice-only, never exposed via JusticeOut (the schema shared by the
+    # public roster/profile endpoints). See app/availability.py and the
+    # dedicated /me/availability endpoints in routers/account.py.
+    availability_blocks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class AdminInvite(Base):

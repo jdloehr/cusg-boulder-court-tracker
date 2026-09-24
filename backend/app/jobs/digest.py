@@ -19,10 +19,13 @@ import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+import json
+
 import httpx
 from sqlalchemy.orm import Session
 
 from app.academic_calendar import current_period
+from app.availability import hearing_matches_blocks
 from app.config import EMAIL_BACKEND, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME, SENDGRID_API_KEY
 from app.models import (
     AcademicPeriodType,
@@ -111,6 +114,12 @@ def hearings_matching_subscription(db: Session, sub: Subscription) -> list[Heari
         needle = sub.filter_value.lower()
         return [h for h in hearings if needle in (h.curated_blurb or "").lower()
                 or needle in h.hearing_type_display.lower()]
+    if sub.filter_type == SubscriptionFilterType.personal_availability:
+        # Phase-6.2 doc, Section 6: same overlap function the Justice-only
+        # availability meter uses (app/availability.py), so the digest and
+        # the meter can never disagree with each other.
+        blocks = json.loads(sub.availability_blocks) if sub.availability_blocks else []
+        return [h for h in hearings if hearing_matches_blocks(h.date, h.time, h.duration, blocks)]
     return []
 
 

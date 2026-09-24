@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
+import AvailabilityBlockEditor from "../components/AvailabilityBlockEditor.jsx";
 
 // Phase-3 doc, Section 3: a Justice edits only their own profile --
 // identity comes from the login (require_justice on the backend), never
@@ -17,6 +18,9 @@ export default function EditJusticeProfile() {
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState(null);
+  const [availabilityBlocks, setAvailabilityBlocks] = useState([]);
+  const [availabilityStatus, setAvailabilityStatus] = useState(null);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
 
   useEffect(() => {
     if (!admin?.id) return;
@@ -27,8 +31,23 @@ export default function EditJusticeProfile() {
       setWhyCare(j.why_care || "");
       setFunFact(j.fun_fact || "");
     });
+    api.getMyAvailability().then((a) => setAvailabilityBlocks(a.blocks || []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin?.id]);
+
+  async function onSaveAvailability() {
+    setAvailabilityBusy(true);
+    setAvailabilityStatus(null);
+    try {
+      const updated = await api.updateMyAvailability(availabilityBlocks);
+      setAvailabilityBlocks(updated.blocks || []);
+      setAvailabilityStatus({ ok: true, message: "Availability saved." });
+    } catch (err) {
+      setAvailabilityStatus({ ok: false, message: err.message });
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
 
   if (!admin?.isJustice) return <Navigate to="/admin/login" replace />;
   if (!justice) return <p>Loading&hellip;</p>;
@@ -69,7 +88,7 @@ export default function EditJusticeProfile() {
   return (
     <article>
       <p>
-        <Link to={`/justices/${justice.id}`}>&larr; Back to my profile</Link>
+        <Link to={`/justices#justice-${justice.id}`}>&larr; Back to my profile</Link>
       </p>
       <h1>Edit my profile</h1>
       <p className="disclaimer">
@@ -115,6 +134,21 @@ export default function EditJusticeProfile() {
         </button>
         {status && <p className={status.ok ? "message-success" : "message-error"}>{status.message}</p>}
       </form>
+
+      <div className="card" style={{ marginTop: "1.5rem" }}>
+        <h3>My weekly availability</h3>
+        <p className="disclaimer" style={{ margin: "0 0 1rem" }}>
+          Justices only -- never shown publicly. Used to compute the availability meter on the docket
+          calendar so the court can see when hearings work for everyone.
+        </p>
+        <AvailabilityBlockEditor blocks={availabilityBlocks} onChange={setAvailabilityBlocks} />
+        <button className="btn" type="button" onClick={onSaveAvailability} disabled={availabilityBusy} style={{ marginTop: "1rem" }}>
+          {availabilityBusy ? "Saving…" : "Save availability"}
+        </button>
+        {availabilityStatus && (
+          <p className={availabilityStatus.ok ? "message-success" : "message-error"}>{availabilityStatus.message}</p>
+        )}
+      </div>
     </article>
   );
 }

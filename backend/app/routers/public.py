@@ -4,6 +4,7 @@ browsing, per Section 7: "none required to browse."
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -192,6 +193,10 @@ def create_subscription(payload: SubscriptionCreate, request: Request, db: Sessi
         filter_value=payload.filter_value,
         frequency=payload.frequency,
         unsubscribe_token=str(uuid.uuid4()),
+        availability_blocks=(
+            json.dumps([b.model_dump() for b in payload.availability_blocks])
+            if payload.availability_blocks else None
+        ),
     )
     db.add(sub)
     db.commit()

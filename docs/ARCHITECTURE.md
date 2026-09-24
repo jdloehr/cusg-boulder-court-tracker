@@ -517,6 +517,83 @@ good matches.
   suite was run as part of this phase's own verification, not something
   this phase's changes caused.
 
+## Phase 6.2 additions (consolidated update: branding, homepage, availability)
+
+A consolidated doc covering work that was designed earlier but never
+shipped, plus one new ask (extending availability matching to public
+visitors with a matching newsletter opt-in). Non-negotiable per the doc:
+nothing already working regresses.
+
+- **Justice profile consolidation** (`frontend/src/pages/Justices.jsx`):
+  the old click-through directory (circular photo tiles, each linking to
+  its own `/justices/:id` page) is gone. Every Justice's full profile now
+  renders inline on one continuous page, alternating photo side per
+  entry, square-framed photos. `JusticeLink.jsx` now links to
+  `/justices#justice-<id>` instead of a separate URL; the old
+  `/justices/:id` route redirects there (`JusticeIdRedirect` in
+  `App.jsx`) so any previously-shared link still resolves. React Router
+  doesn't scroll to a `#fragment` on its own for an in-app navigation, so
+  `Justices.jsx` does it manually on mount/hash-change.
+- **"CUSG Court," never "Supreme Court"** for this project's own team:
+  8 self-referential mentions across frontend copy and two backend
+  docstrings changed. `CourtLocation.us_supreme_court`/
+  `colorado_supreme_court` and every other reference to the real U.S./
+  Colorado Supreme Court (the federal case supplement, `courtInfo.js`,
+  the SCOTUS live-audio link) are untouched -- those are real external
+  courts, not this project's self-reference.
+- **Homepage rebuilt as a distinct route** (`frontend/src/pages/Home.jsx`,
+  new): `/` is now a marketing/landing page (hero, "This Week's Pick"
+  spotlight, a pull-quote, a weekly-list preview, a dark-navy about band);
+  the filterable docket (`HearingList.jsx`, internals unchanged) moved to
+  `/hearings`. The header nav shrank to Calendar/Recommendations/Archive/
+  Meet the Justices plus a low-emphasis "Justice Sign In" link (moved
+  from the footer); Welcome/Subscribe/Visiting a Courtroom/About moved
+  into the footer so nothing became unreachable. Root CSS color tokens
+  (`--navy`/`--paper`/`--accent`) were updated site-wide to the approved
+  design's exact values -- a refinement of the existing palette, not a
+  second one. "This Week's Pick" reuses the existing Editor-curated
+  `curated_blurb` field (soonest upcoming hearing with one, falling back
+  to soonest overall) rather than adding a new "featured" flag.
+- **Justice-only availability meter** (`app/availability.py`, new): each
+  Justice records recurring weekly free-time blocks
+  (`AdminUser.availability_blocks`, JSON-encoded, same
+  `{day_of_week, start_time, end_time}` shape used everywhere below) via
+  `GET`/`PATCH /api/justices/me/availability` -- a dedicated endpoint/
+  schema, deliberately never folded into the public `JusticeOut` shape a
+  Justice's profile is otherwise built from. `POST /api/hearings/
+  availability-summary` (Justice-gated via `require_justice`, batched
+  over the exact hearing IDs the caller already has) returns a per-
+  hearing free-Justice count/list, rendered as a red-to-green bar
+  (`AvailabilityMeter.jsx`) -- not a badge, a different shape entirely so
+  it can't be confused with the other two hearing-card indicators below.
+  Completely absent from the DOM and from any network request for a
+  non-Justice viewer.
+- **Public availability matching** (`frontend/src/availabilityMatch.js`,
+  `useVisitorAvailability.js`, `AvailabilityPanel.jsx`, all new): a
+  visitor can enter the same kind of weekly free-time blocks with no
+  login, stored in `localStorage` only (`cusg_visitor_availability`,
+  `cusg_visitor_availability_enabled`) unless they explicitly subscribe.
+  A "Fits your schedule" badge (outlined teal, `.badge-fits-schedule`)
+  appears on matching rows when toggled on -- additive, never filters the
+  list. `availabilityMatch.js` is a deliberate line-for-line JS mirror of
+  `app/availability.py`'s time-parsing/overlap logic (the two can't
+  literally share code across the language boundary), each side
+  commented with a pointer to its counterpart.
+- **Newsletter opt-in matched to schedule**: `Subscription` gained a
+  `personal_availability` filter type and an `availability_blocks`
+  column (same JSON shape). `Subscribe.jsx` prefills the block editor
+  from the visitor's own `localStorage` availability if they already set
+  one. The weekly digest job's per-subscriber dispatch
+  (`app/jobs/digest.py::hearings_matching_subscription`) gained a branch
+  for it, importing the *same* `hearing_matches_blocks` function the
+  meter endpoint uses, so the digest and the meter can never disagree
+  with each other.
+- **Three hearing-card indicators, kept visually distinct**: the existing
+  Justice-recommendation star (solid amber `.badge-news` pill, unchanged)
+  vs. the Justice-only meter (a bar, not a pill) vs. the new "fits your
+  schedule" badge (outlined teal, outside the site's red/amber/navy
+  spectrum) -- verified together on real rows carrying all three at once.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

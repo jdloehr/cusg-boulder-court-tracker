@@ -6,15 +6,18 @@
  */
 
 :root {
-  --navy: #1c2a3a;
+  /* Phase-6.2 doc, Section 3: the approved homepage design's exact
+     values, adopted site-wide (not homepage-scoped) as a refinement of
+     the same palette rather than a second, competing color system. */
+  --navy: #1B2A38;
   --navy-light: #2c4258;
   --charcoal: #2b2f36;
   --ink: #20242b;
   --ink-soft: #565f6b;
-  --paper: #f8f6f1;
+  --paper: #FAF8F3;
   --paper-raised: #ffffff;
   --line: #dcd6c9;
-  --accent: #a15c1f;       /* deep amber -- CTAs + "in the news" flag, used sparingly */
+  --accent: #B45309;       /* amber -- CTAs + "in the news" flag, used sparingly */
   --accent-soft: #f3e3d0;
   --focus-color: black;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
@@ -26,6 +29,11 @@
 
 html, body {
   margin: 0;
+  /* Phase-6.2 doc, Section 3: the about-band's full-bleed 100vw trick
+     (below) can overshoot by a scrollbar's width and introduce a few
+     px of horizontal scroll on desktop -- guard against that here
+     rather than in the component itself. */
+  overflow-x: hidden;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
@@ -86,6 +94,16 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .site-nav a { color: #dbe2e8; text-decoration: none; }
 .site-nav a:hover, .site-nav a.active { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 
+/* Phase-6.2 doc, Section 3: "a small, low-emphasis 'Justice Sign In'
+   link" -- deliberately muted/smaller than the four real nav links it
+   sits alongside, so browsing never looks like it expects a login
+   (same reasoning as the Phase-3 doc's original footer placement). */
+.nav-account-link, .nav-account-link a {
+  font-size: 0.78rem;
+  color: #9aa6b0;
+}
+.nav-account-link a:hover { color: #fff; }
+
 
 main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; width: 100%; }
 
@@ -103,13 +121,14 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   font-size: 0.78rem;
 }
 
-/* Phase-3 doc, Section 2: "a simple, unobtrusive Sign in link" -- lives
-   in the footer, not the main nav, so browsing never looks like it
-   expects a login. */
-.site-footer-account {
-  margin-top: 0.4rem;
-  font-size: 0.78rem;
+/* Phase-6.2 doc, Section 3: the pages the shorter header nav no longer
+   carries (Welcome, Subscribe, Visiting a Courtroom, About) -- still one
+   click away here so nothing becomes unreachable. */
+.site-footer-links {
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
 }
+
 .btn-footer-signout {
   background: transparent;
   border: 1px solid var(--line);
@@ -184,17 +203,11 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   border-bottom-color: var(--accent);
 }
 
-/* --- "Meet the Justices" directory + individual profile --- */
-.justice-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 1.25rem;
-  margin: 1.5rem 0;
-}
-.justice-card {
-  display: block;
-  text-align: center;
-}
+/* --- "Meet the Justices" page --- */
+
+/* .justice-photo still used standalone (circular) on the self-edit
+   photo preview; .justice-photo-square overrides it for the Phase-6.2
+   doc, Section 1 "square-framed, not circular" layout below. */
 .justice-photo, .justice-photo-placeholder {
   width: 7rem;
   height: 7rem;
@@ -212,19 +225,33 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   font-size: 1.8rem;
   color: var(--accent);
 }
-.justice-profile-header {
+
+/* Phase-6.2 doc, Section 1: one continuous page listing every Justice
+   inline, alternating photo side per entry, instead of a click-through
+   directory of circular tiles. */
+.justice-entry {
   display: flex;
-  gap: 1.5rem;
+  gap: 2rem;
   align-items: flex-start;
   flex-wrap: wrap;
-  margin-bottom: 1.5rem;
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 1rem;
 }
-.justice-profile-header .justice-photo,
-.justice-profile-header .justice-photo-placeholder {
-  width: 9rem;
-  height: 9rem;
+.justice-entry:first-of-type { padding-top: 0.5rem; }
+.justice-entry-reverse { flex-direction: row-reverse; }
+.justice-entry-photo { flex-shrink: 0; }
+.justice-entry-info { flex: 1; min-width: 16rem; }
+.justice-photo-square {
+  width: 12rem;
+  height: 12rem;
+  border-radius: 0;
   margin: 0;
-  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .justice-entry, .justice-entry-reverse { flex-direction: column; }
+  .justice-photo-square { width: 100%; height: auto; aspect-ratio: 1; }
 }
 
 /* --- Filter bar --- */
@@ -311,6 +338,12 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .badge-changed { background: #e2c8a5; color: #5c3a12; }
 .badge-cancelled { background: #ddd; color: #666; text-decoration: line-through; }
 .badge-category { background: #eae6da; color: var(--ink-soft); }
+/* Phase-6.2 doc, Section 5/7: outlined (not solid-fill, unlike every
+   other badge here) and teal -- outside the site's red/amber/navy
+   spectrum -- so a visitor's personal "fits your schedule" signal never
+   reads as an official/editorial one, and can't be confused with either
+   end of the Justice-only availability meter's red-green gradient. */
+.badge-fits-schedule { background: transparent; border: 1px solid #2f6f5e; color: #2f6f5e; }
 
 .empty-state { padding: 2.5rem 1rem; text-align: center; color: var(--ink-soft); }
 
@@ -331,6 +364,12 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .btn:hover { background: #8a4c17; border-color: #8a4c17; color: #fff; }
 .btn-secondary { background: transparent; color: var(--navy); border-color: var(--line); }
 .btn-secondary:hover { border-color: var(--navy); color: var(--navy); background: #fff; }
+/* Phase-6.2 doc, Section 3: the homepage hero's primary CTA -- solid
+   navy, distinct from the amber .btn used for "in the news"/CTAs
+   elsewhere, so the hero's own two buttons (navy + outlined) read as a
+   clear primary/secondary pair. */
+.btn-navy { border-color: var(--navy); background: var(--navy); color: #fff; }
+.btn-navy:hover { background: var(--navy-light); border-color: var(--navy-light); color: #fff; }
 .btn-danger { border-color: #a33; background: #a33; }
 .btn-danger:hover { background: #822; border-color: #822; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -426,6 +465,99 @@ table.data-table th { text-align: left; font-size: 0.72rem; text-transform: uppe
 table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 
 .role-tag { font-size: 0.7rem; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 2px; background: var(--navy); color: #fff; }
+
+/* --- Phase-6.2 doc, Section 3: homepage --- */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 2rem;
+  padding: 2.5rem 0;
+}
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+.hero-eyebrow {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  font-weight: 600;
+  margin: 0 0 0.6rem;
+}
+.hero-headline {
+  font-size: 2.6rem;
+  line-height: 1.1;
+  margin: 0 0 1rem;
+}
+.hero-intro {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  max-width: 36rem;
+}
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+.hero-spotlight-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin: 0 0 0.5rem;
+}
+.hero-spotlight { margin-bottom: 0; }
+
+.pull-quote {
+  text-align: center;
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  padding: 1.5rem 1rem;
+  margin: 2.5rem 0;
+}
+.pull-quote p {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 1.3rem;
+  color: var(--navy);
+  margin: 0;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+/* Breaks out of `main`'s max-width to run edge-to-edge, then re-applies
+   the same max-width/padding to its inner content so the text still
+   aligns with the rest of the page. */
+.about-band-wrap {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  margin-top: 3rem;
+}
+.about-band {
+  background: var(--navy);
+  color: #f2efe8;
+  padding: 3rem 1.25rem;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.about-band h2 { color: #fff; }
+.about-band p { max-width: 42rem; line-height: 1.7; font-size: 1.02rem; }
+
+@media (max-width: 800px) {
+  .hero-inner { grid-template-columns: 1fr; }
+  .hero-headline { font-size: 2rem; }
+}
 
 @media (max-width: 700px) {
   .admin-shell { grid-template-columns: 1fr; }

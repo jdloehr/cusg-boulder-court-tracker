@@ -41,21 +41,26 @@ from app.auth import (
     require_justice,
     verify_password,
 )
+from app.availability import hearing_matches_blocks, parse_hearing_time
 from app.config import FRONTEND_URL, INVITE_EXPIRE_HOURS, PASSWORD_RESET_EXPIRE_HOURS
 from app.db import get_db
 from app.jobs.digest import send_email
-from app.models import AdminInvite, AdminRole, AdminUser, JusticeAllowlistEntry, PasswordResetToken
+from app.models import AdminInvite, AdminRole, AdminUser, Hearing, JusticeAllowlistEntry, PasswordResetToken
 from app.photo import InvalidPhotoError, process_profile_photo
 from app.rate_limit import check_rate_limit, client_ip
 from app.schemas import (
     AdminLoginResponse,
     AllowlistEntryIn,
     AllowlistEntryOut,
+    AvailabilitySummaryEntry,
+    AvailabilitySummaryRequest,
     ForgotPasswordIn,
     InviteAcceptIn,
     InviteCreateIn,
     InviteInfoOut,
     InviteOut,
+    JusticeAvailabilityIn,
+    JusticeAvailabilityOut,
     JusticeOut,
     JusticeProfileIn,
     RequestInviteIn,
@@ -363,6 +368,62 @@ def get_justice_photo(justice_id: str, db: Session = Depends(get_db)):
     if not justice or not justice.photo_data:
         raise HTTPException(404, "No photo")
     return Response(content=justice.photo_data, media_type=justice.photo_content_type or "image/jpeg")
+
+
+# --- Phase-6.2 doc, Section 4: Justice-only recurring availability ----------
+# Deliberately separate from /me/profile's JusticeOut-based shape --
+# availability must never be reachable through the same schema the public
+# roster/profile endpoints return (Section 4: "completely invisible to
+# non-Justice/public users, both in the UI and in any API response").
+
+@router.get("/api/justices/me/availability", response_model=JusticeAvailabilityOut)
+def get_my_availability(justice: AdminUser = Depends(require_justice)):
+    blocks = json.loads(justice.availability_blocks) if justice.availability_blocks else []
+    return JusticeAvailabilityOut(blocks=blocks)
+
+
+@router.patch("/api/justices/me/availability", response_model=JusticeAvailabilityOut)
+def update_my_availability(payload: JusticeAvailabilityIn, db: Session = Depends(get_db),
+                            justice: AdminUser = Depends(require_justice)):
+    """Full-replace semantics: send the complete current block list, not
+    an incremental add/remove."""
+    justice.availability_blocks = json.dumps([b.model_dump() for b in payload.blocks])
+    db.commit()
+    return JusticeAvailabilityOut(blocks=payload.blocks)
+
+
+@router.post("/api/hearings/availability-summary", response_model=dict[str, AvailabilitySummaryEntry])
+def hearings_availability_summary(payload: AvailabilitySummaryRequest, db: Session = Depends(get_db),
+                                   justice: AdminUser = Depends(require_justice)):
+    """Justice-only (require_justice -- identity-gated, since this is
+    "is a real Justice," not curation authority). Takes the exact
+    hearing_ids the frontend already has from its own GET /api/hearings
+    call rather than re-deriving a date range here, so the meter can
+    never disagree with whatever filters (type/category/court/news-only)
+    the caller already applied on that other endpoint."""
+    hearings = db.query(Hearing).filter(Hearing.id.in_(payload.hearing_ids)).all()
+    justices = db.query(AdminUser).filter(
+        AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True)
+    ).all()
+    justice_blocks = [
+        (j, json.loads(j.availability_blocks) if j.availability_blocks else [])
+        for j in justices
+    ]
+
+    result: dict[str, AvailabilitySummaryEntry] = {}
+    for hearing in hearings:
+        free_names = [
+            j.display_name or j.email
+            for j, blocks in justice_blocks
+            if hearing_matches_blocks(hearing.date, hearing.time, hearing.duration, blocks)
+        ]
+        result[hearing.id] = AvailabilitySummaryEntry(
+            free_count=len(free_names),
+            total=len(justices),
+            free_justice_names=free_names,
+            time_known=parse_hearing_time(hearing.time) is not None,
+        )
+    return result
 
 
 # --- Phase-4 doc, Section 2.3: two-factor authentication --------------------

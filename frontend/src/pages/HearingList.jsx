@@ -1,26 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api.js";
+import { api, getStoredAdmin } from "../api.js";
 import AcademicCalendarBanner from "../components/AcademicCalendarBanner.jsx";
+import AvailabilityMeter from "../components/AvailabilityMeter.jsx";
+import AvailabilityPanel from "../components/AvailabilityPanel.jsx";
 import DataStatusBar from "../components/DataStatusBar.jsx";
-import { COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
+import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
+import { hearingMatchesBlocks } from "../availabilityMatch.js";
+import { firstSentence } from "../textUtils.js";
+import { useVisitorAvailability } from "../useVisitorAvailability.js";
 
 const HORIZONS = [
   { label: "Next 2 weeks", days: 14 },
   { label: "Next month", days: 30 },
   { label: "This semester", days: 120 },
 ];
-
-const CASE_CATEGORY_LABELS = {
-  criminal: "Criminal (felony)",
-  misdemeanor: "Misdemeanor",
-  traffic: "Traffic",
-  civil: "Civil",
-  domestic_relations: "Domestic Relations",
-  probate: "Probate",
-  juvenile: "Juvenile",
-  other: "Other",
-};
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -41,6 +35,10 @@ export default function HearingList() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [recommendedHearingIds, setRecommendedHearingIds] = useState(new Set());
+  const [availabilitySummary, setAvailabilitySummary] = useState({});
+  const admin = getStoredAdmin();
+  const visitorAvailability = useVisitorAvailability();
 
   useEffect(() => {
     setError(null);
@@ -87,6 +85,41 @@ export default function HearingList() {
     };
   }, [hearingTypeCategory, caseCategory, courtLocation, horizonDays, refreshTick]);
 
+  // Recommendation stars (public) -- fetched once, independent of filters,
+  // since the recommendation board is small and rarely changes mid-visit.
+  useEffect(() => {
+    api
+      .listRecommendations()
+      .then((recs) => setRecommendedHearingIds(new Set(recs.map((r) => r.hearing_id))))
+      .catch(() => {
+        /* non-critical -- the list still works fine without recommendation stars */
+      });
+  }, []);
+
+  // Phase-6.2 doc, Section 4: the Justice-only availability meter --
+  // completely absent (no request at all) for anyone who isn't logged in
+  // as a real Justice. Batched into one call for every hearing currently
+  // loaded, rather than one call per row.
+  useEffect(() => {
+    if (!admin?.isJustice || !hearings || hearings.length === 0) {
+      setAvailabilitySummary({});
+      return;
+    }
+    let ignore = false;
+    api
+      .hearingsAvailabilitySummary(hearings.map((h) => h.id))
+      .then((summary) => {
+        if (!ignore) setAvailabilitySummary(summary);
+      })
+      .catch(() => {
+        /* non-critical -- the list still works fine without the meter */
+      });
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin?.isJustice, hearings]);
+
   const filtered = useMemo(() => {
     if (!hearings) return null;
     return hasNews ? hearings.filter((h) => h.news_mentions?.length > 0) : hearings;
@@ -113,6 +146,7 @@ export default function HearingList() {
 
       <DataStatusBar onRefreshed={() => setRefreshTick((t) => t + 1)} />
       <AcademicCalendarBanner />
+      <AvailabilityPanel />
 
       <div className="filter-bar">
         <div className="filter-field">
@@ -192,7 +226,17 @@ export default function HearingList() {
             })}
           </h2>
           {dayHearings.map((h) => (
-            <HearingRow key={h.id} hearing={h} />
+            <HearingRow
+              key={h.id}
+              hearing={h}
+              isRecommended={recommendedHearingIds.has(h.id)}
+              availability={admin?.isJustice ? availabilitySummary[h.id] : null}
+              fitsVisitorSchedule={
+                visitorAvailability.enabled &&
+                visitorAvailability.blocks.length > 0 &&
+                hearingMatchesBlocks(h.date, h.time, h.duration, visitorAvailability.blocks)
+              }
+            />
           ))}
         </section>
       ))}
@@ -200,7 +244,7 @@ export default function HearingList() {
   );
 }
 
-function HearingRow({ hearing }) {
+function HearingRow({ hearing, isRecommended, availability, fitsVisitorSchedule }) {
   const hasNews = hearing.news_mentions?.length > 0;
   return (
     <Link to={`/hearings/${hearing.id}`} className="hearing-row">
@@ -212,11 +256,14 @@ function HearingRow({ hearing }) {
           {hearing.case_number} &middot; {COURT_LOCATION_LABELS[hearing.court_location] || hearing.court_location}
           {hearing.courtroom ? ` — Courtroom ${hearing.courtroom}` : ""}
         </div>
+        {availability && <AvailabilityMeter summary={availability} />}
       </div>
       <div className="badges">
         {hearing.court_location !== "boulder_county" && (
           <span className="badge badge-federal">{COURT_LOCATION_TAG[hearing.court_location] || hearing.court_location}</span>
         )}
+        {isRecommended && <span className="badge badge-news">&#9733; Recommended</span>}
+        {fitsVisitorSchedule && <span className="badge badge-fits-schedule">&#10003; Fits your schedule</span>}
         {hasNews && <span className="badge badge-news">In the news</span>}
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}
@@ -225,8 +272,3 @@ function HearingRow({ hearing }) {
   );
 }
 
-function firstSentence(text) {
-  if (!text) return "";
-  const idx = text.indexOf(": ");
-  return idx > -1 ? text.slice(0, idx) : text.split(". ")[0];
-}
