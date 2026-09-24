@@ -9,7 +9,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.auth import validate_password_strength
-from app.availability import WEEKDAY_ABBRS
+from app.availability import NUM_SLOTS, WEEKDAY_ABBRS
 
 # Phase-4 doc, Section 2.2: "enforce reasonable length limits on all text
 # fields" -- applies to every email field in this file, not just the
@@ -280,16 +280,14 @@ class HearingOut(BaseModel):
         return cls.model_validate(hearing)
 
 
-class AvailabilityBlock(BaseModel):
-    """Phase-6.2 doc, Section 4/5/6: one recurring weekly free-time block
-    -- the exact same shape used by a Justice's own availability
-    (AdminUser.availability_blocks), a subscriber's personal-availability
-    digest filter (Subscription.availability_blocks), and mirrored
-    client-side (frontend/src/availabilityMatch.js) for the public,
-    browser-local matching in Section 5."""
+class AvailabilityCell(BaseModel):
+    """Phase-6.3 doc: one painted-free 30-min grid cell -- the exact same
+    shape used by a Justice's own availability, a subscriber's personal-
+    availability digest filter, and mirrored client-side
+    (frontend/src/availabilitySlots.js) for the public, browser-local
+    matching. Replaces the Phase-6.2 range-based AvailabilityBlock."""
     day_of_week: str
-    start_time: str
-    end_time: str
+    slot_index: int
 
     @field_validator("day_of_week")
     @classmethod
@@ -298,11 +296,11 @@ class AvailabilityBlock(BaseModel):
             raise ValueError(f"day_of_week must be one of {WEEKDAY_ABBRS}")
         return value
 
-    @field_validator("start_time", "end_time")
+    @field_validator("slot_index")
     @classmethod
-    def _valid_time(cls, value):
-        if not re.match(r"^\d{2}:\d{2}$", value or ""):
-            raise ValueError("time must be in HH:MM 24-hour format")
+    def _valid_slot(cls, value):
+        if not (0 <= value < NUM_SLOTS):
+            raise ValueError(f"slot_index must be between 0 and {NUM_SLOTS - 1}")
         return value
 
 
@@ -313,7 +311,7 @@ class SubscriptionCreate(BaseModel):
     frequency: SubscriptionFrequency
     # Only used (and required) when filter_type == personal_availability --
     # see the model validator below.
-    availability_blocks: Optional[list[AvailabilityBlock]] = None
+    availability_cells: Optional[list[AvailabilityCell]] = None
 
     @field_validator("email")
     @classmethod
@@ -330,10 +328,10 @@ class SubscriptionCreate(BaseModel):
     @model_validator(mode="after")
     def _availability_only_for_personal(self):
         is_personal = self.filter_type == SubscriptionFilterType.personal_availability
-        if is_personal and not self.availability_blocks:
-            raise ValueError("availability_blocks is required for filter_type=personal_availability")
-        if not is_personal and self.availability_blocks:
-            raise ValueError("availability_blocks is only used with filter_type=personal_availability")
+        if is_personal and not self.availability_cells:
+            raise ValueError("availability_cells is required for filter_type=personal_availability")
+        if not is_personal and self.availability_cells:
+            raise ValueError("availability_cells is only used with filter_type=personal_availability")
         return self
 
 
@@ -345,14 +343,11 @@ class SubscriptionOut(BaseModel):
     filter_value: str
     frequency: SubscriptionFrequency
     unsubscribe_token: str
-    availability_blocks: list[AvailabilityBlock] = []
-
-    @field_validator("availability_blocks", mode="before")
-    @classmethod
-    def _parse_availability_blocks(cls, value):
-        if isinstance(value, str):
-            return json.loads(value) if value else []
-        return value or []
+    # Populated by the router via app.availability_slots.load_owner_cells --
+    # there's no JSON column behind this any more (see AvailabilitySlot in
+    # app/models.py), so unlike Phase 6.2 there's no field_validator here
+    # parsing a JSON string; the router always passes a real list.
+    availability_cells: list[AvailabilityCell] = []
 
 
 class DataStatusOut(BaseModel):
@@ -709,20 +704,20 @@ class JusticeProfileIn(BaseModel):
 # to non-Justice/public users, both in the UI and in any API response").
 
 class JusticeAvailabilityIn(BaseModel):
-    """Full-replace semantics: send the complete current block list, not
+    """Full-replace semantics: send the complete current cell list, not
     an incremental add/remove."""
-    blocks: list[AvailabilityBlock] = []
+    cells: list[AvailabilityCell] = []
 
-    @field_validator("blocks")
+    @field_validator("cells")
     @classmethod
-    def _cap_block_count(cls, value):
-        if len(value) > 50:
-            raise ValueError("Too many availability blocks")
+    def _cap_cell_count(cls, value):
+        if len(value) > 7 * NUM_SLOTS:  # the entire grid, at most
+            raise ValueError("Too many availability cells")
         return value
 
 
 class JusticeAvailabilityOut(BaseModel):
-    blocks: list[AvailabilityBlock] = []
+    cells: list[AvailabilityCell] = []
 
 
 class AvailabilitySummaryRequest(BaseModel):
@@ -746,6 +741,23 @@ class AvailabilitySummaryEntry(BaseModel):
     total: int
     free_justice_names: list[str]
     time_known: bool
+
+
+class TeamAvailabilityCell(BaseModel):
+    """Phase-6.3 doc, Section 4: one cell of the "Team Availability"
+    heatmap -- every one of the 7*NUM_SLOTS grid cells, precomputed
+    server-side in one pass rather than the frontend re-deriving counts
+    from raw per-Justice cells."""
+    day_of_week: str
+    slot_index: int
+    free_count: int
+    total: int
+    free_justice_names: list[str]
+
+
+class TeamAvailabilityOut(BaseModel):
+    total_justices: int
+    cells: list[TeamAvailabilityCell]
 
 
 # --- Phase-4 doc, Section 2.3: two-factor authentication --------------------

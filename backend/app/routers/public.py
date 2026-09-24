@@ -4,7 +4,6 @@ browsing, per Section 7: "none required to browse."
 """
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -14,6 +13,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.academic_calendar import current_period
+from app.availability_slots import load_owner_cells, replace_owner_slots
 from app.config import REFRESH_COOLDOWN_MINUTES
 from app.db import SessionLocal, get_db
 from app.jobs.docket_pull import run_docket_pull
@@ -21,6 +21,7 @@ from app.moderation import is_likely_spam_or_profane
 from app.rate_limit import check_rate_limit, client_ip
 from app.models import (
     AppearanceType,
+    AvailabilityOwnerType,
     CaseCategory,
     CommunitySubmission,
     CourtLocation,
@@ -193,15 +194,18 @@ def create_subscription(payload: SubscriptionCreate, request: Request, db: Sessi
         filter_value=payload.filter_value,
         frequency=payload.frequency,
         unsubscribe_token=str(uuid.uuid4()),
-        availability_blocks=(
-            json.dumps([b.model_dump() for b in payload.availability_blocks])
-            if payload.availability_blocks else None
-        ),
     )
     db.add(sub)
+    db.flush()  # assigns sub.id (default=_uuid) before we can attach AvailabilitySlot rows to it
+    if payload.availability_cells:
+        replace_owner_slots(db, AvailabilityOwnerType.personal_subscription, sub.id, payload.availability_cells)
     db.commit()
     db.refresh(sub)
-    return sub
+    return SubscriptionOut(
+        id=sub.id, email=sub.email, filter_type=sub.filter_type, filter_value=sub.filter_value,
+        frequency=sub.frequency, unsubscribe_token=sub.unsubscribe_token,
+        availability_cells=load_owner_cells(db, AvailabilityOwnerType.personal_subscription, sub.id),
+    )
 
 
 @router.delete("/subscriptions/{token}")

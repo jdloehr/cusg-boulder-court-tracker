@@ -6,7 +6,7 @@ import AvailabilityMeter from "../components/AvailabilityMeter.jsx";
 import AvailabilityPanel from "../components/AvailabilityPanel.jsx";
 import DataStatusBar from "../components/DataStatusBar.jsx";
 import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
-import { hearingMatchesBlocks } from "../availabilityMatch.js";
+import { cellsToFreeSlotsByDay, hearingMatchesSlots } from "../availabilitySlots.js";
 import { firstSentence } from "../textUtils.js";
 import { useVisitorAvailability } from "../useVisitorAvailability.js";
 
@@ -39,6 +39,10 @@ export default function HearingList() {
   const [availabilitySummary, setAvailabilitySummary] = useState({});
   const admin = getStoredAdmin();
   const visitorAvailability = useVisitorAvailability();
+  const visitorFreeSlotsByDay = useMemo(
+    () => cellsToFreeSlotsByDay(visitorAvailability.cells),
+    [visitorAvailability.cells]
+  );
 
   useEffect(() => {
     setError(null);
@@ -233,8 +237,8 @@ export default function HearingList() {
               availability={admin?.isJustice ? availabilitySummary[h.id] : null}
               fitsVisitorSchedule={
                 visitorAvailability.enabled &&
-                visitorAvailability.blocks.length > 0 &&
-                hearingMatchesBlocks(h.date, h.time, h.duration, visitorAvailability.blocks)
+                visitorAvailability.cells.length > 0 &&
+                hearingMatchesSlots(h.date, h.time, h.duration, visitorFreeSlotsByDay)
               }
             />
           ))}

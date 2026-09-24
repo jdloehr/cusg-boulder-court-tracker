@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
-import AvailabilityBlockEditor from "../components/AvailabilityBlockEditor.jsx";
+import AvailabilityGrid from "../components/AvailabilityGrid.jsx";
 
 // Phase-3 doc, Section 3: a Justice edits only their own profile --
 // identity comes from the login (require_justice on the backend), never
@@ -18,7 +18,7 @@ export default function EditJusticeProfile() {
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState(null);
-  const [availabilityBlocks, setAvailabilityBlocks] = useState([]);
+  const [availabilityCells, setAvailabilityCells] = useState([]);
   const [availabilityStatus, setAvailabilityStatus] = useState(null);
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
 
@@ -31,7 +31,7 @@ export default function EditJusticeProfile() {
       setWhyCare(j.why_care || "");
       setFunFact(j.fun_fact || "");
     });
-    api.getMyAvailability().then((a) => setAvailabilityBlocks(a.blocks || []));
+    api.getMyAvailability().then((a) => setAvailabilityCells(a.cells || []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin?.id]);
 
@@ -39,8 +39,8 @@ export default function EditJusticeProfile() {
     setAvailabilityBusy(true);
     setAvailabilityStatus(null);
     try {
-      const updated = await api.updateMyAvailability(availabilityBlocks);
-      setAvailabilityBlocks(updated.blocks || []);
+      const updated = await api.updateMyAvailability(availabilityCells);
+      setAvailabilityCells(updated.cells || []);
       setAvailabilityStatus({ ok: true, message: "Availability saved." });
     } catch (err) {
       setAvailabilityStatus({ ok: false, message: err.message });
@@ -138,10 +138,12 @@ export default function EditJusticeProfile() {
       <div className="card" style={{ marginTop: "1.5rem" }}>
         <h3>My weekly availability</h3>
         <p className="disclaimer" style={{ margin: "0 0 1rem" }}>
-          Justices only -- never shown publicly. Used to compute the availability meter on the docket
-          calendar so the court can see when hearings work for everyone.
+          Justices only -- never shown publicly. Click and drag to paint your free time; used to
+          compute the availability meter and{" "}
+          <Link to="/justices/team/availability">Team Availability</Link> heatmap so the court can see
+          when hearings work for everyone.
         </p>
-        <AvailabilityBlockEditor blocks={availabilityBlocks} onChange={setAvailabilityBlocks} />
+        <AvailabilityGrid cells={availabilityCells} onChange={setAvailabilityCells} />
         <button className="btn" type="button" onClick={onSaveAvailability} disabled={availabilityBusy} style={{ marginTop: "1rem" }}>
           {availabilityBusy ? "Saving…" : "Save availability"}
         </button>

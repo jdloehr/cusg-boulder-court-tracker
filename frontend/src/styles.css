@@ -347,6 +347,57 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 
 .empty-state { padding: 2.5rem 1rem; text-align: center; color: var(--ink-soft); }
 
+/* --- Phase-6.3 doc: click-and-drag availability grid --- */
+
+.availability-grid-wrap { max-width: 46rem; }
+.availability-grid {
+  display: grid;
+  gap: 2px;
+  /* grid-template-columns set inline (4rem label column + 7 day columns) */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.availability-grid-corner { }
+.availability-grid-day-label, .availability-grid-time-label {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+}
+.availability-grid-time-label { justify-content: flex-end; padding-right: 0.4rem; white-space: nowrap; }
+.availability-grid-cell {
+  height: 1.15rem;
+  min-width: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--paper-raised);
+  cursor: pointer;
+  padding: 0;
+  /* Without this, the browser's default scroll gesture hijacks a
+     touch-drag before pointer events ever fire -- the exact "doesn't
+     really work on touch" failure the Phase-6.3 doc calls out about the
+     original When2Meet. */
+  touch-action: none;
+}
+.availability-grid-cell:hover { border-color: var(--accent); }
+.availability-grid-cell.is-selected { background: var(--accent); border-color: var(--accent); }
+
+/* --- Phase-6.3 doc, Section 4: "Team Availability" heatmap -- same grid
+   layout as .availability-grid, but each cell's color is a computed
+   free_count/total ratio rather than a boolean selected state. Muted
+   terracotta-to-sage, deliberately desaturated so it reads as a heat
+   scale rather than a stoplight. --- */
+.team-availability-cell {
+  height: 1.4rem;
+  min-width: 2.2rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
+}
+
 /* --- Buttons --- */
 
 .btn {

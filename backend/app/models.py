@@ -159,6 +159,30 @@ class SubscriptionFrequency(str, enum.Enum):
     realtime_for_followed_case = "realtime_for_followed_case"
 
 
+class DayOfWeek(str, enum.Enum):
+    """Phase-6.3 doc: the grid's 7 columns. A real, closed, code-branched-
+    on vocabulary -- same reasoning as every other small fixed-vocabulary
+    enum in this file (SubscriptionFilterType, ReportTargetType,
+    AttendanceStatus) -- not a bare String column."""
+    mon = "mon"
+    tue = "tue"
+    wed = "wed"
+    thu = "thu"
+    fri = "fri"
+    sat = "sat"
+    sun = "sun"
+
+
+class AvailabilityOwnerType(str, enum.Enum):
+    """Phase-6.3 doc, Section 6: which kind of row AvailabilitySlot.owner_id
+    points into -- same polymorphic pattern as ReportTargetType/
+    ContentReport.target_id below (a plain String, not a ForeignKey, since
+    it points into either admin_users or subscriptions depending on this
+    field)."""
+    justice = "justice"
+    personal_subscription = "personal_subscription"
+
+
 class AcademicPeriodType(str, enum.Enum):
     break_ = "break"
     finals = "finals"
@@ -536,11 +560,37 @@ class Subscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Phase-6.2 doc, Section 6: JSON-encoded list of {day_of_week,
-    # start_time, end_time} blocks, only used when filter_type ==
-    # personal_availability. Same shape/format as AdminUser.availability_blocks
-    # below, and matched with the same app.availability.hearing_matches_blocks
-    # function the Justice-only meter uses.
+    # start_time, end_time} range blocks -- superseded by AvailabilitySlot
+    # rows (owner_type=personal_subscription) as of Phase 6.3's grid
+    # redesign. Left in place, unread, rather than dropped -- this
+    # project's migrations have never dropped a column, and real data
+    # here was negligible (one test row) by the time of the redesign.
     availability_blocks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class AvailabilitySlot(Base):
+    """Phase-6.3 doc, Section 6: one painted-free 30-min grid cell (7:00
+    AM-8:00 PM, see app/availability.py's SLOT_WINDOW_START_MIN/NUM_SLOTS).
+    Replaces the range-block JSON columns above as the live source of
+    truth for both a Justice's own recurring availability and a
+    subscriber's personal-availability digest filter.
+
+    owner_type/owner_id mirrors ContentReport.target_type/target_id
+    exactly: owner_id is a plain String, not a ForeignKey, since it points
+    into either admin_users or subscriptions depending on owner_type --
+    resolved by application code branching on owner_type, same as
+    ContentReport is resolved by branching on target_type."""
+    __tablename__ = "availability_slots"
+    __table_args__ = (
+        UniqueConstraint("owner_type", "owner_id", "day_of_week", "slot_index",
+                          name="uq_availability_slot_owner_day_slot"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    owner_type: Mapped[AvailabilityOwnerType] = mapped_column(Enum(AvailabilityOwnerType), nullable=False, index=True)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    day_of_week: Mapped[DayOfWeek] = mapped_column(Enum(DayOfWeek), nullable=False)
+    slot_index: Mapped[int] = mapped_column(Integer, nullable=False)  # 0..25, 7:00 AM-8:00 PM in 30-min steps
 
 
 class AcademicCalendarPeriod(Base):
@@ -631,10 +681,12 @@ class AdminUser(Base):
     totp_backup_code_hashes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # --- Phase-6.2 doc, Section 4: recurring weekly availability --------
-    # JSON-encoded list of {day_of_week, start_time, end_time} blocks --
-    # Justice-only, never exposed via JusticeOut (the schema shared by the
-    # public roster/profile endpoints). See app/availability.py and the
-    # dedicated /me/availability endpoints in routers/account.py.
+    # JSON-encoded list of {day_of_week, start_time, end_time} range
+    # blocks -- superseded by AvailabilitySlot rows (owner_type=justice)
+    # as of Phase 6.3's grid redesign. Left in place, unread, rather than
+    # dropped -- this project's migrations have never dropped a column,
+    # and there was zero real Justice data in it by the time of the
+    # redesign. Justice-only either way, never exposed via JusticeOut.
     availability_blocks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 

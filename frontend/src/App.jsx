@@ -9,6 +9,7 @@ import Recommendations from "./pages/Recommendations.jsx";
 import Archive from "./pages/Archive.jsx";
 import Justices from "./pages/Justices.jsx";
 import EditJusticeProfile from "./pages/EditJusticeProfile.jsx";
+import TeamAvailability from "./pages/TeamAvailability.jsx";
 import AdminLogin from "./pages/admin/AdminLogin.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import AcceptInvite from "./pages/admin/AcceptInvite.jsx";
@@ -41,6 +42,7 @@ function AccountNavLink() {
   const label = admin.displayName || admin.email;
   return (
     <span className="nav-account-link">
+      {admin.isJustice && <NavLink to="/justices/team/availability">Team Availability</NavLink>}{" "}
       {admin.role ? <NavLink to="/admin">{label}</NavLink> : <span>{label}</span>}{" "}
       <button
         className="btn-footer-signout"
@@ -83,6 +85,7 @@ export default function App() {
           <Route path="/archive" element={<Archive />} />
           <Route path="/justices" element={<Justices />} />
           <Route path="/justices/me/edit" element={<EditJusticeProfile />} />
+          <Route path="/justices/team/availability" element={<TeamAvailability />} />
           <Route path="/justices/:id" element={<JusticeIdRedirect />} />
           <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/about" element={<About />} />

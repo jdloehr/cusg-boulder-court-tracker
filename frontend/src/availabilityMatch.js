@@ -1,9 +1,15 @@
-// Phase-6.2 doc, Section 5: client-side mirror of backend/app/availability.py,
-// used for the public, browser-local "fits your schedule" matching -- the
-// two implementations can't literally share code across the Python/JS
-// boundary, so they're kept deliberately small and each side is commented
-// with a pointer to its counterpart. Any change to one should be checked
-// against the other.
+// Phase-6.2/6.3 docs: client-side mirror of backend/app/availability.py's
+// time-parsing functions, used for the public, browser-local "fits your
+// schedule" matching -- the two implementations can't literally share code
+// across the Python/JS boundary, so they're kept deliberately small and
+// each side is commented with a pointer to its counterpart. Any change to
+// one should be checked against the other.
+//
+// Phase 6.3 moved the actual slot-overlap matching (the old
+// hearingMatchesBlocks/blockOverlaps pair, since removed) into
+// availabilitySlots.js, since availability is now a painted grid of
+// slots rather than typed time ranges -- this file keeps only the parsing
+// functions that didn't change.
 
 export const WEEKDAY_ABBRS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
@@ -48,22 +54,3 @@ export function weekdayAbbr(dateObj) {
   return jsSundayFirst[dateObj.getDay()];
 }
 
-function blockOverlaps(startMin, endMin, block) {
-  const blockStart = parseHearingTimeMinutes(block.start_time);
-  const blockEnd = parseHearingTimeMinutes(block.end_time);
-  if (blockStart === null || blockEnd === null) return false;
-  return blockStart < endMin && startMin < blockEnd;
-}
-
-// Mirrors app.availability.hearing_matches_blocks. `hearingDateISO` is a
-// "YYYY-MM-DD" string, matching what GET /api/hearings returns for
-// Hearing.date.
-export function hearingMatchesBlocks(hearingDateISO, hearingTime, hearingDuration, blocks) {
-  const startMin = parseHearingTimeMinutes(hearingTime);
-  if (startMin === null) return false;
-  const endMin = startMin + parseDurationMinutes(hearingDuration);
-  const day = weekdayAbbr(new Date(hearingDateISO + "T00:00:00"));
-  return (blocks || []).some(
-    (block) => block.day_of_week === day && blockOverlaps(startMin, endMin, block)
-  );
-}

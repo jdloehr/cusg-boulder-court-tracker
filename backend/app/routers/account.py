@@ -41,11 +41,20 @@ from app.auth import (
     require_justice,
     verify_password,
 )
-from app.availability import hearing_matches_blocks, parse_hearing_time
+from app.availability import NUM_SLOTS, WEEKDAY_ABBRS, hearing_matches_slots, parse_hearing_time
+from app.availability_slots import load_free_slots_by_day, load_owner_cells, replace_owner_slots
 from app.config import FRONTEND_URL, INVITE_EXPIRE_HOURS, PASSWORD_RESET_EXPIRE_HOURS
 from app.db import get_db
 from app.jobs.digest import send_email
-from app.models import AdminInvite, AdminRole, AdminUser, Hearing, JusticeAllowlistEntry, PasswordResetToken
+from app.models import (
+    AdminInvite,
+    AdminRole,
+    AdminUser,
+    AvailabilityOwnerType,
+    Hearing,
+    JusticeAllowlistEntry,
+    PasswordResetToken,
+)
 from app.photo import InvalidPhotoError, process_profile_photo
 from app.rate_limit import check_rate_limit, client_ip
 from app.schemas import (
@@ -65,6 +74,8 @@ from app.schemas import (
     JusticeProfileIn,
     RequestInviteIn,
     ResetPasswordIn,
+    TeamAvailabilityCell,
+    TeamAvailabilityOut,
     TotpConfirmIn,
     TotpConfirmOut,
     TotpDisableIn,
@@ -370,26 +381,28 @@ def get_justice_photo(justice_id: str, db: Session = Depends(get_db)):
     return Response(content=justice.photo_data, media_type=justice.photo_content_type or "image/jpeg")
 
 
-# --- Phase-6.2 doc, Section 4: Justice-only recurring availability ----------
+# --- Phase-6.2/6.3 docs: Justice-only recurring availability ----------------
 # Deliberately separate from /me/profile's JusticeOut-based shape --
 # availability must never be reachable through the same schema the public
 # roster/profile endpoints return (Section 4: "completely invisible to
 # non-Justice/public users, both in the UI and in any API response").
+# Phase-6.3 doc replaced the range-block JSON columns with AvailabilitySlot
+# rows (a real weekly grid, painted cell-by-cell) -- see
+# app/availability_slots.py for the shared load/replace helpers.
 
 @router.get("/api/justices/me/availability", response_model=JusticeAvailabilityOut)
-def get_my_availability(justice: AdminUser = Depends(require_justice)):
-    blocks = json.loads(justice.availability_blocks) if justice.availability_blocks else []
-    return JusticeAvailabilityOut(blocks=blocks)
+def get_my_availability(justice: AdminUser = Depends(require_justice), db: Session = Depends(get_db)):
+    return JusticeAvailabilityOut(cells=load_owner_cells(db, AvailabilityOwnerType.justice, justice.id))
 
 
 @router.patch("/api/justices/me/availability", response_model=JusticeAvailabilityOut)
 def update_my_availability(payload: JusticeAvailabilityIn, db: Session = Depends(get_db),
                             justice: AdminUser = Depends(require_justice)):
-    """Full-replace semantics: send the complete current block list, not
+    """Full-replace semantics: send the complete current cell list, not
     an incremental add/remove."""
-    justice.availability_blocks = json.dumps([b.model_dump() for b in payload.blocks])
+    replace_owner_slots(db, AvailabilityOwnerType.justice, justice.id, payload.cells)
     db.commit()
-    return JusticeAvailabilityOut(blocks=payload.blocks)
+    return JusticeAvailabilityOut(cells=payload.cells)
 
 
 @router.post("/api/hearings/availability-summary", response_model=dict[str, AvailabilitySummaryEntry])
@@ -405,8 +418,8 @@ def hearings_availability_summary(payload: AvailabilitySummaryRequest, db: Sessi
     justices = db.query(AdminUser).filter(
         AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True)
     ).all()
-    justice_blocks = [
-        (j, json.loads(j.availability_blocks) if j.availability_blocks else [])
+    justice_slots = [
+        (j, load_free_slots_by_day(db, AvailabilityOwnerType.justice, j.id))
         for j in justices
     ]
 
@@ -414,8 +427,8 @@ def hearings_availability_summary(payload: AvailabilitySummaryRequest, db: Sessi
     for hearing in hearings:
         free_names = [
             j.display_name or j.email
-            for j, blocks in justice_blocks
-            if hearing_matches_blocks(hearing.date, hearing.time, hearing.duration, blocks)
+            for j, free_slots_by_day in justice_slots
+            if hearing_matches_slots(hearing.date, hearing.time, hearing.duration, free_slots_by_day)
         ]
         result[hearing.id] = AvailabilitySummaryEntry(
             free_count=len(free_names),
@@ -424,6 +437,43 @@ def hearings_availability_summary(payload: AvailabilitySummaryRequest, db: Sessi
             time_known=parse_hearing_time(hearing.time) is not None,
         )
     return result
+
+
+@router.get("/api/justices/team/availability", response_model=TeamAvailabilityOut)
+def team_availability(db: Session = Depends(get_db), justice: AdminUser = Depends(require_justice)):
+    """Phase-6.3 doc, Section 4: the full weekly heatmap, every one of the
+    7*NUM_SLOTS cells precomputed in one pass -- Justice-gated (identity,
+    not curation role) and never reachable by a non-Justice, same as the
+    per-hearing meter above.
+
+    Deliberately two path segments, not `/api/justices/team-availability`
+    -- a single segment there would structurally collide with (and lose
+    to, since justices.router is included first in app/main.py)
+    `GET /api/justices/{justice_id}` in routers/justices.py, which would
+    otherwise treat "team-availability" as a justice id and 404. Same
+    reasoning as /api/justices/me/availability already being two
+    segments."""
+    justices = db.query(AdminUser).filter(
+        AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True)
+    ).all()
+    justice_slots = [
+        (j, load_free_slots_by_day(db, AvailabilityOwnerType.justice, j.id))
+        for j in justices
+    ]
+
+    cells = []
+    for day in WEEKDAY_ABBRS:
+        for slot_index in range(NUM_SLOTS):
+            free_names = [
+                j.display_name or j.email
+                for j, free_slots_by_day in justice_slots
+                if slot_index in free_slots_by_day.get(day, set())
+            ]
+            cells.append(TeamAvailabilityCell(
+                day_of_week=day, slot_index=slot_index,
+                free_count=len(free_names), total=len(justices), free_justice_names=free_names,
+            ))
+    return TeamAvailabilityOut(total_justices=len(justices), cells=cells)
 
 
 # --- Phase-4 doc, Section 2.3: two-factor authentication --------------------

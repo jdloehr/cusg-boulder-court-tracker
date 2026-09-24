@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
-import AvailabilityBlockEditor from "../components/AvailabilityBlockEditor.jsx";
+import AvailabilityGrid from "../components/AvailabilityGrid.jsx";
 import { useVisitorAvailability } from "../useVisitorAvailability.js";
 
 export default function Subscribe() {
@@ -12,11 +12,11 @@ export default function Subscribe() {
   const [frequency, setFrequency] = useState("weekly_digest");
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
-  // Phase-6.2 doc, Section 6: a visitor who already entered personal
-  // availability (Section 5, browser-local) can turn it into a standing
-  // email -- prefilled here rather than re-typed from scratch.
+  // Phase-6.2/6.3 docs: a visitor who already entered personal
+  // availability (browser-local) can turn it into a standing email --
+  // prefilled here rather than re-painted from scratch.
   const visitorAvailability = useVisitorAvailability();
-  const [availabilityBlocks, setAvailabilityBlocks] = useState(visitorAvailability.blocks);
+  const [availabilityCells, setAvailabilityCells] = useState(visitorAvailability.cells);
 
   useEffect(() => {
     if (searchParams.get("filterType") === "personal_availability") {
@@ -38,7 +38,7 @@ export default function Subscribe() {
     } else if (value === "personal_availability") {
       setFilterValue("n/a"); // unused for this type too, same reasoning
       setFrequency("weekly_digest");
-      if (availabilityBlocks.length === 0) setAvailabilityBlocks(visitorAvailability.blocks);
+      if (availabilityCells.length === 0) setAvailabilityCells(visitorAvailability.cells);
     } else {
       setFilterValue("");
     }
@@ -54,7 +54,7 @@ export default function Subscribe() {
         filter_type: filterType,
         filter_value: filterValue,
         frequency,
-        availability_blocks: filterType === "personal_availability" ? availabilityBlocks : undefined,
+        availability_cells: filterType === "personal_availability" ? availabilityCells : undefined,
       });
       setStatus({
         ok: true,
@@ -128,9 +128,9 @@ export default function Subscribe() {
           <div>
             <label>Your free time</label>
             <p className="disclaimer" style={{ margin: "0 0 0.75rem" }}>
-              We'll only email you about hearings that overlap one of these blocks.
+              We'll only email you about hearings that overlap one of these times.
             </p>
-            <AvailabilityBlockEditor blocks={availabilityBlocks} onChange={setAvailabilityBlocks} />
+            <AvailabilityGrid cells={availabilityCells} onChange={setAvailabilityCells} />
           </div>
         )}
 
@@ -149,7 +149,7 @@ export default function Subscribe() {
         <button
           className="btn"
           type="submit"
-          disabled={busy || (filterType === "personal_availability" && availabilityBlocks.length === 0)}
+          disabled={busy || (filterType === "personal_availability" && availabilityCells.length === 0)}
         >
           {busy ? "Subscribing…" : "Subscribe"}
         </button>
