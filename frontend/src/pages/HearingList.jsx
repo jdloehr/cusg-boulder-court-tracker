@@ -5,6 +5,7 @@ import AcademicCalendarBanner from "../components/AcademicCalendarBanner.jsx";
 import AvailabilityMeter from "../components/AvailabilityMeter.jsx";
 import AvailabilityPanel from "../components/AvailabilityPanel.jsx";
 import DataStatusBar from "../components/DataStatusBar.jsx";
+import HearingCardKey from "../components/HearingCardKey.jsx";
 import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
 import { cellsToFreeSlotsByDay, hearingMatchesSlots } from "../availabilitySlots.js";
 import { firstSentence } from "../textUtils.js";
@@ -201,6 +202,8 @@ export default function HearingList() {
           In the news only
         </label>
       </div>
+
+      <HearingCardKey />
 
       {error && <p className="message-error">Couldn't load hearings: {error}</p>}
 

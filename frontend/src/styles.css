@@ -345,6 +345,26 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
    end of the Justice-only availability meter's red-green gradient. */
 .badge-fits-schedule { background: transparent; border: 1px solid #2f6f5e; color: #2f6f5e; }
 
+/* A small legend explaining the hearing-card indicators above, added on
+   request after a Justice asked what the meter bar meant. */
+.hearing-card-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin: -0.25rem 0 1rem;
+}
+.hearing-card-key-item { display: inline-flex; align-items: center; gap: 0.45rem; }
+.hearing-card-key-meter-swatch {
+  display: inline-block;
+  width: 1.75rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, hsl(0, 70%, 45%), hsl(120, 70%, 45%));
+}
+
 .empty-state { padding: 2.5rem 1rem; text-align: center; color: var(--ink-soft); }
 
 /* --- Phase-6.3 doc: click-and-drag availability grid --- */
