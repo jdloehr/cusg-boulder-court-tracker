@@ -320,8 +320,40 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 }
 .hearing-row:hover { background: #f1ede3; }
 .hearing-row .time { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 0.85rem; padding-top: 0.1rem; }
-.hearing-row .main .type { font-weight: 600; color: var(--navy); }
+.hearing-row .main .type { font-weight: 600; color: var(--navy); display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .hearing-row .main .meta { font-size: 0.82rem; color: var(--ink-soft); margin-top: 0.15rem; }
+
+/* Phase-6.2 doc, Section 4: a compact chip next to the hearing type,
+   not a full-width strip -- short and clickable, easy to tell apart
+   from the row's own text. */
+.availability-meter-wrap { position: relative; display: inline-flex; align-items: center; }
+.availability-meter-bar {
+  width: 1.75rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.availability-meter-bar:hover { opacity: 0.85; }
+.availability-meter-reveal {
+  position: absolute;
+  top: 130%;
+  left: 0;
+  z-index: 5;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--ink-soft);
+  white-space: normal;
+  width: max-content;
+  min-width: 10rem;
+  max-width: 16rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
 .hearing-row .badges { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
 
 .badge {
@@ -360,7 +392,7 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .hearing-card-key-meter-swatch {
   display: inline-block;
   width: 1.75rem;
-  height: 0.4rem;
+  height: 0.55rem;
   border-radius: 999px;
   background: linear-gradient(90deg, hsl(0, 70%, 45%), hsl(120, 70%, 45%));
 }

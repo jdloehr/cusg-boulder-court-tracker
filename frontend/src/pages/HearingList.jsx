@@ -257,13 +257,15 @@ function HearingRow({ hearing, isRecommended, availability, fitsVisitorSchedule 
     <Link to={`/hearings/${hearing.id}`} className="hearing-row">
       <div className="time">{hearing.time || "Time TBD"}</div>
       <div className="main">
-        <div className="type">{firstSentence(hearing.hearing_type_display)}</div>
+        <div className="type">
+          {firstSentence(hearing.hearing_type_display)}
+          {availability && <AvailabilityMeter summary={availability} />}
+        </div>
         <div className="meta">
           {CASE_CATEGORY_LABELS[hearing.case_category] || hearing.case_category} &middot; Case{" "}
           {hearing.case_number} &middot; {COURT_LOCATION_LABELS[hearing.court_location] || hearing.court_location}
           {hearing.courtroom ? ` — Courtroom ${hearing.courtroom}` : ""}
         </div>
-        {availability && <AvailabilityMeter summary={availability} />}
       </div>
       <div className="badges">
         {hearing.court_location !== "boulder_county" && (
