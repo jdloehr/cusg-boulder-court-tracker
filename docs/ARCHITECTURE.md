@@ -594,6 +594,100 @@ nothing already working regresses.
   schedule" badge (outlined teal, outside the site's red/amber/navy
   spectrum) -- verified together on real rows carrying all three at once.
 
+## Phase 8 additions (news tracking system rebuild)
+
+A sixth follow-up document: the Phase 6 fuzzy-matching pipeline (polling
+~6 RSS/WordPress feeds, then scoring every article against every
+hearing) was fragile -- five independent scrapers that could each
+silently break -- and still noisy even after Phase 6's own fixes. This
+phase inverts the architecture entirely: instead of classifying an
+anonymous firehose of articles, it actively searches for news about
+each specific upcoming hearing that's already known (case number, party
+names). Searching for a known case is a fundamentally easier, higher-
+precision problem than classifying an anonymous article -- and one
+search mechanism instead of five scrapers directly means fewer
+independent failure points. As with Phase 6, this followed the doc's
+own diagnosis-first instruction against real data before writing new
+logic: the DA-press-release RSS the doc assumed existed doesn't (checked
+the real Boulder County DA site directly -- static PDFs on a manually
+maintained archive, no feed), and a proposed hard "one row per hearing"
+database constraint would have silently orphaned two real, human-linked
+duplicate articles already in production (checked directly before
+deciding against it).
+
+- **Old pipeline deleted outright**: `app/jobs/news_monitor.py`,
+  `app/jobs/news_matching.py`, and their scripts/tests are gone -- no
+  fuzzy name/date scoring, no RSS feed list (`NEWS_SOURCES`), no
+  confidence tiers left to reason about.
+- **New search job**, `app/jobs/news_search.py`, queries the Google
+  Custom Search JSON API once per eligible hearing (Jury Trial/Oral
+  Argument, not cancelled, not excluded). A case number found in a
+  result is a deterministic Tier 1 auto-match
+  (`MatchStatus.auto_matched`); anything else becomes a Tier 2 "weekly
+  reading list" item (`MatchStatus.in_weekly_reading_list`) for a
+  curator to confirm or dismiss. A result on `bouldercounty.gov` is
+  tagged `SourceType.da_press_release` regardless of tier.
+- **Cadence, not a firehose poll**: two nullable `Hearing` timestamps
+  (`news_search_initial_at`, `news_search_prehearing_at`) drive one
+  daily job doing two passes -- every hearing gets one initial search
+  the first time it's eligible (self-healing on deploy day), and
+  anything still unresolved gets re-searched once within
+  `NEWS_SEARCH_PREHEARING_WINDOW_DAYS` (default 5) of its date. A
+  resolved hearing (`auto_matched`/`manually_linked`/`dismissed`) is
+  never re-searched, which is also most of what keeps daily query volume
+  low (~10-60/day at this project's real scale, against a 100/day free
+  quota).
+- **Soft dedup, not a database constraint**: `NewsMention.article_url`
+  is no longer globally unique, and there's deliberately no uniqueness
+  constraint on `hearing_id` either -- checked production directly and
+  found 8 hearings already carrying more than one `NewsMention` row,
+  including 2 with a human-confirmed second real link. The job's own
+  "check for an existing row before creating one" logic is what stops
+  automated duplicates going forward; it never forces existing or future
+  manual links to collapse.
+- **Quota tracking + real alerting**: a new `ExternalApiUsage` table
+  (`app/external_api_usage.py`) counts queries per API per day and fires
+  an email alert once (`alert_sent_at` gates it) when usage crosses
+  `SEARCH_API_ALERT_THRESHOLD` (default 90/100). `app/alerting.py` grew
+  a real `ALERT_BACKEND=email` path that reuses the existing SendGrid-
+  backed `send_email()` from `app/jobs/digest.py` rather than a new
+  integration -- console-only alerting was silent by construction, which
+  defeated the entire point of a quota-warning ask.
+- **A real, unrelated bug found and fixed along the way**: the weekly
+  digest's GitHub Actions job (`.github/workflows/scheduled-jobs.yml`)
+  only ever set `DATABASE_URL`, never `EMAIL_BACKEND`/`SENDGRID_API_KEY`
+  -- meaning it had almost certainly been silently falling back to
+  console-only logging instead of actually emailing subscribers every
+  Monday since that job was added. Fixed in the same pass since it's the
+  same file and the same root cause (a job's env-var block never set up
+  for real email delivery).
+- **A second real bug caught in this phase's own manual verification**:
+  `GET /api/hearings/{id}` 500'd on any hearing with a news mention,
+  because `NewsMentionOut.hearing` reads the ORM `NewsMention.hearing`
+  relationship (a raw `Hearing` object), and pydantic v2 doesn't
+  propagate `from_attributes=True` into a nested submodel's own
+  validation just because the outer model has it --
+  `NewsMentionHearingSummaryOut` needed the same config itself. Caught
+  by hitting the real endpoint locally with seeded data, not by the test
+  suite (which only ever built that schema by hand with plain values,
+  never round-tripped through the ORM relationship) -- fixed, and a
+  regression test added (`test_news_review_queue.py`) that exercises the
+  real endpoint end to end.
+- **`HearingOut.news_mentions` filter fix**: a `field_validator` mirrors
+  the existing `community_submissions` one, filtering the embedded list
+  down to confirmed statuses (`auto_matched`/`manually_linked`) before
+  it reaches JSON -- fixing a pre-existing bug where `HearingList.jsx`/
+  `HearingDetail.jsx` checked the raw array length instead of the
+  backend's own confirmed-only definition, with zero frontend changes
+  needed to fix it.
+- **Admin UI rebuilt around one queue, not a diagnosis dashboard**: the
+  News tab is now a single "Weekly reading list" (headline, source,
+  source-type badge, the linked hearing's case number/date/parties,
+  Confirm relevant/Dismiss) plus a collapsed read-only "Recent
+  auto-matched" section for transparency -- no case-number input, no
+  backfill button, since a deterministic model has no ambiguity or stale
+  logic left to re-run.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

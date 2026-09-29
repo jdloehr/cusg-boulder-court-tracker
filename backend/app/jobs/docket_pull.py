@@ -396,18 +396,12 @@ def run_docket_pull(db: Session, window_days: int = DOCKET_PULL_WINDOW_DAYS,
         logger.info("docket_pull: %d rows seen, %d upserted, %d marked cancelled",
                     len(rows), upserted, cancelled)
 
-        # Phase-6 doc, Section 5: retroactive news re-matching, run right
-        # after new/updated hearings land -- exactly when a previously-
-        # unresolved article is most likely to turn into a real match.
-        # Wrapped so a failure here (already-committed docket pull) never
-        # gets reported as this job failing.
-        try:
-            from app.jobs.news_monitor import retroactively_rematch
-            checked, promoted = retroactively_rematch(db, now)
-            if checked:
-                logger.info("retroactive news re-match: %d checked, %d promoted", checked, promoted)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("retroactive news re-match failed (docket pull itself still succeeded): %s", exc)
+        # Phase-6 doc, Section 5's retroactive news re-match hook used to
+        # live here -- removed by the Phase 8 news-search rebuild, which
+        # has no fuzzy re-matching left to run. A newly-created hearing
+        # gets its own initial news search on app/jobs/news_search.py's
+        # own daily cadence instead (Hearing.news_search_initial_at IS
+        # NULL covers it automatically), not triggered inline from here.
 
         return job_run
 

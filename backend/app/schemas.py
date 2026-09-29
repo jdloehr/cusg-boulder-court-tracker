@@ -41,28 +41,32 @@ from app.models import (
     HearingStatus,
     HearingTypeCategory,
     LivestreamSourceType,
-    MatchConfidence,
     MatchStatus,
     ProceedingStage,
     ReportTargetType,
+    SourceType,
     SubmissionStatus,
     SubscriptionFilterType,
     SubscriptionFrequency,
 )
 
 
-class LinkNewsMentionIn(BaseModel):
-    """Phase-6 doc, Section 4: link by case number directly from the
-    queue, not just a raw hearing UUID (still supported for the rare
-    case a curator already knows it)."""
-    hearing_id: Optional[str] = None
-    case_number: Optional[str] = None
+class NewsMentionHearingSummaryOut(BaseModel):
+    """Phase 8 doc: the hearing a NewsMention belongs to -- shown
+    alongside every Tier 2 "weekly reading list" item so a curator has
+    full context (case number, date, parties) without a second lookup.
+    Renamed from the Phase-6 doc's SuggestedHearingOut, same shape: a
+    Tier-2 item's hearing context is exactly as useful to show as the
+    old suggested-match candidate was, it's just never ambiguous now.
 
-
-class SuggestedHearingOut(BaseModel):
-    """The candidate hearing a suggested_pending_review NewsMention is
-    proposing -- shown directly in the review queue (Phase-6 doc, Section
-    4) so confirming/rejecting doesn't need a second lookup."""
+    from_attributes=True is required here, not just on the outer
+    NewsMentionOut: a real crash caught in local testing -- the public
+    GET /api/hearings/{id} endpoint 500'd on any hearing with a
+    confirmed news mention, because NewsMentionOut.hearing reads
+    NewsMention.hearing (an ORM relationship, i.e. a raw Hearing object)
+    and pydantic v2 does not propagate from_attributes into a nested
+    submodel's own validation just because the outer model has it."""
+    model_config = ConfigDict(from_attributes=True)
     id: str
     case_number: str
     hearing_type_display: str
@@ -78,11 +82,11 @@ class SuggestedHearingOut(BaseModel):
 
 
 class NewsMentionOut(BaseModel):
-    """Phase-6 doc, Section 1: extracted_case_numbers/
-    extracted_party_candidates/match_confidence/match_signals are exactly
-    the diagnosis this phase started from not having visible anywhere --
-    exposed here (Editor-only; this schema is never used on a public
-    endpoint) rather than left sitting in the DB unexamined."""
+    """Phase 8 doc: a deterministic case-number-found-or-not model has no
+    confidence tier or diagnosis-signals concept left to expose -- the
+    Phase-6 doc's extracted_case_numbers/extracted_party_candidates/
+    match_confidence/match_signals fields are gone. source_type replaces
+    them as the one piece of "how was this found" context worth keeping."""
     model_config = ConfigDict(from_attributes=True)
     id: str
     article_url: str
@@ -90,25 +94,8 @@ class NewsMentionOut(BaseModel):
     headline: str
     published_at: Optional[datetime]
     match_status: MatchStatus
-    match_confidence: Optional[MatchConfidence] = None
-    extracted_case_numbers: list[str] = []
-    extracted_party_candidates: list[str] = []
-    match_signals: Optional[dict] = None
-    suggested_hearing: Optional[SuggestedHearingOut] = None
-
-    @field_validator("extracted_case_numbers", "extracted_party_candidates", mode="before")
-    @classmethod
-    def _parse_json_list(cls, value):
-        if isinstance(value, str):
-            return json.loads(value) if value else []
-        return value or []
-
-    @field_validator("match_signals", mode="before")
-    @classmethod
-    def _parse_json_object(cls, value):
-        if isinstance(value, str):
-            return json.loads(value) if value else None
-        return value
+    source_type: Optional[SourceType] = None
+    hearing: Optional[NewsMentionHearingSummaryOut] = None
 
 
 class CommunitySubmissionOut(BaseModel):
@@ -261,6 +248,27 @@ class HearingOut(BaseModel):
                 "updated_at": row.updated_at,
             })
         return flattened
+
+    @field_validator("news_mentions", mode="before")
+    @classmethod
+    def _only_confirmed_news(cls, value):
+        # Phase 8 doc: mirrors _only_approved below exactly. Without this,
+        # a Tier 2 "weekly reading list" item (which -- unlike the old
+        # Phase-6 "suggested" status -- always has hearing_id set from the
+        # moment it's created, since the search that found it was already
+        # for this specific hearing) would make the "In the news" badge/
+        # filter on HearingList.jsx/HearingDetail.jsx fire for every
+        # hearing with an unreviewed candidate, not just a confirmed one.
+        # Filtering here keeps the embedded list itself the single source
+        # of truth Hearing.has_news_mention already defines, so those two
+        # frontend call sites' existing `.length > 0` checks need no
+        # changes at all.
+        confirmed = {MatchStatus.auto_matched, MatchStatus.manually_linked}
+
+        def status_of(item):
+            return item.get("match_status") if isinstance(item, dict) else getattr(item, "match_status", None)
+
+        return [item for item in (value or []) if status_of(item) in confirmed]
 
     @field_validator("community_submissions", mode="before")
     @classmethod

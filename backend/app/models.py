@@ -111,27 +111,46 @@ class HearingStatus(str, enum.Enum):
 class MatchStatus(str, enum.Enum):
     auto_matched = "auto_matched"
     manually_linked = "manually_linked"
+    # --- Phase 8 doc: the news-search rebuild's only new statuses -----
+    # in_weekly_reading_list: a Tier 2 candidate (no case number found),
+    # awaiting a human relevance judgment -- confirm promotes it to
+    # manually_linked, dismiss sets it to `dismissed` below.
+    in_weekly_reading_list = "in_weekly_reading_list"
+    # dismissed: a human looked at a reading-list item and said "not
+    # relevant" -- kept as a row (not deleted) specifically so the search
+    # job's cadence (app/jobs/news_search.py) never re-surfaces the same
+    # dismissed article for this hearing.
+    dismissed = "dismissed"
+    # --- Legacy Phase-6 statuses -- no longer produced by any code path
+    # after the Phase 8 rebuild shipped. Kept only so SQLAlchemy can still
+    # deserialize the pre-existing production rows built under the old
+    # fuzzy-classification model without erroring; never delete these.
     unmatched_review = "unmatched_review"
-    # Phase-6 doc, Section 3/6: a medium-confidence name match -- a real
-    # candidate hearing is pre-selected (NewsMention.hearing_id is set),
-    # but it needs a Justice's one-click confirm/reject rather than being
-    # auto-attached outright.
     suggested_pending_review = "suggested_pending_review"
-    # Real evidence, not the doc's original guess, drove this one: pulling
-    # production's actual review queue found it dominated by articles with
-    # no case number, no extractable party name, AND no court-relevance
-    # language at all (school board votes, weather, opinion columns) --
-    # general-purpose news feeds aren't filtered to court content before
-    # this pipeline sees them. Those get discarded outright instead of
-    # silently inflating an already-unworkable queue; a real court story
-    # missing extractable details still lands in unmatched_review, not here.
     discarded = "discarded"
 
 
 class MatchConfidence(str, enum.Enum):
+    """Legacy Phase-6 enum -- unused by any code after the Phase 8
+    rebuild (a search result either contains the hearing's own case
+    number or it doesn't; there's no confidence scoring left). Kept,
+    unused, only because NewsMention.match_confidence (also legacy) still
+    references it for old rows."""
     high = "high"
     medium = "medium"
     low = "low"
+
+
+class SourceType(str, enum.Enum):
+    """Phase 8 doc: which kind of hit produced a NewsMention. Purely
+    informational/transparency -- da_press_release is detected post-hoc
+    (the search result's URL is on bouldercounty.gov), not from a
+    separate polling mechanism (confirmed live: the DA's office has no
+    usable press-release RSS feed, just a manually-maintained static-PDF
+    archive page)."""
+    da_press_release = "da_press_release"
+    search_result_case_number = "search_result_case_number"
+    search_result_general = "search_result_general"
 
 
 class SubscriptionFilterType(str, enum.Enum):
@@ -327,6 +346,16 @@ class Hearing(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     last_verified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # --- Phase 8 doc: news-search cadence tracking -----------------------
+    # Two passes, not a re-run-every-day loop: an initial search the
+    # moment this hearing is eligible (news_search_initial_at IS NULL
+    # covers both a brand-new hearing and, on the day this feature
+    # shipped, every pre-existing eligible hearing), and one more a few
+    # days before the hearing date for cases that still have nothing
+    # resolved. See app/jobs/news_search.py for the exact query logic.
+    news_search_initial_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    news_search_prehearing_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     news_mentions: Mapped[list["NewsMention"]] = relationship(back_populates="hearing")
     community_submissions: Mapped[list["CommunitySubmission"]] = relationship(back_populates="hearing")
     attendance: Mapped[list["HearingAttendance"]] = relationship(back_populates="hearing")
@@ -359,36 +388,55 @@ class Hearing(Base):
 
 
 class NewsMention(Base):
+    """Phase 8 doc: since the Phase 8 rebuild, one row is created per
+    hearing (the search job checks for an existing row before creating a
+    new one -- see app/jobs/news_search.py::search_for_hearing), not one
+    per article. No hard database constraint enforces this, deliberately:
+    production already had 8 hearings with more than one row under the
+    old model, including 2 cases where a human had manually linked two
+    separate real articles to the same case -- a hard UNIQUE(hearing_id)
+    would have silently orphaned one of those real links. Soft (job-level)
+    dedup going forward; a human can still deliberately link a second
+    genuinely-relevant article to a case if they want to."""
     __tablename__ = "news_mentions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     hearing_id: Mapped[Optional[str]] = mapped_column(ForeignKey("hearings.id"), nullable=True, index=True)
 
-    article_url: Mapped[str] = mapped_column(String(1000), nullable=False, unique=True)
+    # No longer globally unique as of Phase 8 -- a search result URL (e.g.
+    # a DA press release) can legitimately recur across separate hearings'
+    # searches.
+    article_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     source_name: Mapped[str] = mapped_column(String(120), nullable=False)
     headline: Mapped[str] = mapped_column(String(500), nullable=False)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    # What the extraction pipeline found, kept for reviewer transparency.
-    extracted_case_numbers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
-    extracted_party_candidates: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    # Phase 8 doc: which kind of hit this was -- da_press_release detected
+    # post-hoc from the result URL, not a separate polling source. Never
+    # set on legacy (pre-Phase-8) rows.
+    source_type: Mapped[Optional[SourceType]] = mapped_column(Enum(SourceType), nullable=True)
 
     match_status: Mapped[MatchStatus] = mapped_column(Enum(MatchStatus), nullable=False, index=True)
-    # Phase-6 doc, Section 6: null until a match attempt actually scored
-    # something (a pure case-number match doesn't need a confidence tier
-    # at all -- it's always high). match_signals is the diagnosis tool
-    # Section 1 asked for: exactly which signals fired and their raw
-    # values, not just the final tier -- see
-    # app/jobs/news_matching.py::MatchEvaluation.signals for the shape.
+
+    # --- Legacy Phase-6 columns -------------------------------------
+    # Left in place, unused by any code after the Phase 8 rebuild -- this
+    # project's migrations have never dropped a column (see the Phase
+    # 6.2->6.3 availability rebuild for the same precedent), and there's
+    # no honest way to backfill these for rows built under the old
+    # fuzzy-classification model anyway. A deterministic case-number-
+    # found-or-not model has no confidence tier or diagnosis-signals
+    # concept left to populate on new rows.
+    extracted_case_numbers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    extracted_party_candidates: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
     match_confidence: Mapped[Optional[MatchConfidence]] = mapped_column(Enum(MatchConfidence), nullable=True)
     match_signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object
+
     fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    # Phase-6 doc, Section 5: retroactive re-matching needs to know which
-    # rows are still worth re-attempting (unmatched_review/
-    # suggested_pending_review, not auto_matched/manually_linked/
-    # discarded) without re-scanning every row ever seen -- tracked
-    # directly rather than inferred solely from match_status so a future
-    # status value doesn't silently break the re-match query.
+    # Legacy Phase-6 column: supported the old retroactive-rematch pass,
+    # which no code calls after the Phase 8 rebuild (the new job's own
+    # cadence -- Hearing.news_search_initial_at/news_search_prehearing_at
+    # -- replaces it). Left in place, unused, same reasoning as the other
+    # legacy columns above.
     last_match_attempt_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     hearing: Mapped["Optional[Hearing]"] = relationship(back_populates="news_mentions")
@@ -786,3 +834,26 @@ class JobRun(Base):
     rows_seen: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     rows_upserted: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class ExternalApiUsage(Base):
+    """Phase 8 doc: daily call-count tracking for a metered external API
+    (currently just Google Custom Search, used by app/jobs/news_search.py)
+    -- needed because the job that calls it runs as a separate GitHub
+    Actions process, not the always-on backend, so app/rate_limit.py's
+    in-memory counter (documented there as process-local, doesn't survive
+    a restart or share state across processes) can't track it. One row
+    per (api_name, UTC date); alert_sent_at records whether the quota-
+    approaching alert has already fired today, so record_usage() (see
+    app/external_api_usage.py) only ever sends it once per day regardless
+    of how many more calls happen after crossing the threshold."""
+    __tablename__ = "external_api_usage"
+    __table_args__ = (
+        UniqueConstraint("api_name", "usage_date", name="uq_external_api_usage_name_date"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    api_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    usage_date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    alert_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

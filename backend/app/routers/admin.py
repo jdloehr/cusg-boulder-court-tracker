@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 from app.auth import create_access_token, get_current_admin, require_editor, verify_password
 from app.db import get_db
 from app.jobs.appellate_supplement import PRESET_COURTS, search_candidates
-from app.jobs.news_monitor import backfill_rematch_all
 from app.rate_limit import check_rate_limit, client_ip
 from app.totp import consume_backup_code, verify_totp_code
 from app.models import (
@@ -51,10 +50,9 @@ from app.schemas import (
     CommunitySubmissionReviewOut,
     ExclusionIn,
     HearingOut,
-    LinkNewsMentionIn,
+    NewsMentionHearingSummaryOut,
     NewsMentionOut,
     PublishAppellateCandidateIn,
-    SuggestedHearingOut,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -165,163 +163,100 @@ def review_queue_hearings(db: Session = Depends(get_db), admin: AdminUser = Depe
 
 
 def _news_mention_out(m: NewsMention) -> NewsMentionOut:
-    suggested = None
-    if m.match_status == MatchStatus.suggested_pending_review and m.hearing:
+    hearing_summary = None
+    if m.hearing:
         h = m.hearing
-        suggested = SuggestedHearingOut(
+        hearing_summary = NewsMentionHearingSummaryOut(
             id=h.id, case_number=h.case_number, hearing_type_display=h.hearing_type_display,
             date=h.date, party_names=h.party_names,
         )
     return NewsMentionOut(
         id=m.id, article_url=m.article_url, source_name=m.source_name, headline=m.headline,
-        published_at=m.published_at, match_status=m.match_status, match_confidence=m.match_confidence,
-        extracted_case_numbers=m.extracted_case_numbers, extracted_party_candidates=m.extracted_party_candidates,
-        match_signals=m.match_signals, suggested_hearing=suggested,
+        published_at=m.published_at, match_status=m.match_status, source_type=m.source_type,
+        hearing=hearing_summary,
     )
 
 
-# Phase-6 doc, Section 4: "make the review queue actually usable." The
-# queue now covers two real states -- a medium-confidence *suggested*
-# match with a candidate hearing ready to confirm/reject in one click,
-# and the original no-candidate-at-all unmatched_review -- shown together
-# so a curator sees everything actually waiting for a decision in one
-# place, suggested items first since those take one click to resolve.
+# Phase 8 doc: the review queue is now just the Tier 2 "weekly reading
+# list" -- every row here already has its hearing_id set (the search
+# that found it was for that specific hearing), so there's no more
+# "which hearing does this belong to" ambiguity to resolve, only a
+# relevance judgment (confirm/dismiss, below).
 @router.get("/review-queue/news-mentions", response_model=list[NewsMentionOut])
 def review_queue_news_mentions(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     mentions = (
         db.query(NewsMention)
-        .filter(NewsMention.match_status.in_([MatchStatus.suggested_pending_review, MatchStatus.unmatched_review]))
+        .filter(NewsMention.match_status == MatchStatus.in_weekly_reading_list)
         .order_by(NewsMention.fetched_at.desc())
         .all()
     )
-    # Suggested-with-a-ready-candidate first (one click to resolve),
-    # then the general unmatched queue -- sorted in Python rather than
-    # via the enum column's DB-level ordering, which isn't portable
-    # (Postgres native enums sort by declaration order; SQLite's
-    # string-backed column sorts alphabetically -- neither reliably
-    # matches the priority intended here).
-    mentions.sort(key=lambda m: 0 if m.match_status == MatchStatus.suggested_pending_review else 1)
     return [_news_mention_out(m) for m in mentions]
 
 
 @router.get("/review-queue/news-mentions/count")
 def review_queue_news_mentions_count(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
-    """A visible count, not just a list you have to open to notice --
-    Section 4's own complaint about the original queue: "it isn't easy
-    to forget about" only holds if the count is surfaced somewhere
-    without having to click into the tab first."""
-    count = (
-        db.query(NewsMention)
-        .filter(NewsMention.match_status.in_([MatchStatus.suggested_pending_review, MatchStatus.unmatched_review]))
-        .count()
-    )
+    """A visible count, not just a list you have to open to notice."""
+    count = db.query(NewsMention).filter(NewsMention.match_status == MatchStatus.in_weekly_reading_list).count()
     return {"count": count}
 
 
+@router.get("/news-mentions/auto-matched", response_model=list[NewsMentionOut])
+def auto_matched_news_mentions(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """Phase 8 doc, Section 4's "log every run" transparency ask, as a
+    read-only admin list: Tier 1 hits need no human review (a case
+    number match is unambiguous), but a curator should still be able to
+    see what's been auto-attached recently. No actions here -- if one's
+    wrong, that's a data problem with the search result itself, not
+    something confirm/dismiss on the reading list was ever meant to fix."""
+    mentions = (
+        db.query(NewsMention)
+        .filter(NewsMention.match_status == MatchStatus.auto_matched)
+        .order_by(NewsMention.fetched_at.desc())
+        .limit(50)
+        .all()
+    )
+    return [_news_mention_out(m) for m in mentions]
+
+
 @router.post("/news-mentions/{mention_id}/confirm", response_model=NewsMentionOut)
-def confirm_suggested_news_mention(mention_id: str, db: Session = Depends(get_db),
-                                    admin: AdminUser = Depends(get_current_admin)):
-    """One-click confirm for a suggested_pending_review mention -- the
-    candidate hearing (already attached as hearing_id) becomes the real
-    link; no re-selecting anything."""
-    mention = db.query(NewsMention).filter(NewsMention.id == mention_id).first()
-    if not mention:
-        raise HTTPException(404, "News mention not found")
-    if mention.match_status != MatchStatus.suggested_pending_review or not mention.hearing_id:
-        raise HTTPException(400, "This mention has no suggested match to confirm")
-    mention.match_status = MatchStatus.manually_linked
-    _log(db, admin, "confirmed_suggested_news_mention", "news_mention", mention.id,
-         f"confirmed suggested link to hearing {mention.hearing.case_number}")
-    db.commit()
-    db.refresh(mention)
-    return _news_mention_out(mention)
-
-
-@router.post("/news-mentions/{mention_id}/reject", response_model=NewsMentionOut)
-def reject_suggested_news_mention(mention_id: str, db: Session = Depends(get_db),
-                                   admin: AdminUser = Depends(get_current_admin)):
-    """One-click reject for a suggested_pending_review mention -- the
-    algorithm's candidate was wrong; demotes to the general unmatched
-    queue (not discarded outright -- a human just said "not this one,"
-    not "not court-relevant") so it's still findable for a manual link."""
-    mention = db.query(NewsMention).filter(NewsMention.id == mention_id).first()
-    if not mention:
-        raise HTTPException(404, "News mention not found")
-    if mention.match_status != MatchStatus.suggested_pending_review:
-        raise HTTPException(400, "This mention has no suggested match to reject")
-    rejected_hearing = mention.hearing.case_number if mention.hearing else None
-    mention.hearing_id = None
-    mention.match_status = MatchStatus.unmatched_review
-    _log(db, admin, "rejected_suggested_news_mention", "news_mention", mention.id,
-         f"rejected suggested link to hearing {rejected_hearing}")
-    db.commit()
-    db.refresh(mention)
-    return _news_mention_out(mention)
-
-
-@router.post("/news-mentions/{mention_id}/link", response_model=NewsMentionOut)
-def link_news_mention(mention_id: str, payload: LinkNewsMentionIn, db: Session = Depends(get_db),
-                       admin: AdminUser = Depends(get_current_admin)):
-    """Phase-6 doc, Section 4: link by case number directly (the
-    algorithm genuinely couldn't figure this one out on its own), or by
-    hearing_id if a curator already has it -- exactly one of the two."""
-    mention = db.query(NewsMention).filter(NewsMention.id == mention_id).first()
-    if not mention:
-        raise HTTPException(404, "News mention not found")
-
-    if bool(payload.hearing_id) == bool(payload.case_number):
-        raise HTTPException(400, "Provide exactly one of hearing_id or case_number")
-
-    if payload.case_number:
-        hearing = db.query(Hearing).filter(Hearing.case_number.ilike(payload.case_number)).first()
-        if not hearing:
-            raise HTTPException(404, f"No hearing found with case number {payload.case_number!r}")
-    else:
-        hearing = db.query(Hearing).filter(Hearing.id == payload.hearing_id).first()
-        if not hearing:
-            raise HTTPException(404, "Hearing not found")
-
-    mention.hearing_id = hearing.id
-    mention.match_status = MatchStatus.manually_linked
-    _log(db, admin, "manually_linked_news_mention", "news_mention", mention.id,
-         f"linked to hearing {hearing.case_number}")
-    db.commit()
-    db.refresh(mention)
-    return _news_mention_out(mention)
-
-
-@router.post("/news-mentions/backfill-rematch")
-def backfill_rematch_news_mentions(db: Session = Depends(get_db), admin: AdminUser = Depends(require_editor)):
-    """Explicit, on-demand: re-evaluates every unresolved (unmatched/
-    suggested) NewsMention under the *current* matching logic -- for
-    when that logic has changed since some of the backlog was first
-    ingested (see app/jobs/news_monitor.py::backfill_rematch_all's
-    docstring for the real situation this shipped to fix: 487 rows
-    evaluated under pre-confidence-tiering logic, almost all genuine
-    noise the new relevance gate now correctly discards). Editor-only --
-    unlike confirm/reject/link, this can reclassify a large chunk of the
-    queue in bulk, worth gating a notch more than the routine actions."""
-    summary = backfill_rematch_all(db, datetime.utcnow())
-    _log(db, admin, "backfilled_news_mention_rematch", "news_mention", None, json.dumps(summary))
-    db.commit()
-    return summary
-
-
-@router.delete("/news-mentions/{mention_id}")
-def discard_news_mention(mention_id: str, db: Session = Depends(get_db),
+def confirm_news_mention(mention_id: str, db: Session = Depends(get_db),
                           admin: AdminUser = Depends(get_current_admin)):
-    """A curator's own explicit "remove this from the queue entirely"
-    action -- deletes the row outright. Distinct from
-    MatchStatus.discarded (app/models.py), which the pipeline itself sets
-    automatically for zero-signal articles and which *keeps* the row
-    (so the same URL isn't re-fetched and re-evaluated forever)."""
+    """Phase 8 doc: confirms *relevance* -- "yes, this article is
+    genuinely worth linking to this case" -- not "which hearing" (that
+    was never ambiguous; the search was already run for this specific
+    hearing). Promotes to manually_linked, which is what makes it count
+    toward Hearing.has_news_mention and show up publicly."""
     mention = db.query(NewsMention).filter(NewsMention.id == mention_id).first()
     if not mention:
         raise HTTPException(404, "News mention not found")
-    _log(db, admin, "discarded_news_mention", "news_mention", mention.id, mention.headline)
-    db.delete(mention)
+    if mention.match_status != MatchStatus.in_weekly_reading_list:
+        raise HTTPException(400, "This mention isn't in the weekly reading list")
+    mention.match_status = MatchStatus.manually_linked
+    _log(db, admin, "confirmed_news_mention", "news_mention", mention.id,
+         f"confirmed relevance for hearing {mention.hearing.case_number if mention.hearing else '?'}")
     db.commit()
-    return {"status": "discarded"}
+    db.refresh(mention)
+    return _news_mention_out(mention)
+
+
+@router.post("/news-mentions/{mention_id}/dismiss", response_model=NewsMentionOut)
+def dismiss_news_mention(mention_id: str, db: Session = Depends(get_db),
+                          admin: AdminUser = Depends(get_current_admin)):
+    """A human looked at a reading-list item and said "not relevant."
+    Sets match_status rather than deleting the row -- deleting it would
+    let app/jobs/news_search.py's cadence re-search this hearing and
+    re-surface the same dismissed article all over again; a dismissed
+    row is what marks this hearing "resolved" for that purpose."""
+    mention = db.query(NewsMention).filter(NewsMention.id == mention_id).first()
+    if not mention:
+        raise HTTPException(404, "News mention not found")
+    if mention.match_status != MatchStatus.in_weekly_reading_list:
+        raise HTTPException(400, "This mention isn't in the weekly reading list")
+    mention.match_status = MatchStatus.dismissed
+    _log(db, admin, "dismissed_news_mention", "news_mention", mention.id, mention.headline)
+    db.commit()
+    db.refresh(mention)
+    return _news_mention_out(mention)
 
 
 # --- Community submissions ("add details" from a public visitor) ------------

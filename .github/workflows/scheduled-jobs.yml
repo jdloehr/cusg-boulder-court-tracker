@@ -1,6 +1,6 @@
 name: Scheduled data pulls
 
-# Runs the docket-pull and news-monitor jobs on a schedule against the
+# Runs the docket-pull and news-search jobs on a schedule against the
 # production database, entirely on GitHub's free Actions minutes -- no
 # paid Render Cron Jobs add-on needed. Connects straight to the deployed
 # Postgres using its EXTERNAL connection string (Render dashboard -> the
@@ -26,7 +26,7 @@ on:
     # used by jobs/scheduler.py for a non-GitHub-Actions deployment, DOES
     # support timezone= directly and doesn't have this gap).
     - cron: "0 13 * * *"   # docket pull: daily, 7:00 AM MDT / 6:00 AM MST
-    - cron: "30 13 * * *"  # news monitor: daily, right after the docket pull
+    - cron: "30 13 * * *"  # news search: daily, right after the docket pull
     - cron: "0 15 * * 1"   # weekly digest: Mondays, ~8-9am Boulder time
   workflow_dispatch: {}     # manual "Run workflow" button for testing
 
@@ -44,7 +44,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/run_docket_pull.py
 
-  news_monitor:
+  news_search:
     if: github.event.schedule == '30 13 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +55,17 @@ jobs:
       - working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/run_news_monitor.py
+          SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY }}
+          SEARCH_ENGINE_ID: ${{ secrets.SEARCH_ENGINE_ID }}
+          # Phase 8 doc: real email alerting, reusing the same SendGrid
+          # setup the digest below uses -- see app/alerting.py.
+          ALERT_BACKEND: email
+          ALERT_EMAIL_ADDRESS: ${{ secrets.ALERT_EMAIL_ADDRESS }}
+          EMAIL_BACKEND: sendgrid
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
+          EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+        run: python scripts/run_news_search.py
 
   weekly_digest:
     if: github.event.schedule == '0 15 * * 1'
@@ -68,6 +78,15 @@ jobs:
       - working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # These were missing before -- without them this job silently
+          # fell back to EMAIL_BACKEND's "console" default (GitHub
+          # Actions runners don't inherit Render's env vars), meaning the
+          # weekly digest was very likely just being logged into a run
+          # log nobody reads instead of actually emailing subscribers.
+          EMAIL_BACKEND: sendgrid
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
+          EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
         run: python -c "
           from app.db import SessionLocal
           from app.jobs.digest import run_weekly_digest

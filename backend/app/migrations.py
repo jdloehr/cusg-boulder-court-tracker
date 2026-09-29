@@ -119,6 +119,57 @@ POSTGRES_MIGRATIONS = [
     # a new column on the pre-existing `subscriptions` table.
     "ALTER TYPE subscriptionfiltertype ADD VALUE IF NOT EXISTS 'personal_availability';",
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS availability_blocks TEXT;",
+
+    # Phase 8 doc (news tracking rebuild): a new SourceType enum type,
+    # needed by a column on the pre-existing news_mentions table (same
+    # reasoning as matchconfidence above -- create_all() only creates an
+    # enum type as a side effect of creating the table itself, which it
+    # skips since news_mentions already exists).
+    """
+    DO $$ BEGIN
+        CREATE TYPE sourcetype AS ENUM
+            ('da_press_release', 'search_result_case_number', 'search_result_general');
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    """,
+    "ALTER TABLE news_mentions ADD COLUMN IF NOT EXISTS source_type sourcetype;",
+    "ALTER TYPE matchstatus ADD VALUE IF NOT EXISTS 'in_weekly_reading_list';",
+    "ALTER TYPE matchstatus ADD VALUE IF NOT EXISTS 'dismissed';",
+
+    # New columns on the pre-existing hearings table (news-search cadence
+    # tracking -- see Hearing.news_search_initial_at/news_search_prehearing_at
+    # in app/models.py).
+    "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS news_search_initial_at TIMESTAMP;",
+    "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS news_search_prehearing_at TIMESTAMP;",
+
+    # Phase 8's rebuild moves from "one NewsMention row per article" to
+    # "at most one per hearing, enforced at the application level, not the
+    # database" (see NewsMention's docstring in app/models.py for why no
+    # hard UNIQUE(hearing_id) constraint was added -- production already
+    # had legitimate multi-row hearings). The OLD article_url uniqueness
+    # constraint must still go, though: under the new model a search
+    # result URL (e.g. a DA press release) can legitimately recur across
+    # more than one hearing's search, which the old constraint would
+    # wrongly reject. Looked up by column rather than a hardcoded
+    # constraint name (Postgres's own default naming for an inline
+    # `UNIQUE` column, "news_mentions_article_url_key", is very likely
+    # right, but this isn't verified against production directly, and a
+    # wrong hardcoded name would silently no-op via IF EXISTS instead of
+    # failing loudly -- finding it dynamically removes that guesswork).
+    """
+    DO $$
+    DECLARE
+        cname text;
+    BEGIN
+        SELECT con.conname INTO cname
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = ANY(con.conkey)
+        WHERE rel.relname = 'news_mentions' AND att.attname = 'article_url' AND con.contype = 'u';
+        IF cname IS NOT NULL THEN
+            EXECUTE format('ALTER TABLE news_mentions DROP CONSTRAINT %I', cname);
+        END IF;
+    END $$;
+    """,
 ]
 
 

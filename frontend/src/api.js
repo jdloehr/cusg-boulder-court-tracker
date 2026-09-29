@@ -68,20 +68,16 @@ export const api = {
     request(`/api/admin/community-submissions/${id}/approve`, { method: "POST", headers: authHeaders() }),
   rejectCommunitySubmission: (id) =>
     request(`/api/admin/community-submissions/${id}/reject`, { method: "POST", headers: authHeaders() }),
-  // Phase-6 doc, Section 4: link by case number OR hearing_id -- pass
-  // exactly one of the two fields in `payload` ({case_number} or {hearing_id}).
-  linkNewsMention: (mentionId, payload) =>
-    request(`/api/admin/news-mentions/${mentionId}/link`, {
-      method: "POST", headers: authHeaders(), body: JSON.stringify(payload),
-    }),
-  confirmSuggestedNewsMention: (mentionId) =>
+  // Phase 8 doc: confirm relevance / dismiss on a Tier 2 "weekly reading
+  // list" item -- every row already has its hearing_id (the search was
+  // run for that specific hearing), so there's no case-number linking or
+  // rejection-with-ambiguity left, just a relevance call.
+  confirmNewsMention: (mentionId) =>
     request(`/api/admin/news-mentions/${mentionId}/confirm`, { method: "POST", headers: authHeaders() }),
-  rejectSuggestedNewsMention: (mentionId) =>
-    request(`/api/admin/news-mentions/${mentionId}/reject`, { method: "POST", headers: authHeaders() }),
-  discardNewsMention: (mentionId) =>
-    request(`/api/admin/news-mentions/${mentionId}`, { method: "DELETE", headers: authHeaders() }),
-  backfillRematchNewsMentions: () =>
-    request("/api/admin/news-mentions/backfill-rematch", { method: "POST", headers: authHeaders() }),
+  dismissNewsMention: (mentionId) =>
+    request(`/api/admin/news-mentions/${mentionId}/dismiss`, { method: "POST", headers: authHeaders() }),
+  autoMatchedNewsMentions: () =>
+    request("/api/admin/news-mentions/auto-matched", { headers: authHeaders() }),
   draftBlurb: (hearingId, text) =>
     request(`/api/admin/hearings/${hearingId}/draft-blurb`, {
       method: "PATCH",

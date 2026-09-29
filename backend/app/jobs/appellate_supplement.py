@@ -87,7 +87,7 @@ def check_news_coverage(case_name: str) -> bool:
     Colorado's appellate courts to run the usual news-cross-reference
     pipeline against (see module docstring), so this instead checks
     candidates *against* news already gathered by the real
-    jobs/news_monitor.py pipeline -- a rough but real signal a curator can
+    jobs/news_search.py pipeline -- a rough but real signal a curator can
     use to prioritize which candidates are worth the manual work of
     tracking down a real date, rather than a hard filter that could hide a
     genuinely newsworthy case over a name-matching quirk."""

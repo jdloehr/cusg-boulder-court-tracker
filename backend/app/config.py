@@ -57,72 +57,33 @@ COURT_LOCATION_CODES = [
 # pull a wider window than the default view shows.
 DOCKET_PULL_WINDOW_DAYS = int(os.environ.get("DOCKET_PULL_WINDOW_DAYS", "28"))
 
-# --- News monitoring (Section 2.2) ------------------------------------------
-# `boulder_specific=True` sources are Boulder-focused outlets and are the
-# priority signal Section 2.2 is actually after ("a case getting real local
-# news coverage"); `boulder_specific=False` sources are statewide outlets
-# the build prompt also names (Colorado Sun, 9News) that occasionally cover
-# a Boulder case but mostly won't -- kept as a lower-priority supplementary
-# check, not the primary scan. `type` controls how process_feed() parses
-# the source: "rss" for a standard RSS/Atom feed via feedparser, "wp_json"
-# for a WordPress REST API posts endpoint (used where a site blocks its own
-# RSS feed to automated fetches but its REST API isn't blocked -- see
-# Daily Camera below and docs/DATA_SOURCE_FINDINGS.md section 6).
-NEWS_SOURCES = [
-    {
-        "name": "Boulder Reporting Lab",
-        "type": "rss",
-        "url": "https://boulderreportinglab.org/feed/",
-        "boulder_specific": True,
-    },
-    {
-        # Daily Camera is Boulder's actual daily paper and the single most
-        # relevant source in this list -- but its main /feed/ and
-        # /category/*/feed/ RSS paths return HTTP 403 to automated fetches
-        # (bot-mitigation), confirmed during build. Its WordPress REST API
-        # is NOT blocked, and category id 41 ("Crime and Public Safety",
-        # slug crime-public-safety) is exactly the right section. Found by
-        # fetching one real article and reading its
-        # <link rel="alternate" type="application/json"> discovery tag,
-        # then querying /wp-json/wp/v2/categories for a matching name.
-        "name": "Daily Camera",
-        "type": "wp_json",
-        "url": "https://www.dailycamera.com/wp-json/wp/v2/posts"
-               "?categories=41&per_page=20&orderby=date&order=desc",
-        "boulder_specific": True,
-    },
-    {
-        # CU Boulder's own student newspaper -- especially relevant for a
-        # CUSG-run pre-law tool, and it does cover CU-adjacent court news
-        # (e.g. Title IX proceedings, campus-crime cases).
-        "name": "CU Independent",
-        "type": "rss",
-        "url": "https://www.cuindependent.com/feed/",
-        "boulder_specific": True,
-    },
-    {
-        "name": "Boulder Weekly",
-        "type": "rss",
-        "url": "https://boulderweekly.com/feed/",
-        "boulder_specific": True,
-    },
-    {
-        "name": "Colorado Sun",
-        "type": "rss",
-        "url": "https://coloradosun.com/feed/",
-        "boulder_specific": False,
-    },
-    {
-        "name": "9News",
-        "type": "rss",
-        "url": "https://www.9news.com/feeds/syndication/rss/news/local",
-        "boulder_specific": False,
-    },
-    # 20th Judicial District DA's office does not publish RSS or a
-    # discoverable REST API; needs a scraper or manual review per Section
-    # 10 open question #6. Not implemented in this build.
-]
-NEWS_SOURCES_DISABLED = set()  # e.g. {"Some Source"} to pause one without deleting its config
+# --- News search (Phase 8 doc: news tracking system rebuild) ----------------
+# Replaces the old Section 2.2 multi-feed-polling design: instead of
+# scanning several news sites and guessing which article belongs to which
+# case, this actively searches for news about each specific upcoming
+# hearing (known case number + party names already confirmed by the
+# docket) via Google's Custom Search JSON API -- see app/jobs/news_search.py.
+# Checked live during build: the 20th Judicial District DA's office has no
+# usable press-release feed (a manually-maintained static-PDF archive
+# page, most recent visible release from Jan 2025, no RSS) -- so there's
+# no separate DA-specific polling source; a DA-announced case is just
+# whatever the per-hearing search happens to find, tagged
+# SourceType.da_press_release post-hoc when the result URL is on
+# bouldercounty.gov.
+SEARCH_API_KEY = os.environ.get("SEARCH_API_KEY", "")
+SEARCH_ENGINE_ID = os.environ.get("SEARCH_ENGINE_ID", "")
+# Google Custom Search JSON API's real free-tier ceiling. At this
+# project's actual scale (a handful of eligible hearings, searched once or
+# twice each) real usage is expected in the 10-60/day range.
+SEARCH_API_DAILY_QUOTA = int(os.environ.get("SEARCH_API_DAILY_QUOTA", "100"))
+# When today's query_count reaches this, alert_quota_warning() fires once
+# (see app/external_api_usage.py) -- comfortably before the real ceiling,
+# so there's still headroom left to actually look into it.
+SEARCH_API_ALERT_THRESHOLD = int(os.environ.get("SEARCH_API_ALERT_THRESHOLD", "90"))
+# How many days before a hearing's own date the second ("pre-hearing")
+# search pass runs, for hearings that still have nothing resolved from
+# the first pass -- see app/jobs/news_search.py's cadence logic.
+NEWS_SEARCH_PREHEARING_WINDOW_DAYS = int(os.environ.get("NEWS_SEARCH_PREHEARING_WINDOW_DAYS", "5"))
 
 # --- CourtListener federal supplement (Section 2.3) -------------------------
 COURTLISTENER_API_BASE = "https://www.courtlistener.com/api/rest/v4"
@@ -150,10 +111,16 @@ SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
 EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM_ADDRESS", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "CUSG Boulder Court Tracker")
 
-# --- Failure alerting (Section 8) -------------------------------------------
-# Same situation as email: no paging/notification account exists yet.
-# ALERT_BACKEND "console" logs loudly; swap in Slack/email/PagerDuty here.
+# --- Failure alerting (Section 8; upgraded to real email by the Phase 8
+# news-search rebuild) ---------------------------------------------------
+# "console" (default, safe for local dev with no email configured) logs
+# loudly. "email" reuses the existing, already-working
+# app/jobs/digest.py::send_email() (SendGrid) to actually deliver the
+# alert to ALERT_EMAIL_ADDRESS -- set both in production so a search-API
+# quota warning or a job failure actually reaches someone instead of
+# sitting in a log nobody's watching.
 ALERT_BACKEND = os.environ.get("ALERT_BACKEND", "console")
+ALERT_EMAIL_ADDRESS = os.environ.get("ALERT_EMAIL_ADDRESS", "")
 
 # --- Manual refresh (Phase-2 doc, Section 1) --------------------------------
 # Global, not per-user: one shared cooldown counted from the most recent

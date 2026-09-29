@@ -228,26 +228,9 @@ def test_run_docket_pull_raises_and_records_failure_on_empty_result(db):
     assert "zero rows" in job.error_message
 
 
-def test_run_docket_pull_triggers_retroactive_news_rematch(db, monkeypatch):
-    """Phase-6 doc, Section 5: retroactive re-matching runs right after
-    a successful docket pull, exactly when new hearings are most likely
-    to turn a previously-unresolved article into a real match."""
-    calls = []
-    monkeypatch.setattr(
-        "app.jobs.news_monitor.retroactively_rematch",
-        lambda db, now, **kwargs: calls.append(now) or (0, 0),
-    )
-    run_docket_pull(db, window_days=45, csv_text=FIXTURE)
-    assert len(calls) == 1
-
-
-def test_docket_pull_still_succeeds_if_retroactive_rematch_blows_up(db, monkeypatch):
-    """A bug in the re-match pass must never turn a successful docket
-    pull into a reported failure -- the docket data already committed
-    successfully by the time this runs."""
-    def _boom(*args, **kwargs):
-        raise RuntimeError("simulated re-match failure")
-
-    monkeypatch.setattr("app.jobs.news_monitor.retroactively_rematch", _boom)
-    job = run_docket_pull(db, window_days=45, csv_text=FIXTURE)
-    assert job.success is True
+# Phase-6 doc, Section 5's retroactive-rematch hook (and the two tests
+# that used to live here for it) was removed by the Phase 8 news-search
+# rebuild -- docket_pull.py no longer calls into the news pipeline at
+# all. A newly-created hearing gets its own initial search on
+# app/jobs/news_search.py's own daily cadence instead; see
+# tests/test_news_search.py's cadence tests for that coverage.

@@ -61,7 +61,7 @@ export default function AdminDashboard() {
         </nav>
         <div>
           {tab === "hearings" && <HearingReviewQueue admin={admin} />}
-          {tab === "news" && <NewsReviewQueue admin={admin} onCountChange={setNewsQueueCount} />}
+          {tab === "news" && <NewsReviewQueue onCountChange={setNewsQueueCount} />}
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
           {tab === "federal" && <AppellateSupplement admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
@@ -148,19 +148,45 @@ function HearingReviewQueue({ admin }) {
   );
 }
 
-// --- News articles awaiting a match decision (Phase-6 doc, Section 4) ------
-// Two real states now, not one: a *suggested* match (the algorithm found
-// a real candidate, just not confidently enough to auto-attach -- one
-// click to confirm or reject) and the original no-candidate-at-all
-// unmatched_review (link by case number, or discard).
+// --- News: Phase 8 doc's rebuilt "weekly reading list" ---------------------
+// For each eligible upcoming hearing (known case number + parties), the
+// search job either auto-matches a case-number hit (Tier 1, no human
+// decision needed) or drops a same-headline candidate into this list for
+// a curator to confirm or dismiss (Tier 2). No fuzzy scores, no case-number
+// linking UI left -- every row already knows exactly which hearing it's for.
 
-function NewsReviewQueue({ admin, onCountChange }) {
+const SOURCE_TYPE_LABELS = {
+  da_press_release: "DA press release",
+  search_result_case_number: "Case number match",
+  search_result_general: "Search result",
+};
+
+function NewsMentionCard({ m, children }) {
+  return (
+    <div className="card" key={m.id}>
+      <h4 style={{ marginBottom: "0.3rem" }}>
+        <a href={m.article_url} target="_blank" rel="noreferrer">{m.headline}</a>
+      </h4>
+      <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+        {m.source_name}
+        {m.source_type && ` · ${SOURCE_TYPE_LABELS[m.source_type] || m.source_type}`}
+      </p>
+      {m.hearing && (
+        <p className="blurb">
+          <strong>{m.hearing.case_number}</strong> -- {m.hearing.hearing_type_display} ({m.hearing.date}),
+          parties: {m.hearing.party_names.join(", ")}
+        </p>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function NewsReviewQueue({ onCountChange }) {
   const [mentions, setMentions] = useState(null);
   const [error, setError] = useState(null);
-  const [caseNumberInput, setCaseNumberInput] = useState({});
-  const [linkError, setLinkError] = useState({});
-  const [backfillBusy, setBackfillBusy] = useState(false);
-  const [backfillResult, setBackfillResult] = useState(null);
+  const [autoMatched, setAutoMatched] = useState(null);
+  const [showAutoMatched, setShowAutoMatched] = useState(false);
 
   function load() {
     api.reviewQueueNewsMentions().then((data) => {
@@ -170,148 +196,60 @@ function NewsReviewQueue({ admin, onCountChange }) {
   }
   useEffect(load, []);
 
+  function loadAutoMatched() {
+    api.autoMatchedNewsMentions().then(setAutoMatched).catch(() => setAutoMatched([]));
+  }
+
   async function confirm(id) {
-    await api.confirmSuggestedNewsMention(id);
+    await api.confirmNewsMention(id);
     load();
   }
-  async function reject(id) {
-    await api.rejectSuggestedNewsMention(id);
+  async function dismiss(id) {
+    await api.dismissNewsMention(id);
     load();
-  }
-  async function linkByCaseNumber(id) {
-    const caseNumber = caseNumberInput[id]?.trim();
-    if (!caseNumber) return;
-    setLinkError((s) => ({ ...s, [id]: null }));
-    try {
-      await api.linkNewsMention(id, { case_number: caseNumber });
-      load();
-    } catch (err) {
-      setLinkError((s) => ({ ...s, [id]: err.message }));
-    }
-  }
-  async function discard(id) {
-    await api.discardNewsMention(id);
-    load();
-  }
-  async function backfillRematch() {
-    setBackfillBusy(true);
-    setBackfillResult(null);
-    try {
-      const result = await api.backfillRematchNewsMentions();
-      setBackfillResult(result);
-      load();
-    } finally {
-      setBackfillBusy(false);
-    }
   }
 
   if (error) return <p className="message-error">{error}</p>;
   if (!mentions) return <p>Loading&hellip;</p>;
 
-  const suggested = mentions.filter((m) => m.match_status === "suggested_pending_review");
-  const unmatched = mentions.filter((m) => m.match_status !== "suggested_pending_review");
-
   return (
     <div>
-      <h2>News review queue</h2>
+      <h2>Weekly reading list</h2>
       <p className="disclaimer">
-        Articles that publish automatically only when a case number is found, or a strong name +
-        date match agrees -- everything else lands here for a quick human decision. Articles with no
-        case number, no name candidate, and no court-relevant language at all are discarded
-        automatically and never reach this queue.
+        For each upcoming Jury Trial/Oral Argument, the daily search either finds the case number in
+        a result -- auto-matched, no review needed -- or drops the best candidate here for you to
+        confirm as relevant or dismiss. Dismissing marks the hearing resolved so it won't be
+        re-searched.
       </p>
-      {admin?.role === "editor" && (
-        <div className="card" style={{ marginBottom: "1rem" }}>
-          <p style={{ fontSize: "0.85rem" }}>
-            Re-checks every item below against the current matching logic -- useful after a change to
-            that logic, or to clear out older items (like this queue's original backlog) that predate
-            an improvement.
-          </p>
-          <button className="btn btn-secondary" onClick={backfillRematch} disabled={backfillBusy}>
-            {backfillBusy ? "Re-evaluating…" : "Re-evaluate all under current matching logic"}
-          </button>
-          {backfillResult && (
-            <p className="message-success" style={{ marginTop: "0.5rem" }}>
-              Checked {backfillResult.checked} -- discarded {backfillResult.discarded}, promoted to
-              suggested {backfillResult.promoted_to_suggested}, auto-matched{" "}
-              {backfillResult.promoted_to_auto_matched}, unchanged {backfillResult.unchanged}.
-            </p>
-          )}
-        </div>
-      )}
 
-      {mentions.length === 0 && <p>Nothing in the queue right now.</p>}
+      {mentions.length === 0 && <p>Nothing in the reading list right now.</p>}
+      {mentions.map((m) => (
+        <NewsMentionCard m={m} key={m.id}>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button className="btn" onClick={() => confirm(m.id)}>Confirm relevant</button>
+            <button className="btn btn-secondary" onClick={() => dismiss(m.id)}>Dismiss</button>
+          </div>
+        </NewsMentionCard>
+      ))}
 
-      {suggested.length > 0 && (
-        <>
-          <h3>Suggested matches</h3>
-          {suggested.map((m) => (
-            <div className="card" key={m.id}>
-              <h4 style={{ marginBottom: "0.3rem" }}>
-                <a href={m.article_url} target="_blank" rel="noreferrer">{m.headline}</a>
-              </h4>
-              <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                {m.source_name}
-                {m.match_confidence && ` · ${m.match_confidence} confidence`}
-                {m.extracted_party_candidates.length > 0 &&
-                  ` · candidate name(s): ${m.extracted_party_candidates.join(", ")}`}
-              </p>
-              {m.suggested_hearing && (
-                <p className="blurb">
-                  Suggested: <strong>{m.suggested_hearing.case_number}</strong> -- {m.suggested_hearing.hearing_type_display}
-                  {" "}({m.suggested_hearing.date}), parties: {m.suggested_hearing.party_names.join(", ")}
-                </p>
-              )}
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button className="btn" onClick={() => confirm(m.id)}>Confirm match</button>
-                <button className="btn btn-secondary" onClick={() => reject(m.id)}>Reject</button>
-              </div>
-            </div>
-          ))}
-        </>
-      )}
-
-      {unmatched.length > 0 && (
-        <>
-          <h3 style={{ marginTop: suggested.length > 0 ? "1.5rem" : 0 }}>No candidate found</h3>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Headline</th>
-                <th>Source</th>
-                <th>Link by case number</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {unmatched.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    <a href={m.article_url} target="_blank" rel="noreferrer">{m.headline}</a>
-                  </td>
-                  <td>{m.source_name}</td>
-                  <td>
-                    <input
-                      placeholder="e.g. 2026CR001452"
-                      style={{ width: "100%" }}
-                      onChange={(e) => setCaseNumberInput((s) => ({ ...s, [m.id]: e.target.value }))}
-                    />
-                    {linkError[m.id] && <p className="message-error" style={{ fontSize: "0.78rem" }}>{linkError[m.id]}</p>}
-                  </td>
-                  <td style={{ display: "flex", gap: "0.4rem" }}>
-                    <button className="btn btn-secondary" onClick={() => linkByCaseNumber(m.id)}>
-                      Link
-                    </button>
-                    <button className="btn btn-danger" onClick={() => discard(m.id)}>
-                      Discard
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+      <details
+        style={{ marginTop: "1.5rem" }}
+        onToggle={(e) => {
+          setShowAutoMatched(e.target.open);
+          if (e.target.open && autoMatched === null) loadAutoMatched();
+        }}
+      >
+        <summary style={{ cursor: "pointer" }}>Recent auto-matched (read-only)</summary>
+        {showAutoMatched && (
+          autoMatched === null ? (
+            <p>Loading&hellip;</p>
+          ) : autoMatched.length === 0 ? (
+            <p>Nothing auto-matched yet.</p>
+          ) : (
+            autoMatched.map((m) => <NewsMentionCard m={m} key={m.id} />)
+          )
+        )}
+      </details>
     </div>
   );
 }

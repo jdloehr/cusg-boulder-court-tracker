@@ -4,7 +4,8 @@ One-shot script that exercises the whole pipeline against REAL data and
 leaves a populated local database for the frontend demo:
 
 1. Runs the real docket-pull job against live coloradojudicial.gov data.
-2. Runs the real news-monitoring job against live RSS feeds.
+2. Runs the real news-search job (per-hearing Google Custom Search
+   lookups) -- a no-op if SEARCH_API_KEY/SEARCH_ENGINE_ID aren't set.
 3. Adds the real CU Boulder Fall 2026 academic-calendar periods (Fall
    Break + Finals Week, from the registrar's published dates).
 4. Creates two demo admin accounts (one editor, one contributor).
@@ -32,7 +33,7 @@ from app.auth import hash_password  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.hearing_types import classify_hearing_type  # noqa: E402
 from app.jobs.docket_pull import run_docket_pull  # noqa: E402
-from app.jobs.news_monitor import run_news_monitor  # noqa: E402
+from app.jobs.news_search import run_news_search  # noqa: E402
 from app.models import (  # noqa: E402
     AcademicCalendarPeriod,
     AcademicPeriodType,
@@ -188,9 +189,9 @@ def main():
         job = run_docket_pull(db)
         print(f"  success={job.success} rows_seen={job.rows_seen} rows_upserted={job.rows_upserted}")
 
-        print("\n=== 2/6 Real news monitor (RSS feeds) ===")
-        job = run_news_monitor(db)
-        print(f"  success={job.success} articles_seen={job.rows_seen} error={job.error_message}")
+        print("\n=== 2/6 News search (Google Custom Search -- needs SEARCH_API_KEY/SEARCH_ENGINE_ID) ===")
+        job = run_news_search(db)
+        print(f"  success={job.success} hearings_checked={job.rows_seen} error={job.error_message}")
 
         print("\n=== 3/6 Academic calendar (real CU Boulder Fall 2026 dates) ===")
         seed_academic_calendar(db)
