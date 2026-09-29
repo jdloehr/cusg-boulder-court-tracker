@@ -793,6 +793,75 @@ instruction, since one is reusable and one is a one-off:
   neither hue overlaps the existing amber/navy/tan/grey/teal palette.
   The visual key (`HearingCardKey.jsx`) explains both.
 
+## Phase 10 additions (page redesign + "This Week's Pick" / pinned recommendation)
+
+A design-mockup build prompt asked for a visual redesign of four
+already-existing, already-wired pages (Home, Recommendations, Archive,
+Learn) into a warmer, more editorial look, with a shared design-system
+token set. All four already pulled from real data -- this was layout/
+styling work, not new-feature work, **except** for one real gap the
+mockup assumed away: it described a homepage "This Week's Pick" and a
+Recommendations "Lead Recommendation" as if a real "currently featured"
+flag already existed. It didn't -- Home.jsx used a client-side heuristic
+(soonest hearing with a `curated_blurb`), and Recommendations.jsx was a
+flat list with no concept of one being "the lead." Confirmed with the
+user: build both as real features, then redesign on top of them.
+
+- **`Hearing.is_weekly_pick`** and **`HearingRecommendation.is_pinned`**:
+  new boolean columns on existing tables (migration entries needed, per
+  this project's established convention). Both are "exactly one row
+  True at a time" *by construction*, not a DB constraint -- setting one
+  clears every other row of that type in the same transaction
+  (`routers/admin.py::set_weekly_pick`, `routers/justices.py::
+  pin_recommendation`), the same soft-enforcement spirit as this
+  project's other single-current-thing invariants (e.g. Phase 8's
+  soft-deduped `NewsMention`). Toggled inline on the pages that already
+  show the underlying content -- a "Set/Remove as This Week's Pick"
+  button on the hearing detail page (`require_editor`, next to where
+  blurb/exclusion controls already live conceptually) and "Pin as lead"/
+  "Unpin" buttons on the Recommendations page (`require_justice`,
+  same peer-to-peer gate as create/delete recommendation right next to
+  it) -- not a new admin-dashboard tab. Home.jsx's spotlight falls back
+  to the old heuristic when nothing's been explicitly picked yet, so it
+  never goes empty.
+- **Design tokens**: the mockup's palette mapped almost exactly onto
+  tokens that already existed (`--navy`, `--paper`, `--accent`, `--line`
+  were all exact or near-exact matches -- confirmed by reading the
+  actual hex values before adding anything new, per the mockup's own
+  "map rather than duplicate" instruction). Only genuinely new: four
+  Archive-only accent colors (`--terracotta`, `--sage`, `--ochre`,
+  `--plum`) and `--font-mono` (IBM Plex Mono, for Learn's numbered
+  entries). The nav bar's dark-navy Phase-6.2 look became a light cream
+  header with the current page in amber/bold and "Justice Sign In" as a
+  bordered pill -- a restyle, not a re-architecture, since the actual
+  links/order (Calendar/Recommendations/Archive/Learn/Meet the Justices)
+  were already right from Phase 9.
+- **Icons**: no icon library anywhere in this codebase, and one existing
+  precedent -- `ColonnadeMotif.jsx`, a hand-authored inline SVG that
+  already exactly matched the mockup's "faint decorative colonnade, ~6%
+  opacity" homepage request (it already existed at 8% opacity) and got
+  reused as-is. New icons (a hearing-type glyph for Learn's sidebar)
+  followed the same hand-authored-inline-SVG convention rather than
+  adding a dependency.
+- **Archive's rotation/color-cycling is computed, not stored**:
+  `Archive.jsx` derives each entry's accent color (round-robin over the
+  four Archive tokens, so no two consecutive entries share one) and
+  alternating card rotation from its position in the list, not from any
+  new database field -- purely presentational, reflows correctly no
+  matter how many real entries exist.
+- **Learn gained a real detail page** (`/learn/:id`,
+  `LearnTopicDetail.jsx`): the redesigned grid card now shows a short
+  excerpt with a "Read the full guide" link, per the mockup -- the full
+  `body_text`/video/external-links content that used to render inline
+  on the grid itself moved to this new page. `api.getLearnTopic`
+  (already existed) is what it calls.
+- **Archive pagination**: the mockup asked for "paginated or infinite-
+  scrolled." No backend pagination endpoint existed (`GET /api/archive`
+  has no limit/offset params) and adding one was out of scope for a
+  visual redesign, so this is a client-side "Show more" reveal over the
+  already-fetched, already-sorted (`created_at.desc()`) list rather than
+  a new API parameter.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

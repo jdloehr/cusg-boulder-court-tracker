@@ -25,11 +25,15 @@ export default function Home() {
       });
   }, []);
 
-  // "This Week's Pick": the soonest upcoming hearing with a curated
-  // blurb (an Editor already decided it's worth highlighting), falling
-  // back to the soonest upcoming hearing overall if none has one yet.
+  // Page-redesign doc: "This Week's Pick" is now a real Editor choice
+  // (Hearing.is_weekly_pick, set from the hearing detail page), not just
+  // a heuristic. Falls back to the old heuristic -- soonest hearing with
+  // a curated blurb, else just the soonest hearing -- when no one has
+  // explicitly picked anything yet, so the spotlight never goes empty.
   // `hearings` is already sorted chronologically by GET /api/hearings.
-  const pick = hearings ? hearings.find((h) => h.curated_blurb) || hearings[0] : null;
+  const pick = hearings
+    ? hearings.find((h) => h.is_weekly_pick) || hearings.find((h) => h.curated_blurb) || hearings[0]
+    : null;
   const weeklyList = hearings ? hearings.slice(0, 8) : [];
 
   return (
@@ -91,9 +95,11 @@ export default function Home() {
       </section>
 
       <div className="pull-quote">
+        <hr className="pull-quote-divider" />
         <p>
           &ldquo;Tell me and I forget. Teach me and I remember. Involve me and I learn.&rdquo;
         </p>
+        <hr className="pull-quote-divider below" />
       </div>
 
       <section>

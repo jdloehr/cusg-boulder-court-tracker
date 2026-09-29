@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import VideoEmbed from "../components/VideoEmbed.jsx";
+import HearingTypeIcon from "../components/HearingTypeIcon.jsx";
 import { CASE_CATEGORY_LABELS } from "../courtInfo.js";
 
 // Only the two hearing-type buckets a topic can meaningfully target --
@@ -10,6 +11,11 @@ const HEARING_TYPE_LABELS = {
   jury_trial: "Jury Trial",
   oral_argument_motions: "Oral Argument / Motions Hearing",
 };
+
+function excerpt(text, max = 160) {
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max).trim()}…` : text;
+}
 
 export default function Learn() {
   const [hearingTypeCategory, setHearingTypeCategory] = useState("");
@@ -25,73 +31,99 @@ export default function Learn() {
   }
   useEffect(load, [hearingTypeCategory, caseCategory]);
 
+  const caseCategoryEntries = Object.entries(CASE_CATEGORY_LABELS).filter(([k]) => k !== "juvenile");
+
+  function toggle(current, setter, value) {
+    setter(current === value ? "" : value);
+  }
+
   return (
     <article>
-      <h1>Learn</h1>
-      <p className="disclaimer">
-        New to court and not sure what you're looking at? These explainers cover what a kind of
-        hearing or case actually is -- written by CUSG Justices. For something unusual about one
-        specific case, look for "A Justice's Note on This Case" on that hearing's own page instead.
-      </p>
+      <header className="learn-header">
+        <p className="learn-eyebrow">LEARN / 00</p>
+        <h1 className="learn-headline">Understand What You're About to Watch</h1>
+        <p style={{ color: "var(--ink-soft)" }}>
+          Written by CUSG Justices, for anyone new to a courtroom.
+        </p>
+      </header>
 
-      <div className="filter-bar">
-        <div className="filter-field">
-          <label htmlFor="l-type">Hearing type</label>
-          <select id="l-type" value={hearingTypeCategory} onChange={(e) => setHearingTypeCategory(e.target.value)}>
-            <option value="">All</option>
-            {Object.entries(HEARING_TYPE_LABELS).map(([k, label]) => (
-              <option key={k} value={k}>{label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="filter-field">
-          <label htmlFor="l-case">Case category</label>
-          <select id="l-case" value={caseCategory} onChange={(e) => setCaseCategory(e.target.value)}>
-            <option value="">All</option>
-            {Object.entries(CASE_CATEGORY_LABELS)
-              .filter(([k]) => k !== "juvenile")
-              .map(([k, label]) => (
-                <option key={k} value={k}>{label}</option>
-              ))}
-          </select>
-        </div>
+      <div className="learn-pill-strip">
+        {Object.entries(HEARING_TYPE_LABELS).map(([k, label]) => (
+          <button
+            key={k}
+            className={`learn-pill ${hearingTypeCategory === k ? "active" : ""}`}
+            onClick={() => toggle(hearingTypeCategory, setHearingTypeCategory, k)}
+          >
+            {label}
+          </button>
+        ))}
+        {caseCategoryEntries.map(([k, label]) => (
+          <button
+            key={k}
+            className={`learn-pill ${caseCategory === k ? "active" : ""}`}
+            onClick={() => toggle(caseCategory, setCaseCategory, k)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {error && <p className="message-error">{error}</p>}
-      {!topics && !error && <p>Loading&hellip;</p>}
-      {topics && topics.length === 0 && (
-        <div className="empty-state">
-          <p>No Learn topics match these filters yet.</p>
-        </div>
-      )}
+      <div className="learn-body">
+        <aside className="learn-sidebar">
+          <div>
+            <p className="learn-sidebar-heading">By Hearing Type</p>
+            {Object.entries(HEARING_TYPE_LABELS).map(([k, label]) => (
+              <button
+                key={k}
+                className={`learn-sidebar-link ${hearingTypeCategory === k ? "active" : ""}`}
+                onClick={() => toggle(hearingTypeCategory, setHearingTypeCategory, k)}
+              >
+                <HearingTypeIcon type={k} /> {label}
+              </button>
+            ))}
+          </div>
+          <div>
+            <p className="learn-sidebar-heading">By Case Category</p>
+            {caseCategoryEntries.map(([k, label]) => (
+              <button
+                key={k}
+                className={`learn-sidebar-link learn-sidebar-link-plain ${caseCategory === k ? "active" : ""}`}
+                onClick={() => toggle(caseCategory, setCaseCategory, k)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </aside>
 
-      {topics?.map((t) => (
-        <div className="card" key={t.id}>
-          <h3>
-            {t.title}{" "}
-            {t.applies_to_hearing_type_category && (
-              <span className="badge badge-category">{HEARING_TYPE_LABELS[t.applies_to_hearing_type_category]}</span>
-            )}{" "}
-            {t.applies_to_case_category && (
-              <span className="badge badge-category">{CASE_CATEGORY_LABELS[t.applies_to_case_category]}</span>
-            )}
-          </h3>
-          <p className="blurb">{t.body_text}</p>
-          <VideoEmbed
-            videoUrl={t.video_url}
-            uploadedVideoUrl={t.has_uploaded_video ? api.learnTopicVideoUrl(t.id) : null}
-          />
-          {t.external_links.length > 0 && (
-            <ul>
-              {t.external_links.map((link, i) => (
-                <li key={i}>
-                  <a href={link.url} target="_blank" rel="noreferrer">{link.label}</a>
-                </li>
-              ))}
-            </ul>
+        <div className="learn-grid">
+          {error && <p className="message-error">{error}</p>}
+          {!topics && !error && <p>Loading&hellip;</p>}
+          {topics && topics.length === 0 && (
+            <div className="empty-state">
+              <p>No Learn topics match these filters yet.</p>
+            </div>
           )}
+          {topics?.map((t, i) => (
+            <div className="learn-card" key={t.id}>
+              <p className="learn-card-numeral">{String(i + 1).padStart(2, "0")}</p>
+              <h2 className="learn-card-heading">{t.title}</h2>
+              <p className="learn-card-excerpt">{excerpt(t.body_text)}</p>
+              <div className="learn-card-meta">
+                {(t.video_url || t.has_uploaded_video) && (
+                  <span className="learn-card-meta-item">&#9654; Video included</span>
+                )}
+                {t.external_links.length > 0 && (
+                  <span className="learn-card-meta-item">
+                    {t.external_links.length} resource{t.external_links.length === 1 ? "" : "s"} linked
+                  </span>
+                )}
+              </div>
+              <Link to={`/learn/${t.id}`}>Read the full guide &rarr;</Link>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </article>
   );
 }

@@ -24,11 +24,21 @@ const CASE_CATEGORY_LABELS = {
   other: "Other",
 };
 
+// Page-redesign doc, Page 3: a warm, hand-placed "paper" timeline rather
+// than a plain list -- accent color and card rotation are computed here
+// from each entry's position, not stored, so they stay consistent
+// (never two consecutive entries sharing a color) no matter how many
+// real entries the backend returns.
+const ACCENT_CYCLE = ["terracotta", "sage", "ochre", "plum"];
+const ROTATIONS = [-0.4, 0.3];
+const PAGE_SIZE = 10;
+
 export default function Archive() {
   const [stage, setStage] = useState("");
   const [caseCategory, setCaseCategory] = useState("");
   const [entries, setEntries] = useState(null);
   const [error, setError] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const admin = getStoredAdmin();
 
   function load() {
@@ -37,20 +47,29 @@ export default function Archive() {
       .then(setEntries)
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [stage, caseCategory]);
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, caseCategory]);
 
   async function remove(id) {
     await api.deleteArchiveEntry(id);
     load();
   }
 
+  const visible = entries?.slice(0, visibleCount) || [];
+
   return (
     <article>
-      <h1>Archive &amp; Reflections</h1>
-      <p className="disclaimer">
-        A record of hearings the court -- and anyone else who went -- actually attended and wrote up.
-        Separate from the upcoming-hearings calendar; this is what happened, told by whoever was there.
-      </p>
+      <header className="archive-header">
+        <p className="archive-eyebrow">CUSG Judicial Branch Archive</p>
+        <h1 className="archive-headline">Where the Court Has Been</h1>
+        <p style={{ color: "var(--ink-soft)" }}>
+          A record of hearings the court -- and anyone else who went -- actually attended and wrote up.
+        </p>
+        <div className="archive-gradient-bar" />
+      </header>
 
       <div className="filter-bar">
         <div className="filter-field">
@@ -81,41 +100,69 @@ export default function Archive() {
         </div>
       )}
 
-      {entries?.map((e) => (
-        <article className="archive-entry" key={e.id}>
-          <h2>
-            <Link to={`/hearings/${e.hearing_id}`}>{e.hearing_type_display?.split(":")[0] || "Hearing"}</Link>
-          </h2>
-          <p className="archive-entry-meta">
-            {STAGE_LABELS[e.proceeding_stage]} &middot; Case {e.hearing_case_number} &middot; {e.hearing_date}
-            {e.judge_name ? ` · ${e.judge_name} presiding` : ""}
-          </p>
-          {e.reflection_text && <p className="archive-entry-body">{e.reflection_text}</p>}
-          <p className="archive-entry-byline">
-            {e.submitted_by_role === "justice" ? "Justice " : ""}
-            <JusticeLink justiceId={e.submitted_by_justice_id}>{e.submitted_by_name}</JusticeLink>
-            {e.attendees?.length > 0 && (
-              <>
-                {" · attended by "}
-                {e.attendees.map((a, i) => (
-                  <Fragment key={a.name + i}>
-                    {i > 0 && ", "}
-                    <JusticeLink justiceId={a.justice_id}>{a.name}</JusticeLink>
-                  </Fragment>
-                ))}
-              </>
-            )}
-          </p>
-          {admin?.isJustice && (
-            <button className="btn btn-danger" onClick={() => remove(e.id)}>
-              Remove
-            </button>
-          )}
-          <div style={{ marginTop: "0.5rem" }}>
-            <ReportLink targetType="archive_entry" targetId={e.id} />
-          </div>
-        </article>
-      ))}
+      <div className="archive-timeline">
+        {visible.map((e, i) => {
+          const accent = ACCENT_CYCLE[i % ACCENT_CYCLE.length];
+          const rotation = ROTATIONS[i % ROTATIONS.length];
+          return (
+            <div className="archive-timeline-item" key={e.id}>
+              <span className={`archive-timeline-dot archive-accent-${accent}`} />
+              <article
+                className={`archive-card archive-accent-border-${accent}`}
+                style={{ transform: `rotate(${rotation}deg)` }}
+              >
+                <div className="archive-card-body">
+                  <div className={`archive-card-photo archive-accent-gradient-${accent}`} aria-hidden="true" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h2 style={{ margin: "0 0 0.2rem" }}>
+                      <Link to={`/hearings/${e.hearing_id}`}>{e.hearing_type_display?.split(":")[0] || "Hearing"}</Link>
+                    </h2>
+                    <p className="archive-entry-meta" style={{ margin: "0 0 0.4rem" }}>
+                      {e.hearing_date} &middot; Case {e.hearing_case_number}
+                    </p>
+                    <span className="badge badge-category">{STAGE_LABELS[e.proceeding_stage]}</span>
+                    {e.reflection_text && <p className="archive-card-quote">&ldquo;{e.reflection_text}&rdquo;</p>}
+                    <div className="archive-card-byline">
+                      <span>{e.judge_name ? `${e.judge_name} presiding` : ""}</span>
+                      <span className="archive-card-byline-author">
+                        {e.submitted_by_role === "justice" ? "Justice " : ""}
+                        <JusticeLink justiceId={e.submitted_by_justice_id}>{e.submitted_by_name}</JusticeLink>
+                      </span>
+                    </div>
+                    {e.attendees?.length > 0 && (
+                      <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)", margin: "0.3rem 0 0" }}>
+                        Attended by{" "}
+                        {e.attendees.map((a, j) => (
+                          <Fragment key={a.name + j}>
+                            {j > 0 && ", "}
+                            <JusticeLink justiceId={a.justice_id}>{a.name}</JusticeLink>
+                          </Fragment>
+                        ))}
+                      </p>
+                    )}
+                    <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                      {admin?.isJustice && (
+                        <button className="btn btn-danger" onClick={() => remove(e.id)}>
+                          Remove
+                        </button>
+                      )}
+                      <ReportLink targetType="archive_entry" targetId={e.id} />
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+          );
+        })}
+      </div>
+
+      {entries && visibleCount < entries.length && (
+        <p style={{ textAlign: "center" }}>
+          <button className="btn btn-secondary" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+            Show more
+          </button>
+        </p>
+      )}
     </article>
   );
 }

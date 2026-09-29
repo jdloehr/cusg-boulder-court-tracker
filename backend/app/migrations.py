@@ -170,6 +170,13 @@ POSTGRES_MIGRATIONS = [
         END IF;
     END $$;
     """,
+
+    # Page-redesign doc: real "featured" flags backing the homepage's
+    # "This Week's Pick" and the Recommendations page's pinned Lead card
+    # -- new columns on the pre-existing `hearings`/`hearing_recommendations`
+    # tables.
+    "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS is_weekly_pick BOOLEAN NOT NULL DEFAULT false;",
+    "ALTER TABLE hearing_recommendations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false;",
 ]
 
 

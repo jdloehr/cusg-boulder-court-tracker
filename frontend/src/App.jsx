@@ -8,6 +8,7 @@ import Welcome from "./pages/Welcome.jsx";
 import Recommendations from "./pages/Recommendations.jsx";
 import Archive from "./pages/Archive.jsx";
 import Learn from "./pages/Learn.jsx";
+import LearnTopicDetail from "./pages/LearnTopicDetail.jsx";
 import Justices from "./pages/Justices.jsx";
 import EditJusticeProfile from "./pages/EditJusticeProfile.jsx";
 import TeamAvailability from "./pages/TeamAvailability.jsx";
@@ -31,14 +32,17 @@ function JusticeIdRedirect() {
 }
 
 // Phase-6.2 doc, Section 3: moved out of the footer into the header's far
-// right, per the approved design's "small, low-emphasis 'Justice Sign
-// In' link" -- still unobtrusive (Phase-3 doc, Section 2's original
-// reasoning), just relocated now that the header nav itself is shorter.
+// right -- still unobtrusive when signed out (Phase-3 doc, Section 2's
+// original reasoning), just relocated now that the header nav itself is
+// shorter. Page-redesign doc: the signed-out state is now a bordered
+// pill (nav-signin-pill), not a muted text link -- the signed-in state
+// (name/role/sign-out) stays a plain text row, since it holds several
+// items, not a single CTA.
 function AccountNavLink() {
   const admin = getStoredAdmin();
   const navigate = useNavigate();
 
-  if (!admin) return <NavLink to="/admin/login" className="nav-account-link">Justice Sign In</NavLink>;
+  if (!admin) return <NavLink to="/admin/login" className="nav-signin-pill">Justice Sign In</NavLink>;
 
   const label = admin.displayName || admin.email;
   return (
@@ -86,6 +90,7 @@ export default function App() {
           <Route path="/recommendations" element={<Recommendations />} />
           <Route path="/archive" element={<Archive />} />
           <Route path="/learn" element={<Learn />} />
+          <Route path="/learn/:id" element={<LearnTopicDetail />} />
           <Route path="/justices" element={<Justices />} />
           <Route path="/justices/me/edit" element={<EditJusticeProfile />} />
           <Route path="/justices/team/availability" element={<TeamAvailability />} />

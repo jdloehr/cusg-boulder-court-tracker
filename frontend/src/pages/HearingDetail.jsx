@@ -44,7 +44,10 @@ export default function HearingDetail() {
         {hearing.teaching_notes?.length > 0 && <span className="badge badge-teaching-note">Justice's Note</span>}
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}
+        {hearing.is_weekly_pick && <span className="badge badge-news">&#9733; This Week's Pick</span>}
       </div>
+
+      <WeeklyPickToggle hearing={hearing} admin={admin} onChange={reload} />
 
       <RecommendationCallout hearingId={hearing.id} />
 
@@ -203,6 +206,38 @@ function LivestreamLink({ hearing }) {
     <a className="btn btn-secondary" href={hearing.livestream_url} target="_blank" rel="noreferrer">
       {label}
     </a>
+  );
+}
+
+// Page-redesign doc: the homepage's "This Week's Pick" is a real Editor
+// choice, not a heuristic -- toggled right here rather than through a
+// new admin-dashboard tab, since (unlike the hearing-category review
+// queue's publish-blurb/exclude controls) this needs to be settable on
+// any hearing, not just ones flagged for review.
+function WeeklyPickToggle({ hearing, admin, onChange }) {
+  const [busy, setBusy] = useState(false);
+  if (admin?.role !== "editor") return null;
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      if (hearing.is_weekly_pick) {
+        await api.clearWeeklyPick(hearing.id);
+      } else {
+        await api.setWeeklyPick(hearing.id);
+      }
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <p>
+      <button className="btn btn-secondary" onClick={toggle} disabled={busy}>
+        {busy ? "Saving…" : hearing.is_weekly_pick ? "Remove as This Week's Pick" : "Set as This Week's Pick"}
+      </button>
+    </p>
   );
 }
 

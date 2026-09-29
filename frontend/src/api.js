@@ -112,6 +112,10 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify({ is_excluded: isExcluded, exclusion_reason: reason || null }),
     }),
+  setWeeklyPick: (hearingId) =>
+    request(`/api/admin/hearings/${hearingId}/set-weekly-pick`, { method: "POST", headers: authHeaders() }),
+  clearWeeklyPick: (hearingId) =>
+    request(`/api/admin/hearings/${hearingId}/clear-weekly-pick`, { method: "POST", headers: authHeaders() }),
   appellateCourtPresets: () => request("/api/admin/appellate-candidates/courts", { headers: authHeaders() }),
   searchAppellateCandidates: (query, court, resultType = "o") =>
     request(`/api/admin/appellate-candidates/search?query=${encodeURIComponent(query)}` +
@@ -153,6 +157,10 @@ export const api = {
     request("/api/recommendations", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
   deleteRecommendation: (id) =>
     request(`/api/recommendations/${id}`, { method: "DELETE", headers: authHeaders() }),
+  pinRecommendation: (id) =>
+    request(`/api/recommendations/${id}/pin`, { method: "POST", headers: authHeaders() }),
+  unpinRecommendation: (id) =>
+    request(`/api/recommendations/${id}/unpin`, { method: "POST", headers: authHeaders() }),
 
   // --- Archive & Reflections: reading and "Submit a Summary" are public; ---
   // --- editing/removing needs a Justice login (see backend/app/routers/archive.py) ---

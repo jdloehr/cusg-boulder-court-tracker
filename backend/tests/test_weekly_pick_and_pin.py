@@ -1,0 +1,203 @@
+"""
+Page-redesign doc: two real "featured" flags backing the homepage's
+"This Week's Pick" spotlight (Hearing.is_weekly_pick) and the
+Recommendations page's Lead card (HearingRecommendation.is_pinned).
+Both are "exactly one row True at a time," enforced in the router by
+clearing every other row in the same transaction -- these tests exercise
+that invariant directly, plus role-gating and 404s. Same ctx/TestClient
+fixture style as tests/test_learn.py.
+"""
+import json
+from datetime import date
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.auth import hash_password
+from app.db import get_db
+from app.main import app
+from app.models import (
+    AdminRole,
+    AdminUser,
+    AppearanceType,
+    Base,
+    CaseCategory,
+    CourtLocation,
+    Hearing,
+    HearingRecommendation,
+    HearingSource,
+    HearingStatus,
+    HearingTypeCategory,
+)
+from app.rate_limit import reset_for_tests
+
+
+def _hearing(**overrides):
+    defaults = dict(
+        source=HearingSource.state_docket_export, case_category=CaseCategory.criminal,
+        party_names=json.dumps(["Alex Dawson"]), hearing_type_raw="Jury Trial",
+        hearing_type_display="Jury Trial", hearing_type_category=HearingTypeCategory.jury_trial.value,
+        date=date(2026, 12, 1), court_location=CourtLocation.boulder_county,
+        appearance_type=AppearanceType.in_person, status=HearingStatus.scheduled,
+    )
+    defaults.update(overrides)
+    return Hearing(**defaults)
+
+
+@pytest.fixture()
+def ctx():
+    reset_for_tests()
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    TestSession = sessionmaker(bind=engine)
+
+    def override_get_db():
+        session = TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    seed = TestSession()
+    editor = AdminUser(id="editor-1", email="editor@test.local", hashed_password=hash_password("pw"),
+                        role=AdminRole.editor, is_justice=True, display_name="Chief Justice Test")
+    contributor = AdminUser(id="contributor-1", email="contributor@test.local", hashed_password=hash_password("pw"),
+                             role=AdminRole.contributor)
+    hearing_a = _hearing(id="hearing-a", case_number="2026CR000001")
+    hearing_b = _hearing(id="hearing-b", case_number="2026CR000002")
+    rec_a = HearingRecommendation(id="rec-a", hearing_id="hearing-a", justice_id="editor-1", note="Watch this.")
+    rec_b = HearingRecommendation(id="rec-b", hearing_id="hearing-b", justice_id="editor-1", note="Also good.")
+    seed.add_all([editor, contributor, hearing_a, hearing_b, rec_a, rec_b])
+    seed.commit()
+    seed.close()
+
+    yield TestClient(app), TestSession
+    app.dependency_overrides.clear()
+
+
+def _auth(client, email="editor@test.local"):
+    r = client.post("/api/admin/login", json={"email": email, "password": "pw"})
+    assert r.status_code == 200
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+# --- This Week's Pick --------------------------------------------------------
+
+def test_set_weekly_pick_marks_the_hearing(ctx):
+    client, _Session = ctx
+    r = client.post("/api/admin/hearings/hearing-a/set-weekly-pick", headers=_auth(client))
+    assert r.status_code == 200
+    public = client.get("/api/hearings/hearing-a").json()
+    assert public["is_weekly_pick"] is True
+
+
+def test_set_weekly_pick_clears_the_previous_one(ctx):
+    client, _Session = ctx
+    headers = _auth(client)
+    client.post("/api/admin/hearings/hearing-a/set-weekly-pick", headers=headers)
+    client.post("/api/admin/hearings/hearing-b/set-weekly-pick", headers=headers)
+
+    a = client.get("/api/hearings/hearing-a").json()
+    b = client.get("/api/hearings/hearing-b").json()
+    assert a["is_weekly_pick"] is False
+    assert b["is_weekly_pick"] is True
+
+
+def test_clear_weekly_pick(ctx):
+    client, _Session = ctx
+    headers = _auth(client)
+    client.post("/api/admin/hearings/hearing-a/set-weekly-pick", headers=headers)
+    client.post("/api/admin/hearings/hearing-a/clear-weekly-pick", headers=headers)
+    a = client.get("/api/hearings/hearing-a").json()
+    assert a["is_weekly_pick"] is False
+
+
+def test_set_weekly_pick_requires_editor(ctx):
+    client, _Session = ctx
+    r = client.post("/api/admin/hearings/hearing-a/set-weekly-pick", headers=_auth(client, "contributor@test.local"))
+    assert r.status_code == 403
+
+
+def test_set_weekly_pick_requires_login(ctx):
+    client, _Session = ctx
+    r = client.post("/api/admin/hearings/hearing-a/set-weekly-pick")
+    assert r.status_code == 401
+
+
+def test_set_weekly_pick_404s_for_unknown_hearing(ctx):
+    client, _Session = ctx
+    r = client.post("/api/admin/hearings/does-not-exist/set-weekly-pick", headers=_auth(client))
+    assert r.status_code == 404
+
+
+def test_hearing_defaults_to_not_the_pick(ctx):
+    client, _Session = ctx
+    b = client.get("/api/hearings/hearing-b").json()
+    assert b["is_weekly_pick"] is False
+
+
+# --- Recommendation pin -------------------------------------------------------
+
+def test_pin_recommendation(ctx):
+    client, _Session = ctx
+    r = client.post("/api/recommendations/rec-a/pin", headers=_auth(client))
+    assert r.status_code == 200, r.text
+    assert r.json()["is_pinned"] is True
+
+    listed = {rec["id"]: rec for rec in client.get("/api/recommendations").json()}
+    assert listed["rec-a"]["is_pinned"] is True
+    assert listed["rec-b"]["is_pinned"] is False
+
+
+def test_pin_recommendation_clears_the_previous_one(ctx):
+    client, _Session = ctx
+    headers = _auth(client)
+    client.post("/api/recommendations/rec-a/pin", headers=headers)
+    client.post("/api/recommendations/rec-b/pin", headers=headers)
+
+    listed = {rec["id"]: rec for rec in client.get("/api/recommendations").json()}
+    assert listed["rec-a"]["is_pinned"] is False
+    assert listed["rec-b"]["is_pinned"] is True
+
+
+def test_unpin_recommendation(ctx):
+    client, _Session = ctx
+    headers = _auth(client)
+    client.post("/api/recommendations/rec-a/pin", headers=headers)
+    r = client.post("/api/recommendations/rec-a/unpin", headers=headers)
+    assert r.status_code == 200
+    assert r.json()["is_pinned"] is False
+
+
+def test_pin_recommendation_requires_justice_login(ctx):
+    client, _Session = ctx
+    r = client.post("/api/recommendations/rec-a/pin")
+    assert r.status_code == 401
+
+
+def test_pin_recommendation_requires_a_real_justice_not_just_any_editor(ctx):
+    """require_justice (identity), not require_editor (role) -- a
+    Contributor account (curation role but not a real Justice) must be
+    rejected, matching create_recommendation/delete_recommendation's own
+    gate right next to this endpoint."""
+    client, _Session = ctx
+    r = client.post("/api/recommendations/rec-a/pin", headers=_auth(client, "contributor@test.local"))
+    assert r.status_code == 403
+
+
+def test_pin_recommendation_404s_for_unknown_id(ctx):
+    client, _Session = ctx
+    r = client.post("/api/recommendations/does-not-exist/pin", headers=_auth(client))
+    assert r.status_code == 404
+
+
+def test_recommendation_defaults_to_not_pinned(ctx):
+    client, _Session = ctx
+    listed = {rec["id"]: rec for rec in client.get("/api/recommendations").json()}
+    assert listed["rec-a"]["is_pinned"] is False
+    assert listed["rec-b"]["is_pinned"] is False

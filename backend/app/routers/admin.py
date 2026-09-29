@@ -364,6 +364,39 @@ def set_exclusion(hearing_id: str, payload: ExclusionIn, db: Session = Depends(g
     return {"status": "updated"}
 
 
+# Page-redesign doc: the homepage's "This Week's Pick" spotlight, as a
+# real Editor choice rather than the client-side heuristic Home.jsx used
+# before this existed (soonest hearing with a curated_blurb). Exactly one
+# hearing is ever the pick -- clearing every other row in the same
+# transaction, rather than a DB constraint, is this project's established
+# way of enforcing a "single current thing" invariant (see
+# NewsMention's soft-dedup docstring for the same reasoning applied
+# elsewhere).
+@router.post("/hearings/{hearing_id}/set-weekly-pick")
+def set_weekly_pick(hearing_id: str, db: Session = Depends(get_db),
+                     admin: AdminUser = Depends(require_editor)):
+    hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
+    if not hearing:
+        raise HTTPException(404, "Hearing not found")
+    db.query(Hearing).filter(Hearing.is_weekly_pick.is_(True)).update({"is_weekly_pick": False})
+    hearing.is_weekly_pick = True
+    _log(db, admin, "set_weekly_pick", "hearing", hearing.id, hearing.case_number)
+    db.commit()
+    return {"status": "updated"}
+
+
+@router.post("/hearings/{hearing_id}/clear-weekly-pick")
+def clear_weekly_pick(hearing_id: str, db: Session = Depends(get_db),
+                       admin: AdminUser = Depends(require_editor)):
+    hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
+    if not hearing:
+        raise HTTPException(404, "Hearing not found")
+    hearing.is_weekly_pick = False
+    _log(db, admin, "clear_weekly_pick", "hearing", hearing.id, hearing.case_number)
+    db.commit()
+    return {"status": "updated"}
+
+
 # --- Appellate supplement (Section 2.3 / 5.4, expanded to CO Supreme Court/Court of Appeals) --
 
 @router.get("/appellate-candidates/search", response_model=list[AppellateCandidateOut])

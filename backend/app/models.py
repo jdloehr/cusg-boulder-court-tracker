@@ -356,6 +356,15 @@ class Hearing(Base):
     news_search_initial_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     news_search_prehearing_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Page-redesign doc: the homepage's "This Week's Pick" spotlight, as
+    # an Editor's explicit choice rather than the client-side heuristic
+    # (soonest hearing with a curated_blurb) Home.jsx fell back to before
+    # this existed. Exactly one row is ever True at a time -- enforced in
+    # routers/admin.py::set_weekly_pick (clears every other row in the
+    # same transaction), not a DB constraint, same soft-enforcement
+    # spirit as this project's other single-current-thing flags.
+    is_weekly_pick: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     news_mentions: Mapped[list["NewsMention"]] = relationship(back_populates="hearing")
     community_submissions: Mapped[list["CommunitySubmission"]] = relationship(back_populates="hearing")
     attendance: Mapped[list["HearingAttendance"]] = relationship(back_populates="hearing")
@@ -517,6 +526,12 @@ class HearingRecommendation(Base):
 
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    # Page-redesign doc: a Justice "pinning" one recommendation as the
+    # Recommendations page's featured Lead card. Exactly one row is ever
+    # True at a time -- enforced in routers/justices.py::pin_recommendation
+    # (clears every other row in the same transaction), same
+    # soft-enforcement spirit as Hearing.is_weekly_pick above.
+    is_pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     hearing: Mapped["Hearing"] = relationship(back_populates="recommendations")
     justice: Mapped["AdminUser"] = relationship()

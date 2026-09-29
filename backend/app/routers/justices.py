@@ -111,6 +111,16 @@ def set_attendance(hearing_id: str, payload: AttendanceIn, db: Session = Depends
     )
 
 
+def _recommendation_out(rec: HearingRecommendation) -> RecommendationOut:
+    return RecommendationOut(
+        id=rec.id, hearing_id=rec.hearing_id, hearing_case_number=rec.hearing.case_number,
+        hearing_type_display=rec.hearing.hearing_type_display, hearing_date=rec.hearing.date,
+        justice_id=rec.justice_id,
+        justice_display_name=rec.justice.display_name or rec.justice.email, justice_title=rec.justice.title,
+        note=rec.note, created_at=rec.created_at, is_pinned=rec.is_pinned,
+    )
+
+
 @router.get("/recommendations", response_model=list[RecommendationOut])
 def list_recommendations(hearing_id: Optional[str] = None, db: Session = Depends(get_db)):
     """Public read (no login) -- reading the board, and reading a specific
@@ -120,16 +130,7 @@ def list_recommendations(hearing_id: Optional[str] = None, db: Session = Depends
     if hearing_id:
         q = q.filter(HearingRecommendation.hearing_id == hearing_id)
     recs = q.order_by(HearingRecommendation.created_at.desc()).all()
-    return [
-        RecommendationOut(
-            id=r.id, hearing_id=r.hearing_id, hearing_case_number=r.hearing.case_number,
-            hearing_type_display=r.hearing.hearing_type_display, hearing_date=r.hearing.date,
-            justice_id=r.justice_id,
-            justice_display_name=r.justice.display_name or r.justice.email, justice_title=r.justice.title,
-            note=r.note, created_at=r.created_at,
-        )
-        for r in recs
-    ]
+    return [_recommendation_out(r) for r in recs]
 
 
 @router.post("/recommendations", response_model=RecommendationOut, status_code=201)
@@ -159,13 +160,43 @@ def create_recommendation(payload: RecommendationIn, db: Session = Depends(get_d
     notify_all_justices_of_new_recommendation(db, rec)
     notify_subscribers_of_new_recommendation(db, rec)
 
-    return RecommendationOut(
-        id=rec.id, hearing_id=hearing.id, hearing_case_number=hearing.case_number,
-        hearing_type_display=hearing.hearing_type_display, hearing_date=hearing.date,
-        justice_id=justice.id,
-        justice_display_name=justice.display_name or justice.email, justice_title=justice.title,
-        note=rec.note, created_at=rec.created_at,
-    )
+    return _recommendation_out(rec)
+
+
+# Page-redesign doc: a Justice "pinning" one recommendation as the
+# Recommendations page's featured Lead card -- peer-to-peer, same
+# require_justice gate as create/delete above, not an Editor curation
+# action. Exactly one recommendation is ever pinned -- clearing every
+# other row in the same transaction, same "single current thing"
+# enforcement as routers/admin.py::set_weekly_pick.
+@router.post("/recommendations/{recommendation_id}/pin", response_model=RecommendationOut)
+def pin_recommendation(recommendation_id: str, db: Session = Depends(get_db),
+                        justice: AdminUser = Depends(require_justice)):
+    rec = db.query(HearingRecommendation).filter(HearingRecommendation.id == recommendation_id).first()
+    if not rec:
+        raise HTTPException(404, "Recommendation not found")
+    db.query(HearingRecommendation).filter(HearingRecommendation.is_pinned.is_(True)).update({"is_pinned": False})
+    rec.is_pinned = True
+    db.add(ActivityLogEntry(
+        admin_user_email=justice.email, action="pinned_recommendation",
+        target_type="hearing", target_id=rec.hearing_id,
+        detail=f"pinned recommendation on {rec.hearing.case_number}",
+    ))
+    db.commit()
+    db.refresh(rec)
+    return _recommendation_out(rec)
+
+
+@router.post("/recommendations/{recommendation_id}/unpin", response_model=RecommendationOut)
+def unpin_recommendation(recommendation_id: str, db: Session = Depends(get_db),
+                          justice: AdminUser = Depends(require_justice)):
+    rec = db.query(HearingRecommendation).filter(HearingRecommendation.id == recommendation_id).first()
+    if not rec:
+        raise HTTPException(404, "Recommendation not found")
+    rec.is_pinned = False
+    db.commit()
+    db.refresh(rec)
+    return _recommendation_out(rec)
 
 
 @router.delete("/recommendations/{recommendation_id}")

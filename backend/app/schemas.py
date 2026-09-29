@@ -183,6 +183,7 @@ class RecommendationOut(BaseModel):
     justice_title: Optional[str] = None
     note: Optional[str] = None
     created_at: datetime
+    is_pinned: bool = False
 
 
 MAX_EXTERNAL_LINKS = 10
@@ -369,6 +370,7 @@ class HearingOut(BaseModel):
     livestream_url: Optional[str]
     appearance_type: AppearanceType
     is_excluded: bool
+    is_weekly_pick: bool = False
     curated_blurb: Optional[str]
     status: HearingStatus
     change_note: Optional[str]
