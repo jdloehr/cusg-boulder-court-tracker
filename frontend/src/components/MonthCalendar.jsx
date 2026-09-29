@@ -42,6 +42,7 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
 
   const [hearings, setHearings] = useState(null);
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [teamAvailability, setTeamAvailability] = useState(null);
 
@@ -52,7 +53,13 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
   }
 
   useEffect(() => {
+    // Real bug, reported live: with no loading state at all, an in-flight
+    // fetch looked identical to a genuinely empty month -- especially
+    // confusing on this host's free tier, where the very first request
+    // after any idle period can take up to a minute to wake the backend
+    // up, making the grid look broken rather than just loading.
     setError(null);
+    setLoading(true);
     let ignore = false;
     const firstOfMonth = isoDate(year, month, 1);
     const lastOfMonth = isoDate(year, month + 1, 0);
@@ -73,6 +80,9 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
       })
       .catch((e) => {
         if (!ignore) setError(e.message);
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
       });
     return () => {
       ignore = true;
@@ -130,7 +140,17 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
 
       {error && <p className="message-error">Couldn't load hearings: {error}</p>}
 
-      <div className="month-calendar-layout">
+      {!error && hearings === null && (
+        <p>
+          Loading&hellip; (the first request of the day can take up to a minute while the server
+          wakes up)
+        </p>
+      )}
+      {!error && loading && hearings !== null && (
+        <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem" }}>Updating&hellip;</p>
+      )}
+
+      {!error && hearings !== null && <div className="month-calendar-layout">
         <div className="month-grid" role="grid" aria-label={viewedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}>
           {WEEKDAY_LABELS.map((label) => (
             <div className="month-grid-weekday" key={label}>{label}</div>
@@ -175,7 +195,7 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
           isJustice={admin?.isJustice}
           teamAvailability={teamAvailability}
         />
-      </div>
+      </div>}
     </div>
   );
 }
