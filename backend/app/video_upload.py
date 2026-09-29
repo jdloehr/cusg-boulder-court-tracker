@@ -19,17 +19,24 @@ copied over:
    for. Validation here is therefore weaker: a declared-Content-Type
    allowlist plus a real header-bytes sniff (see _sniff_container below)
    for the handful of common formats, not full decode-and-validate.
-2. A much tighter size cap than a photo's 5MB. Postgres storage on
-   Render's free-tier plan is small, and a BYTEA column holding video is
-   a materially bigger commitment per row than a headshot photo. 15MB
-   caps a short (a minute or two of compressed) clip -- enough for a
-   quick teaching aside, not a full recorded lecture. Pasting a YouTube/
-   Vimeo/direct-file URL (no size limit, no server storage at all) is the
-   better path for anything longer, and the UI should say so.
+2. A much tighter size cap than a photo's 5MB, but not so tight that it
+   defeats the feature -- an explainer genuinely needs a few minutes, not
+   seconds. 100MB comfortably covers a 3-5 minute clip at a reasonable
+   720p bitrate (~2.5-4 Mbps) with room for a less-efficient phone-camera
+   encode, not just a 15-20 second clip. This is a real, explicit
+   tradeoff against Render's free-tier Postgres storage plan, which is
+   small (order of 1GB) and shared with every other table in this
+   database -- a handful of uploaded videos at this cap is a meaningful
+   fraction of that. Accepted anyway because a teaching video that's too
+   short to actually explain anything isn't a real feature; pasting a
+   YouTube/Vimeo/direct-file URL (no size limit, no server storage at
+   all) remains the better path for anything longer than a few minutes,
+   and the UI says so. If upload volume ever becomes real, the fix is a
+   real object-storage service (S3-compatible), not a smaller cap.
 """
 from __future__ import annotations
 
-MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB -- see module docstring point 2
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB -- see module docstring point 2
 ALLOWED_CONTENT_TYPES = {"video/mp4", "video/webm", "video/ogg", "video/quicktime"}
 
 # Minimal container-format sniffing -- not a full decode (see module

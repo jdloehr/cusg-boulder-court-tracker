@@ -622,7 +622,7 @@ function LearnTopicForm({ topic, onDone, onCancel }) {
         <input id="ltVideoUrl" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
       </div>
       <div>
-        <label htmlFor="ltVideoFile">Or upload a short video file (max 15MB -- optional)</label>
+        <label htmlFor="ltVideoFile">Or upload a video file (max 100MB, a few minutes -- optional)</label>
         <input id="ltVideoFile" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime"
                onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
       </div>

@@ -507,7 +507,7 @@ function TeachingNoteForm({ hearingId, onDone, onCancel }) {
         <input id="teachingNoteVideoUrl" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
       </div>
       <div>
-        <label htmlFor="teachingNoteVideoFile">Or upload a short video file (max 15MB -- optional)</label>
+        <label htmlFor="teachingNoteVideoFile">Or upload a video file (max 100MB, a few minutes -- optional)</label>
         <input id="teachingNoteVideoFile" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime"
                onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
       </div>

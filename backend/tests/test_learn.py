@@ -35,6 +35,7 @@ from app.models import (
     LearnTopic,
 )
 from app.rate_limit import reset_for_tests
+from app.video_upload import MAX_UPLOAD_BYTES
 
 
 def _hearing(**overrides):
@@ -251,7 +252,7 @@ def test_learn_topic_video_upload_rejects_oversized_file(ctx):
     created = client.post("/api/admin/learn-topics", json={
         "title": "Jury Trials", "applies_to_hearing_type_category": "jury_trial", "body_text": "Explainer.",
     }, headers=_auth(client)).json()
-    too_big = (b"\x00\x00\x00\x18ftypmp42") + (b"\x00" * (15 * 1024 * 1024 + 1))
+    too_big = (b"\x00\x00\x00\x18ftypmp42") + (b"\x00" * (MAX_UPLOAD_BYTES + 1))
     r = client.put(f"/api/admin/learn-topics/{created['id']}/video",
                     files={"file": ("clip.mp4", too_big, "video/mp4")}, headers=_auth(client))
     assert r.status_code == 400

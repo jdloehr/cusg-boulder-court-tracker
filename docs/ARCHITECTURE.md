@@ -729,11 +729,14 @@ instruction, since one is reusable and one is a one-off:
   project has no separate object-storage service provisioned before
   assuming that was still the right call. Real, deliberate departure
   from the photo path, though: no re-encoding (Pillow can't decode
-  video, and this project has no ffmpeg dependency), and a much tighter
-  15MB cap than a profile photo's 5MB, given Postgres free-tier storage
-  limits -- see `app/video_upload.py`'s docstring for the full tradeoff.
-  Pasting a URL is the better path for anything longer than a short
-  clip; the upload path exists for a quick aside.
+  video, and this project has no ffmpeg dependency), and a 100MB cap --
+  tighter than unlimited, but sized so a real 3-5 minute explainer at a
+  reasonable bitrate actually fits (an earlier 15MB cap only fit a
+  15-20 second clip, too short to explain anything, and was raised on
+  request). A real, explicit tradeoff against Render's free-tier
+  Postgres storage plan (small, shared with every other table) -- see
+  `app/video_upload.py`'s docstring for the full reasoning. Pasting a
+  URL remains the better path for anything longer than a few minutes.
 - **"Copy to Archive" reuses the real Archive creation path**, not a
   hand-rolled duplicate: `routers/learn.py::copy_teaching_note_to_archive`
   calls `routers/archive.py::create_archive_entry` directly, so it
