@@ -107,6 +107,7 @@ class ParsedRow:
     hearing_type_raw: str
     hearing_type_display: str
     hearing_type_category: str
+    tag_color: str
     date: date
     time: str | None
     duration: str | None
@@ -157,6 +158,7 @@ def parse_docket_csv(csv_text: str) -> list[ParsedRow]:
             hearing_type_raw=hearing_type_raw,
             hearing_type_display=type_result.display,
             hearing_type_category=type_result.category.value,
+            tag_color=type_result.tag_color,
             date=parsed_date,
             time=(raw.get("Time") or "").strip() or None,
             duration=(raw.get("Duration") or "").strip() or None,
@@ -270,6 +272,7 @@ def upsert_row(db: Session, row: ParsedRow, now: datetime, touched_ids: set[str]
             hearing_type_raw=row.hearing_type_raw,
             hearing_type_display=row.hearing_type_display,
             hearing_type_category=row.hearing_type_category,
+            tag_color=row.tag_color,
             date=row.date,
             time=row.time,
             duration=row.duration,
@@ -303,6 +306,7 @@ def upsert_row(db: Session, row: ParsedRow, now: datetime, touched_ids: set[str]
     existing.appearance_type = row.appearance_type
     existing.hearing_type_display = row.hearing_type_display
     existing.hearing_type_category = row.hearing_type_category
+    existing.tag_color = row.tag_color
     existing.last_verified_at = now
 
     if changed_fields:

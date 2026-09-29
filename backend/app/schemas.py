@@ -177,6 +177,7 @@ class RecommendationOut(BaseModel):
     hearing_id: str
     hearing_case_number: str
     hearing_type_display: str
+    hearing_tag_color: str = "other"
     hearing_date: date
     justice_id: str
     justice_display_name: str
@@ -360,6 +361,7 @@ class HearingOut(BaseModel):
     hearing_type_raw: str
     hearing_type_display: str
     hearing_type_category: HearingTypeCategory
+    tag_color: str = "other"
     date: date
     time: Optional[str]
     duration: Optional[str]
@@ -740,6 +742,7 @@ class ArchiveEntryOut(BaseModel):
     hearing_id: str
     hearing_case_number: str
     hearing_type_display: str
+    hearing_tag_color: str = "other"
     hearing_date: date
     case_category: CaseCategory
     proceeding_stage: ProceedingStage

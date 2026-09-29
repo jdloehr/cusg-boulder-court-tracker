@@ -1,4 +1,4 @@
-from app.hearing_types import classify_hearing_type
+from app.hearing_types import TAG_COLORS, _RULES, classify_hearing_type
 from app.models import HearingTypeCategory
 
 
@@ -46,3 +46,41 @@ def test_competency_hearing_is_recognized_as_other_not_flagged():
 def test_blank_hearing_type_is_flagged():
     result = classify_hearing_type("")
     assert result.recognized is False
+
+
+# --- Calendar-view doc: tag_color grouping -----------------------------------
+
+def test_every_rule_uses_a_real_tag_color():
+    """Every _RULES entry's 4th element must be one of the canonical
+    TAG_COLORS keys -- catches a typo'd group name that would otherwise
+    silently fall through to no matching CSS class on the frontend."""
+    for pattern, _category, _display, tag_color in _RULES:
+        assert tag_color in TAG_COLORS, f"{pattern.pattern!r} uses unknown tag_color {tag_color!r}"
+
+
+def test_tag_color_spans_all_eight_groups_across_real_raw_strings():
+    samples = {
+        "Jury Trial": "jury_trial",
+        "Oral Argument": "oral_argument",
+        "Motions Hearing": "oral_argument",
+        "Suppression Hearing": "oral_argument",
+        "Bench Trial": "trial",
+        "Sentencing": "sentencing",
+        "Hearing on Revocation of Probation": "sentencing",
+        "Arraignment": "arraignment",
+        "Hearing on Advisement": "arraignment",
+        "Return Date": "scheduling",
+        "Status Conference": "scheduling",
+        "Permanent Orders Hearing": "family_probate",
+        "Paternity Hearing": "family_probate",
+        "Competency to Proceed Hearing": "other",
+    }
+    for raw, expected_color in samples.items():
+        result = classify_hearing_type(raw)
+        assert result.tag_color == expected_color, raw
+    assert set(samples.values()) == TAG_COLORS
+
+
+def test_unrecognized_and_blank_default_to_other_tag_color():
+    assert classify_hearing_type("Zorbnax Compliance Review").tag_color == "other"
+    assert classify_hearing_type("").tag_color == "other"

@@ -62,6 +62,7 @@ def _to_out(entry: ArchiveEntry, db: Session) -> ArchiveEntryOut:
         hearing_id=entry.hearing_id,
         hearing_case_number=entry.hearing.case_number,
         hearing_type_display=entry.hearing.hearing_type_display,
+        hearing_tag_color=entry.hearing.tag_color,
         hearing_date=entry.hearing.date,
         case_category=entry.hearing.case_category,
         proceeding_stage=entry.proceeding_stage,

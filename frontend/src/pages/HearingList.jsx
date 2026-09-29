@@ -1,15 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import AcademicCalendarBanner from "../components/AcademicCalendarBanner.jsx";
 import AvailabilityMeter from "../components/AvailabilityMeter.jsx";
 import AvailabilityPanel from "../components/AvailabilityPanel.jsx";
 import DataStatusBar from "../components/DataStatusBar.jsx";
 import HearingCardKey from "../components/HearingCardKey.jsx";
+import HearingTypeTag from "../components/HearingTypeTag.jsx";
+import MonthCalendar from "../components/MonthCalendar.jsx";
 import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
 import { cellsToFreeSlotsByDay, hearingMatchesSlots } from "../availabilitySlots.js";
 import { firstSentence } from "../textUtils.js";
 import { useVisitorAvailability } from "../useVisitorAvailability.js";
+
+// Calendar-view doc: a two-option pill switch, List selected by default.
+// Kept generic (not hardcoded to List/Month) in case a third view is ever
+// added, though only two are wired up today.
+function ViewToggle({ view, onChange }) {
+  return (
+    <div className="view-toggle" role="tablist" aria-label="Calendar view">
+      {[["list", "List"], ["month", "Month"]].map(([key, label]) => (
+        <button
+          key={key}
+          role="tab"
+          aria-selected={view === key}
+          className={view === key ? "active" : ""}
+          onClick={() => onChange(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const HORIZONS = [
   { label: "Next 2 weeks", days: 14 },
@@ -27,6 +50,26 @@ function addDaysISO(days) {
 }
 
 export default function HearingList() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Calendar-view doc: List stays the default view; Month is a toggle,
+  // not a separate route, but reflected in the URL so it's shareable and
+  // survives a refresh. Same for the day-view deep link below.
+  const view = searchParams.get("view") === "month" ? "month" : "list";
+  const urlDateFrom = searchParams.get("date_from");
+  const urlDateTo = searchParams.get("date_to");
+
+  function setView(next) {
+    const params = new URLSearchParams(searchParams);
+    if (next === "list") params.delete("view");
+    else params.set("view", next);
+    // Switching views intentionally drops any day-specific date_from/
+    // date_to a "View full day on the docket" link may have set -- List's
+    // own planning-window control takes back over.
+    params.delete("date_from");
+    params.delete("date_to");
+    setSearchParams(params);
+  }
+
   const [hearingTypeCategory, setHearingTypeCategory] = useState("");
   const [hasNews, setHasNews] = useState(false);
   const [caseCategory, setCaseCategory] = useState("");
@@ -46,6 +89,7 @@ export default function HearingList() {
   );
 
   useEffect(() => {
+    if (view !== "list") return undefined;
     setError(null);
     setLoading(true);
     // `ignore` guards against a real race: the backend's free hosting
@@ -59,16 +103,24 @@ export default function HearingList() {
     let ignore = false;
 
     const params = {
-      date_from: todayISO(),
-      date_to: addDaysISO(horizonDays),
+      // Calendar-view doc: the month view's "View full day on the docket"
+      // link deep-links here with an explicit single-day date_from/
+      // date_to via the URL -- honored over the planning-window control
+      // when present.
+      date_from: urlDateFrom || todayISO(),
+      date_to: urlDateTo || addDaysISO(horizonDays),
       case_category: caseCategory || undefined,
       court_location: courtLocation || undefined,
     };
     // "" (default option) -> let the backend apply Section 5.1's default
     // filter (jury trial/oral argument, in-person, or has a news mention).
     // "__all__" -> explicitly bypass that filter. Anything else -> a
-    // specific hearing_type_category.
-    if (hearingTypeCategory === "__all__") {
+    // specific hearing_type_category. A day-specific deep link from the
+    // month view always shows everything scheduled that day, regardless
+    // of the type filter -- that's the whole point of "view full day."
+    if (urlDateFrom) {
+      params.show_all_types = "true";
+    } else if (hearingTypeCategory === "__all__") {
       params.show_all_types = "true";
     } else if (hearingTypeCategory) {
       params.hearing_type_category = hearingTypeCategory;
@@ -88,7 +140,7 @@ export default function HearingList() {
     return () => {
       ignore = true;
     };
-  }, [hearingTypeCategory, caseCategory, courtLocation, horizonDays, refreshTick]);
+  }, [view, hearingTypeCategory, caseCategory, courtLocation, horizonDays, refreshTick, urlDateFrom, urlDateTo]);
 
   // Recommendation stars (public) -- fetched once, independent of filters,
   // since the recommendation board is small and rarely changes mid-visit.
@@ -187,66 +239,77 @@ export default function HearingList() {
             ))}
           </select>
         </div>
-        <div className="filter-field">
-          <label htmlFor="f-horizon">Planning window</label>
-          <select id="f-horizon" value={horizonDays} onChange={(e) => setHorizonDays(Number(e.target.value))}>
-            {HORIZONS.map((h) => (
-              <option key={h.days} value={h.days}>
-                {h.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <label className="filter-checkbox">
-          <input type="checkbox" checked={hasNews} onChange={(e) => setHasNews(e.target.checked)} />
-          In the news only
-        </label>
+        {view === "list" && (
+          <>
+            <div className="filter-field">
+              <label htmlFor="f-horizon">Planning window</label>
+              <select id="f-horizon" value={horizonDays} onChange={(e) => setHorizonDays(Number(e.target.value))}>
+                {HORIZONS.map((h) => (
+                  <option key={h.days} value={h.days}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className="filter-checkbox">
+              <input type="checkbox" checked={hasNews} onChange={(e) => setHasNews(e.target.checked)} />
+              In the news only
+            </label>
+          </>
+        )}
+        <ViewToggle view={view} onChange={setView} />
       </div>
 
-      <HearingCardKey />
+      {view === "month" ? (
+        <MonthCalendar hearingTypeCategory={hearingTypeCategory} caseCategory={caseCategory} courtLocation={courtLocation} />
+      ) : (
+        <>
+          <HearingCardKey />
 
-      {error && <p className="message-error">Couldn't load hearings: {error}</p>}
+          {error && <p className="message-error">Couldn't load hearings: {error}</p>}
 
-      {!error && filtered === null && (
-        <p>
-          Loading&hellip; (the first request of the day can take up to a minute while the server
-          wakes up)
-        </p>
-      )}
-      {!error && loading && filtered !== null && (
-        <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem" }}>Updating&hellip;</p>
-      )}
+          {!error && filtered === null && (
+            <p>
+              Loading&hellip; (the first request of the day can take up to a minute while the server
+              wakes up)
+            </p>
+          )}
+          {!error && loading && filtered !== null && (
+            <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem" }}>Updating&hellip;</p>
+          )}
 
-      {!loading && filtered && filtered.length === 0 && (
-        <div className="empty-state">
-          <p>No hearings match these filters in this window. Try widening the planning window or clearing a filter.</p>
-        </div>
-      )}
+          {!loading && filtered && filtered.length === 0 && (
+            <div className="empty-state">
+              <p>No hearings match these filters in this window. Try widening the planning window or clearing a filter.</p>
+            </div>
+          )}
 
-      {grouped.map(([date, dayHearings]) => (
-        <section key={date}>
-          <h2 className="date-group-heading">
-            {new Date(date + "T00:00:00").toLocaleDateString(undefined, {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })}
-          </h2>
-          {dayHearings.map((h) => (
-            <HearingRow
-              key={h.id}
-              hearing={h}
-              isRecommended={recommendedHearingIds.has(h.id)}
-              availability={admin?.isJustice ? availabilitySummary[h.id] : null}
-              fitsVisitorSchedule={
-                visitorAvailability.enabled &&
-                visitorAvailability.cells.length > 0 &&
-                hearingMatchesSlots(h.date, h.time, h.duration, visitorFreeSlotsByDay)
-              }
-            />
+          {grouped.map(([date, dayHearings]) => (
+            <section key={date}>
+              <h2 className="date-group-heading">
+                {new Date(date + "T00:00:00").toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </h2>
+              {dayHearings.map((h) => (
+                <HearingRow
+                  key={h.id}
+                  hearing={h}
+                  isRecommended={recommendedHearingIds.has(h.id)}
+                  availability={admin?.isJustice ? availabilitySummary[h.id] : null}
+                  fitsVisitorSchedule={
+                    visitorAvailability.enabled &&
+                    visitorAvailability.cells.length > 0 &&
+                    hearingMatchesSlots(h.date, h.time, h.duration, visitorFreeSlotsByDay)
+                  }
+                />
+              ))}
+            </section>
           ))}
-        </section>
-      ))}
+        </>
+      )}
     </>
   );
 }
@@ -258,7 +321,11 @@ function HearingRow({ hearing, isRecommended, availability, fitsVisitorSchedule 
       <div className="time">{hearing.time || "Time TBD"}</div>
       <div className="main">
         <div className="type">
-          {firstSentence(hearing.hearing_type_display)}
+          {/* No hearingId here -- this tag already sits inside the row's
+              own outer <Link> to this exact hearing (below), and a nested
+              <a> would be invalid HTML for zero navigational benefit.
+              Still gets the real per-type color for sitewide consistency. */}
+          <HearingTypeTag label={firstSentence(hearing.hearing_type_display)} color={hearing.tag_color} />
           {availability && <AvailabilityMeter summary={availability} />}
         </div>
         <div className="meta">

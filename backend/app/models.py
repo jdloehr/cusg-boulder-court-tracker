@@ -298,6 +298,14 @@ class Hearing(Base):
     hearing_type_category: Mapped[HearingTypeCategory] = mapped_column(
         Enum(HearingTypeCategory), nullable=False, index=True
     )
+    # Calendar-view doc: a finer-grained (8-group, plain string not an enum
+    # -- see app/hearing_types.py::TAG_COLORS) coloring for the hearing-type
+    # tag/chip shown throughout the site. Computed once at docket-pull time
+    # from hearing_type_raw (app/jobs/docket_pull.py), same pattern as
+    # hearing_type_display/hearing_type_category right above -- not
+    # recomputed on every read. A plain String, not Enum(...), since new
+    # groups may need to be added later without an ALTER TYPE migration.
+    tag_color: Mapped[str] = mapped_column(String(32), nullable=False, default="other")
 
     date: Mapped[datetime] = mapped_column(Date, nullable=False, index=True)
     time: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # "HH:MM" as printed by court

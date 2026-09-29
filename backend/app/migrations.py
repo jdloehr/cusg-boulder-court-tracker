@@ -177,6 +177,15 @@ POSTGRES_MIGRATIONS = [
     # tables.
     "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS is_weekly_pick BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE hearing_recommendations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false;",
+
+    # Calendar-view doc: a finer-grained hearing-type tag color, computed
+    # once at docket-pull time (see app/hearing_types.py::TAG_COLORS) --
+    # a new column on the pre-existing `hearings` table. Existing rows
+    # default to 'other' and self-heal to their real color within one
+    # daily docket pull, since that job already re-classifies and
+    # overwrites hearing_type_display/hearing_type_category on every
+    # existing row it re-sees -- no backfill script needed.
+    "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS tag_color VARCHAR(32) NOT NULL DEFAULT 'other';",
 ]
 
 

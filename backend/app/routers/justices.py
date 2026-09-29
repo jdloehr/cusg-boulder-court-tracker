@@ -114,7 +114,8 @@ def set_attendance(hearing_id: str, payload: AttendanceIn, db: Session = Depends
 def _recommendation_out(rec: HearingRecommendation) -> RecommendationOut:
     return RecommendationOut(
         id=rec.id, hearing_id=rec.hearing_id, hearing_case_number=rec.hearing.case_number,
-        hearing_type_display=rec.hearing.hearing_type_display, hearing_date=rec.hearing.date,
+        hearing_type_display=rec.hearing.hearing_type_display, hearing_tag_color=rec.hearing.tag_color,
+        hearing_date=rec.hearing.date,
         justice_id=rec.justice_id,
         justice_display_name=rec.justice.display_name or rec.justice.email, justice_title=rec.justice.title,
         note=rec.note, created_at=rec.created_at, is_pinned=rec.is_pinned,

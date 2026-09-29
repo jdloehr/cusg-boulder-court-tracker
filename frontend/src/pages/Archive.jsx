@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
+import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import JusticeLink from "../components/JusticeLink.jsx";
 import ReportLink from "../components/ReportLink.jsx";
 
@@ -120,6 +121,11 @@ export default function Archive() {
                     <p className="archive-entry-meta" style={{ margin: "0 0 0.4rem" }}>
                       {e.hearing_date} &middot; Case {e.hearing_case_number}
                     </p>
+                    <HearingTypeTag
+                      label={e.hearing_type_display?.split(":")[0] || "Hearing"}
+                      color={e.hearing_tag_color}
+                      hearingId={e.hearing_id}
+                    />{" "}
                     <span className="badge badge-category">{STAGE_LABELS[e.proceeding_stage]}</span>
                     {e.reflection_text && <p className="archive-card-quote">&ldquo;{e.reflection_text}&rdquo;</p>}
                     <div className="archive-card-byline">

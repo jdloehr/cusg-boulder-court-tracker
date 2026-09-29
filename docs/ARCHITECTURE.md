@@ -862,6 +862,86 @@ user: build both as real features, then redesign on top of them.
   already-fetched, already-sorted (`created_at.desc()`) list rather than
   a new API parameter.
 
+## Phase 11 additions (month calendar view + clickable hearing tags)
+
+A build prompt added a month-grid view (behind a List/Month toggle,
+List stays default) to the existing Calendar page, plus made every
+hearing-type tag sitewide clickable, linking to that specific hearing.
+Two real gaps surfaced during review and were resolved directly with
+the user before building:
+
+- **The doc assumed a rich per-type color palette already existed.** It
+  didn't -- every hearing-type tag sitewide used one single gray
+  (`.badge-category`), and the real data model only cleanly distinguishes
+  two types (`HearingTypeCategory.jury_trial`/`oral_argument_motions`);
+  everything else the doc named (sentencing, arraignment, motions) was
+  either bucketed into `other` or is a `ProceedingStage` value that only
+  ever exists on *Archive* entries, never on an upcoming `Hearing`. User
+  chose to build a real finer-grained mapping rather than fake one with
+  only 2-3 real colors.
+- **The month view's "day availability" bar didn't map onto the existing
+  per-hearing system**, which needs a specific date+time+duration, not
+  just a date. User chose: average free-Justice fraction across that
+  day's slots. Investigating this turned up a real simplification:
+  Justice availability is recurring *weekly* (`AvailabilitySlot.
+  day_of_week`, never tied to a calendar date), and `GET /api/justices/
+  team/availability` already returns every (weekday, slot) cell's
+  free-count in one call -- a calendar date's availability is just
+  whatever its weekday's already-fetched recurring profile says, so
+  **no new backend endpoint was needed** for this at all, just
+  client-side aggregation over data `TeamAvailability.jsx` already pulls.
+
+**Finer-grained tag colors** (`app/hearing_types.py`): extended, not
+duplicated -- its `_RULES` list already had ~30 real, battle-tested
+patterns mapping raw docket hearing-type strings to a category and a
+plain-language description; each tuple gained a 4th element, a
+`tag_color` group key, grouped from what each rule's own existing
+display text already says the hearing *is* (8 groups: `jury_trial`,
+`oral_argument`, `trial`, `sentencing`, `arraignment`, `scheduling`,
+`family_probate`, `other`). Stored on `Hearing.tag_color` (new column,
+computed once at docket-pull time exactly like the pre-existing
+`hearing_type_display`/`hearing_type_category` columns right next to
+it -- not recomputed on every read) and self-heals for already-ingested
+hearings within one daily pull cycle, same reasoning as every other
+additive column this project has shipped, since `docket_pull.py`
+already overwrites those two sibling fields on every row it re-sees.
+Exposed on `HearingOut` directly, and as `hearing_tag_color` on
+`RecommendationOut`/`ArchiveEntryOut` (the two schemas that embed a
+hearing's type as plain text without the full `Hearing` row).
+
+**Clickable tags** (`components/HearingTypeTag.jsx`): a shared component
+replacing every ad-hoc inline tag/badge for a hearing's type across
+Home, the Calendar (list rows and the new month-view chips),
+Recommendations (lead card + grid), and Archive. Links to that specific
+hearing with `stopPropagation()` so it never fights a surrounding card's
+own click handling; renders as plain non-clickable text when no
+`hearingId` is in scope. One real HTML-correctness catch along the way:
+the Calendar list view's whole row is already one big `<Link>` to the
+same hearing, so nesting another `<a>` inside it for the tag would be
+invalid HTML for zero navigational benefit -- that one call site renders
+the tag colored but non-clickable instead, losing nothing (the row
+already goes to the same place).
+
+**Month calendar view** (`components/MonthCalendar.jsx`, toggled from
+`HearingList.jsx` via `?view=month`, not a separate route): fetches only
+the viewed month's hearings by reusing `GET /api/hearings`'s existing
+`date_from`/`date_to` params -- no new backend route needed here either.
+Six-row grid including grayed adjacent-month days (not fetched, per the
+doc's own "refetch only this month's data"), up to 3 colored tag chips
+per day plus a "+N more," today marked with a filled amber circle,
+every day cell keyboard-operable. Selecting a day drives a sidebar
+(that day's hearings in the same row style Home.jsx's "Get Started"
+list already uses, a "View full day on the docket" deep link back to
+List view via `?view=list&date_from=X&date_to=X` -- which required
+`HearingList.jsx` to start honoring an initial date range from the URL,
+a small addition alongside the `view`/`month` param plumbing it didn't
+have before -- the Justice-only availability gauge, and a color legend
+satisfying the doc's own "color alone isn't enough" accessibility note).
+The availability gauge is a static red-to-green bar with one marker at
+the day's averaged free-fraction (not a per-time-of-day timeline), per
+the user's chosen aggregation approach, reusing the exact hue-sweep
+formula `AvailabilityMeter.jsx` already uses elsewhere.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

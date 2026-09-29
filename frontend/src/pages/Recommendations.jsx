@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
+import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import JusticeLink from "../components/JusticeLink.jsx";
 import ReportLink from "../components/ReportLink.jsx";
 
@@ -99,7 +100,12 @@ function LeadCard({ rec, admin, onUnpin, onRemove }) {
       <p className="rec-lead-label">&#9733; Lead Recommendation</p>
       <h2 className="rec-lead-quote">&ldquo;{rec.note}&rdquo;</h2>
       <p className="rec-lead-meta">
-        {rec.hearing_date} &middot; Case {rec.hearing_case_number}
+        <HearingTypeTag
+          label={rec.hearing_type_display?.split(":")[0] || "Hearing"}
+          color={rec.hearing_tag_color}
+          hearingId={rec.hearing_id}
+        />{" "}
+        &middot; {rec.hearing_date} &middot; Case {rec.hearing_case_number}
       </p>
       <p>
         <Link to={`/hearings/${rec.hearing_id}`} className="btn">
@@ -147,6 +153,13 @@ function RecCard({ rec, numeral, big, admin, onPin, onRemove }) {
           {rec.hearing_date} &middot; Case {rec.hearing_case_number}
         </p>
       </div>
+      <p style={{ marginTop: "0.4rem" }}>
+        <HearingTypeTag
+          label={rec.hearing_type_display?.split(":")[0] || "Hearing"}
+          color={rec.hearing_tag_color}
+          hearingId={rec.hearing_id}
+        />
+      </p>
       {admin?.isJustice && (
         <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.5rem" }}>
           <button className="btn btn-secondary" onClick={onPin}>Pin as lead</button>

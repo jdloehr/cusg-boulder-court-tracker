@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import ColonnadeMotif from "../components/ColonnadeMotif.jsx";
+import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS } from "../courtInfo.js";
 import { firstSentence } from "../textUtils.js";
 
@@ -110,7 +111,7 @@ export default function Home() {
               <tr key={h.id}>
                 <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.date}</td>
                 <td>
-                  <span className="badge badge-category">{firstSentence(h.hearing_type_display)}</span>
+                  <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
                 </td>
                 <td>
                   <Link to={`/hearings/${h.id}`}>{h.case_number}</Link>
