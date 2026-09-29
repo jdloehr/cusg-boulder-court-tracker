@@ -1,13 +1,32 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
+// Real bug, reported live: every page that calls an authenticated
+// endpoint just did `.catch((e) => setError(e.message))`, so once a
+// Justice's session token expired (JWT_EXPIRE_MINUTES, 8 hours by
+// default) or otherwise stopped validating, they hit a dead end -- the
+// raw backend string ("Invalid or expired token") with no way to
+// recover short of knowing to manually sign out and back in.
+// get_current_admin (app/auth.py) is the only thing that ever returns
+// 401, and it's only ever reached via a request that actually carried a
+// Bearer token -- that's the signal distinguishing "your session died"
+// from the login endpoint's own 401 for a wrong password (which never
+// sends one). On that specific combination, clear the stale session and
+// send them back to sign in, the same way the manual "Sign out" button
+// in AdminDashboard.jsx already does. Shared by every call path that can
+// hit an authenticated endpoint -- the plain-JSON path below and the two
+// multipart upload helpers further down, which bypass it entirely for
+// an unrelated reason (the browser needs to set its own multipart
+// Content-Type) but hit the exact same class of dead end otherwise.
+function handleUnauthorized(res, sentBearerToken) {
+  if (res.status === 401 && sentBearerToken) {
+    clearAdmin();
+    window.location.href = "/admin/login";
+  }
+}
+
 async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -16,6 +35,7 @@ async function request(path, options = {}) {
     } catch {
       /* ignore */
     }
+    handleUnauthorized(res, !!headers.Authorization);
     const err = new Error(detail || `Request failed (${res.status})`);
     // Attached, not a change to the error contract every existing
     // `catch (err) { ... err.message ... }` caller relies on -- lets a
@@ -198,6 +218,7 @@ export const api = {
       } catch {
         /* ignore */
       }
+      handleUnauthorized(res, true);
       throw new Error(detail);
     }
     return res.json();
@@ -261,6 +282,7 @@ async function uploadVideo(path, file) {
     } catch {
       /* ignore */
     }
+    handleUnauthorized(res, true);
     throw new Error(detail);
   }
   return res.json();
