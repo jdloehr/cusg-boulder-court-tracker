@@ -360,6 +360,10 @@ class Hearing(Base):
     community_submissions: Mapped[list["CommunitySubmission"]] = relationship(back_populates="hearing")
     attendance: Mapped[list["HearingAttendance"]] = relationship(back_populates="hearing")
     recommendations: Mapped[list["HearingRecommendation"]] = relationship(back_populates="hearing")
+    # Phase 9 doc: case-specific "Learn" notes -- see CaseTeachingNote.
+    # LearnTopic isn't a relationship here (it matches by hearing_type_
+    # category/case_category, not a stored FK) -- see app/learn.py.
+    teaching_notes: Mapped[list["CaseTeachingNote"]] = relationship(back_populates="hearing")
 
     @property
     def has_news_mention(self) -> bool:
@@ -857,3 +861,86 @@ class ExternalApiUsage(Base):
     usage_date: Mapped[datetime] = mapped_column(Date, nullable=False)
     query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     alert_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class LearnTopic(Base):
+    """Phase 9 doc: a reusable "what is this kind of hearing/case"
+    explainer -- a Justice writes one entry and it automatically surfaces
+    on every Hearing whose type and/or category matches, rather than
+    needing per-hearing effort. Matching is a lookup, not a stored FK
+    (see app/learn.py::matching_learn_topics): a topic with only
+    applies_to_hearing_type_category set matches any hearing of that
+    type regardless of case category (a general "what is a jury trial"
+    explainer); one with only applies_to_case_category set matches any
+    case of that category regardless of hearing type; one with *both*
+    set matches only that specific combination (e.g. "Criminal Jury
+    Trials specifically"). At least one of the two must be set -- an
+    entry matching nothing would be dead content -- enforced in
+    routers/learn.py, not the DB, same as this project's other
+    business-rule validations that don't map to a column constraint."""
+    __tablename__ = "learn_topics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    applies_to_hearing_type_category: Mapped[Optional[HearingTypeCategory]] = mapped_column(
+        Enum(HearingTypeCategory), nullable=True, index=True
+    )
+    applies_to_case_category: Mapped[Optional[CaseCategory]] = mapped_column(
+        Enum(CaseCategory), nullable=True, index=True
+    )
+    body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # A pasted URL (YouTube/Vimeo/direct file) and a direct upload are
+    # mutually exclusive in practice but both nullable at the DB level --
+    # routers/learn.py decides which to render, preferring an upload if
+    # both somehow got set.
+    video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Real upload, reusing AdminUser.photo_data/photo_content_type's exact
+    # storage convention -- Postgres BYTEA rather than a separate object-
+    # storage service, since this project has none provisioned (see
+    # app/photo.py's docstring for that original reasoning). Unlike a
+    # profile photo, a video is NOT re-encoded -- Pillow can't decode
+    # video, and adding an ffmpeg dependency for this one feature was a
+    # heavier infrastructure decision than this project's scale calls
+    # for. app/video_upload.py substitutes a declared-content-type
+    # allowlist plus a much tighter size cap (see that module's docstring
+    # for the full tradeoff and why pasting a URL is the better path for
+    # anything longer than a short clip).
+    video_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    video_content_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    # JSON-encoded list of {label, url} objects -- same convention as
+    # every other JSON-in-Text column in this schema (e.g. Hearing.party_names).
+    external_links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_by_id: Mapped[Optional[str]] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    created_by: Mapped["Optional[AdminUser]"] = relationship()
+
+
+class CaseTeachingNote(Base):
+    """Phase 9 doc: an optional, one-off note a Justice attaches to one
+    specific Hearing -- for something unusual enough to be worth
+    explaining beyond the general LearnTopic entry for its type/category.
+    A real FK to one Hearing (unlike LearnTopic's type/category match),
+    and rendered in its own clearly separate section on that hearing's
+    detail page -- same "don't visually blend distinct kinds of extra
+    info together" reasoning already applied to NewsMention vs.
+    CommunitySubmission on the same page."""
+    __tablename__ = "case_teaching_notes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    hearing_id: Mapped[str] = mapped_column(ForeignKey("hearings.id"), nullable=False, index=True)
+
+    body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    video_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    video_content_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    external_links: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_by_id: Mapped[Optional[str]] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    hearing: Mapped["Hearing"] = relationship(back_populates="teaching_notes")
+    created_by: Mapped["Optional[AdminUser]"] = relationship()

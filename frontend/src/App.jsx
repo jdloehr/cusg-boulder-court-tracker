@@ -7,6 +7,7 @@ import About from "./pages/About.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import Recommendations from "./pages/Recommendations.jsx";
 import Archive from "./pages/Archive.jsx";
+import Learn from "./pages/Learn.jsx";
 import Justices from "./pages/Justices.jsx";
 import EditJusticeProfile from "./pages/EditJusticeProfile.jsx";
 import TeamAvailability from "./pages/TeamAvailability.jsx";
@@ -69,6 +70,7 @@ export default function App() {
             <NavLink to="/hearings">Calendar</NavLink>
             <NavLink to="/recommendations">Recommendations</NavLink>
             <NavLink to="/archive">Archive</NavLink>
+            <NavLink to="/learn">Learn</NavLink>
             <NavLink to="/justices">Meet the Justices</NavLink>
             <AccountNavLink />
           </nav>
@@ -83,6 +85,7 @@ export default function App() {
           <Route path="/welcome" element={<Welcome />} />
           <Route path="/recommendations" element={<Recommendations />} />
           <Route path="/archive" element={<Archive />} />
+          <Route path="/learn" element={<Learn />} />
           <Route path="/justices" element={<Justices />} />
           <Route path="/justices/me/edit" element={<EditJusticeProfile />} />
           <Route path="/justices/team/availability" element={<TeamAvailability />} />

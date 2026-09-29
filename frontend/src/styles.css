@@ -377,6 +377,15 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
    end of the Justice-only availability meter's red-green gradient. */
 .badge-fits-schedule { background: transparent; border: 1px solid #2f6f5e; color: #2f6f5e; }
 
+/* Phase 9 doc: the two "Learn" indicators, deliberately outside every
+   hue already in use (amber/navy/tan/grey/teal above) and distinct from
+   each other -- solid indigo for the general, reusable LearnTopic match
+   vs. an outlined plum for the one-off, case-specific CaseTeachingNote,
+   so "general explainer available" and "a Justice wrote something about
+   this exact case" never read as the same kind of thing at a glance. */
+.badge-learn-topic { background: #4C3B93; color: #fff; }
+.badge-teaching-note { background: transparent; border: 1px solid #8a3b63; color: #8a3b63; }
+
 /* A small legend explaining the hearing-card indicators above, added on
    request after a Justice asked what the meter bar meant. */
 .hearing-card-key {
@@ -398,6 +407,14 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 }
 
 .empty-state { padding: 2.5rem 1rem; text-align: center; color: var(--ink-soft); }
+
+/* Phase 9 doc: a responsive 16:9 wrapper for an embedded YouTube/Vimeo
+   iframe or a native <video> tag -- either kind of Learn video content
+   sizes the same way regardless of the source. */
+.video-embed { position: relative; width: 100%; padding-top: 56.25%; margin: 0.75rem 0; background: #000; }
+.video-embed iframe, .video-embed video {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
+}
 
 /* --- Phase-6.3 doc: click-and-drag availability grid --- */
 

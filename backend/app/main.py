@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import ALLOWED_ORIGINS, ENVIRONMENT
 from app.db import init_db
-from app.routers import account, admin, archive, justices, public, reports
+from app.routers import account, admin, archive, justices, learn, public, reports
 from app.security_headers import SecurityHeadersMiddleware
 
 # Real bug, found while debugging a live production issue: every
@@ -56,6 +56,7 @@ app.include_router(justices.router)
 app.include_router(archive.router)
 app.include_router(account.router)
 app.include_router(reports.router)
+app.include_router(learn.router)
 
 
 @app.on_event("startup")

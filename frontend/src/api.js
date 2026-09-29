@@ -215,7 +215,56 @@ export const api = {
     request("/api/account/2fa/disable", {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ password }),
     }),
+
+  // --- Phase 9: "Learn" teaching feature ---
+  listLearnTopics: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    ).toString();
+    return request(`/api/learn-topics${qs ? `?${qs}` : ""}`);
+  },
+  getLearnTopic: (id) => request(`/api/learn-topics/${id}`),
+  learnTopicVideoUrl: (id) => `${API_BASE}/api/learn-topics/${id}/video`,
+  createLearnTopic: (payload) =>
+    request("/api/admin/learn-topics", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
+  updateLearnTopic: (id, payload) =>
+    request(`/api/admin/learn-topics/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),
+  deleteLearnTopic: (id) => request(`/api/admin/learn-topics/${id}`, { method: "DELETE", headers: authHeaders() }),
+  uploadLearnTopicVideo: (id, file) => uploadVideo(`/api/admin/learn-topics/${id}/video`, file),
+
+  createTeachingNote: (hearingId, payload) =>
+    request(`/api/admin/hearings/${hearingId}/teaching-notes`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify(payload),
+    }),
+  updateTeachingNote: (id, payload) =>
+    request(`/api/admin/teaching-notes/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),
+  deleteTeachingNote: (id) => request(`/api/admin/teaching-notes/${id}`, { method: "DELETE", headers: authHeaders() }),
+  uploadTeachingNoteVideo: (id, file) => uploadVideo(`/api/admin/teaching-notes/${id}/video`, file),
+  teachingNoteVideoUrl: (id) => `${API_BASE}/api/teaching-notes/${id}/video`,
+  copyTeachingNoteToArchive: (id, payload) =>
+    request(`/api/admin/teaching-notes/${id}/copy-to-archive`, {
+      method: "POST", headers: authHeaders(), body: JSON.stringify(payload),
+    }),
 };
+
+// Bypasses the shared request() helper -- same reasoning as uploadMyPhoto
+// above (multipart/form-data needs the browser to set its own
+// Content-Type header with the multipart boundary).
+async function uploadVideo(path, file) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}${path}`, { method: "PUT", headers: authHeaders(), body: form });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
 
 export function getStoredAdmin() {
   const token = localStorage.getItem("cusg_admin_token");

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api, clearAdmin, getStoredAdmin } from "../../api.js";
+import VideoEmbed from "../../components/VideoEmbed.jsx";
+import { CASE_CATEGORY_LABELS } from "../../courtInfo.js";
 
 const TABS = [
   { key: "hearings", label: "Review Queue: Hearings" },
@@ -8,6 +10,7 @@ const TABS = [
   { key: "community", label: "Review Queue: Community" },
   { key: "reports", label: "Reports" },
   { key: "federal", label: "Appellate Supplement" },
+  { key: "learn", label: "Learn Library" },
   { key: "calendar", label: "Academic Calendar" },
   { key: "justices", label: "Justice Accounts" },
   { key: "security", label: "Account Security" },
@@ -64,6 +67,7 @@ export default function AdminDashboard() {
           {tab === "news" && <NewsReviewQueue onCountChange={setNewsQueueCount} />}
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
           {tab === "federal" && <AppellateSupplement admin={admin} />}
+          {tab === "learn" && <LearnLibraryAdmin admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
           {tab === "reports" && <ReportsQueue />}
           {tab === "justices" && <JusticeInvites admin={admin} />}
@@ -454,6 +458,207 @@ function AppellateSupplement({ admin }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+// --- Phase 9 doc: "Learn" teaching feature -- reusable topic library ---
+// (case-specific CaseTeachingNotes are managed inline on each hearing's
+// own detail page instead -- see HearingDetail.jsx's TeachingNoteSection,
+// matching how Recommendations already attach to one Hearing there.)
+
+const LEARN_HEARING_TYPE_LABELS = {
+  jury_trial: "Jury Trial",
+  oral_argument_motions: "Oral Argument / Motions Hearing",
+};
+
+function LearnLibraryAdmin({ admin }) {
+  const [topics, setTopics] = useState(null);
+  const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(null); // null = hidden, "new" = create, or a topic id
+  const canEdit = admin?.role === "editor";
+
+  function load() {
+    api.listLearnTopics().then(setTopics).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function remove(id) {
+    await api.deleteLearnTopic(id);
+    load();
+  }
+
+  if (error) return <p className="message-error">{error}</p>;
+  if (!topics) return <p>Loading&hellip;</p>;
+
+  return (
+    <div>
+      <h2>Learn library</h2>
+      <p className="disclaimer">
+        Reusable "what is this kind of hearing/case" explainers -- write one and it automatically
+        shows up on every matching hearing's own page, no per-hearing effort needed. Set at least one
+        of hearing type or case category so it actually matches something.
+      </p>
+
+      {canEdit && editing === null && (
+        <button className="btn" onClick={() => setEditing("new")} style={{ marginBottom: "1rem" }}>
+          New Learn topic
+        </button>
+      )}
+      {canEdit && editing === "new" && (
+        <LearnTopicForm onDone={() => { setEditing(null); load(); }} onCancel={() => setEditing(null)} />
+      )}
+
+      {topics.length === 0 && <p>Nothing in the library yet.</p>}
+      {topics.map((t) =>
+        editing === t.id ? (
+          <LearnTopicForm
+            key={t.id}
+            topic={t}
+            onDone={() => { setEditing(null); load(); }}
+            onCancel={() => setEditing(null)}
+          />
+        ) : (
+          <div className="card" key={t.id}>
+            <h3>
+              {t.title}{" "}
+              {t.applies_to_hearing_type_category && (
+                <span className="badge badge-category">{LEARN_HEARING_TYPE_LABELS[t.applies_to_hearing_type_category]}</span>
+              )}{" "}
+              {t.applies_to_case_category && (
+                <span className="badge badge-category">{CASE_CATEGORY_LABELS[t.applies_to_case_category]}</span>
+              )}
+            </h3>
+            <p className="blurb">{t.body_text}</p>
+            <VideoEmbed videoUrl={t.video_url} uploadedVideoUrl={t.has_uploaded_video ? api.learnTopicVideoUrl(t.id) : null} />
+            {canEdit && (
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button className="btn btn-secondary" onClick={() => setEditing(t.id)}>Edit</button>
+                <button className="btn btn-danger" onClick={() => remove(t.id)}>Delete</button>
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function LearnTopicForm({ topic, onDone, onCancel }) {
+  const isEdit = !!topic;
+  const [title, setTitle] = useState(topic?.title || "");
+  const [hearingType, setHearingType] = useState(topic?.applies_to_hearing_type_category || "");
+  const [caseCategory, setCaseCategory] = useState(topic?.applies_to_case_category || "");
+  const [bodyText, setBodyText] = useState(topic?.body_text || "");
+  const [videoUrl, setVideoUrl] = useState(topic?.video_url || "");
+  const [videoFile, setVideoFile] = useState(null);
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [links, setLinks] = useState(topic?.external_links || []);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  function addLink() {
+    if (!linkLabel.trim() || !linkUrl.trim()) return;
+    setLinks((l) => [...l, { label: linkLabel.trim(), url: linkUrl.trim() }]);
+    setLinkLabel("");
+    setLinkUrl("");
+  }
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = {
+        title, body_text: bodyText, video_url: videoUrl || undefined,
+        applies_to_hearing_type_category: hearingType || undefined,
+        applies_to_case_category: caseCategory || undefined,
+        external_links: links,
+      };
+      const saved = isEdit ? await api.updateLearnTopic(topic.id, payload) : await api.createLearnTopic(payload);
+      if (videoFile) {
+        await api.uploadLearnTopicVideo(saved.id, videoFile);
+      }
+      onDone();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="form-grid card" onSubmit={onSubmit}>
+      <div>
+        <label htmlFor="ltTitle">Title</label>
+        <input id="ltTitle" required value={title} onChange={(e) => setTitle(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="ltType">Applies to hearing type (optional)</label>
+        <select id="ltType" value={hearingType} onChange={(e) => setHearingType(e.target.value)}>
+          <option value="">Not type-specific</option>
+          {Object.entries(LEARN_HEARING_TYPE_LABELS).map(([k, label]) => (
+            <option key={k} value={k}>{label}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label htmlFor="ltCase">Applies to case category (optional)</label>
+        <select id="ltCase" value={caseCategory} onChange={(e) => setCaseCategory(e.target.value)}>
+          <option value="">Not category-specific</option>
+          {Object.entries(CASE_CATEGORY_LABELS)
+            .filter(([k]) => k !== "juvenile")
+            .map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+        </select>
+      </div>
+      <div>
+        <label htmlFor="ltBody">Explainer text</label>
+        <textarea id="ltBody" required value={bodyText} onChange={(e) => setBodyText(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="ltVideoUrl">Video URL (YouTube, Vimeo, or a direct file link -- optional)</label>
+        <input id="ltVideoUrl" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="ltVideoFile">Or upload a short video file (max 15MB -- optional)</label>
+        <input id="ltVideoFile" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime"
+               onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
+      </div>
+      <div>
+        <label>External links (optional)</label>
+        <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.4rem" }}>
+          <input placeholder="Label" value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} style={{ flex: 1 }} />
+          <input placeholder="https://…" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} style={{ flex: 2 }} />
+          <button type="button" className="btn btn-secondary" onClick={addLink}>Add</button>
+        </div>
+        {links.length > 0 && (
+          <ul>
+            {links.map((l, i) => (
+              <li key={i}>
+                {l.label} ({l.url}){" "}
+                <button type="button" className="btn btn-danger" onClick={() => setLinks((ls) => ls.filter((_, j) => j !== i))}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button className="btn" type="submit" disabled={busy || !title.trim() || !bodyText.trim() || (!hearingType && !caseCategory)}>
+          {busy ? "Saving…" : isEdit ? "Save changes" : "Create topic"}
+        </button>
+        <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancel</button>
+      </div>
+      {!hearingType && !caseCategory && (
+        <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+          Set at least one of hearing type or case category, or this topic won't match anything.
+        </p>
+      )}
+      {error && <p className="message-error">{error}</p>}
+    </form>
   );
 }
 

@@ -688,6 +688,80 @@ deciding against it).
   backfill button, since a deterministic model has no ambiguity or stale
   logic left to re-run.
 
+## Phase 9 additions (the "Learn" teaching feature)
+
+A seventh follow-up document: give a visitor who doesn't understand what
+kind of hearing they're looking at a way to learn, and give Justices a
+place to practice teaching what they know. Two distinct content types,
+kept structurally and visually separate per the doc's own explicit
+instruction, since one is reusable and one is a one-off:
+
+- **`LearnTopic`** (`app/learn.py`, `app/routers/learn.py`): a reusable
+  explainer a Justice writes once, matched to hearings by
+  `hearing_type_category`/`case_category` -- not a stored relationship,
+  since the match is a lookup, not a per-hearing attachment (see
+  `app/learn.py::matching_learn_topics`). An unset dimension on a topic
+  means "matches any value" for that dimension, not "matches nothing" --
+  a type-only topic (e.g. "What is a Jury Trial") matches every hearing
+  of that type regardless of case category, and a hearing can match more
+  than one topic at once (a type-based one and a category-based one
+  both applying). At least one dimension must be set, enforced in the
+  router, not the DB. Publicly browsable at `/learn`, filterable the
+  same way `/archive` already is.
+- **`CaseTeachingNote`** (real FK to one `Hearing`, unlike `LearnTopic`):
+  an optional, one-off note for something unusual enough about one
+  specific case to be worth explaining beyond the general topic --
+  managed inline on that hearing's own detail page (matching how
+  Recommendations already attach to one `Hearing` there), not through
+  the admin dashboard.
+- **Role check reused, not reinvented**: every mutating endpoint uses
+  `require_editor` -- the doc's own explicit phrase was "the existing
+  Editor/admin role," and every real Justice account already has
+  `role=editor` by construction (Phase-3 doc, Section 2's merge
+  decision), so this is "Justices only" in effect without adding a third
+  role dependency alongside `require_editor`/`require_justice`.
+- **Video: paste a URL or upload a file, both supported.** A pasted
+  YouTube/Vimeo URL renders as an iframe embed; anything else (a direct
+  file link, or an uploaded file) renders as a native `<video>` tag --
+  see `frontend/src/components/VideoEmbed.jsx`. An uploaded file reuses
+  `AdminUser.photo_data`'s exact storage convention (Postgres BYTEA,
+  served via a dedicated `GET .../video` endpoint) -- confirmed this
+  project has no separate object-storage service provisioned before
+  assuming that was still the right call. Real, deliberate departure
+  from the photo path, though: no re-encoding (Pillow can't decode
+  video, and this project has no ffmpeg dependency), and a much tighter
+  15MB cap than a profile photo's 5MB, given Postgres free-tier storage
+  limits -- see `app/video_upload.py`'s docstring for the full tradeoff.
+  Pasting a URL is the better path for anything longer than a short
+  clip; the upload path exists for a quick aside.
+- **"Copy to Archive" reuses the real Archive creation path**, not a
+  hand-rolled duplicate: `routers/learn.py::copy_teaching_note_to_archive`
+  calls `routers/archive.py::create_archive_entry` directly, so it
+  inherits that endpoint's own business rules for free (the
+  hearing-must-have-already-happened check correctly 400s a note tied to
+  a future hearing) rather than re-implementing them. Copies the note's
+  content into a new `ArchiveEntry`; the original `CaseTeachingNote` is
+  untouched afterward. `judge_name` is filled from the hearing's own
+  known value when set (real data, not a guess); `attendees` has no
+  equivalent on a teaching note and is left for the Justice to fill in
+  on the new Archive entry directly.
+- **A real crash caught before it shipped**: the first working version
+  had `GET /api/hearings/{id}` embedding `teaching_notes` via the exact
+  same `field_validator`-flattening pattern `_flatten_attendance` uses
+  for `HearingAttendance` -- necessary because `CaseTeachingNoteOut`'s
+  `created_by_display_name` has no identically-named ORM attribute for
+  `from_attributes` to auto-populate from (only a `.created_by`
+  relationship object), the same class of gap the Phase 8 round already
+  found and fixed for `NewsMentionOut.hearing`. Caught this time by
+  writing the flattening validator up front, from that precedent,
+  instead of after a crash.
+- **Both new hearing-card/detail-page indicators are visually distinct
+  from every existing one and from each other**: solid indigo
+  (`badge-learn-topic`) for the general, reusable match vs. an outlined
+  plum (`badge-teaching-note`) for the one-off, case-specific note --
+  neither hue overlaps the existing amber/navy/tan/grey/teal palette.
+  The visual key (`HearingCardKey.jsx`) explains both.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

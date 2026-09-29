@@ -274,6 +274,8 @@ function HearingRow({ hearing, isRecommended, availability, fitsVisitorSchedule 
         {isRecommended && <span className="badge badge-news">&#9733; Recommended</span>}
         {fitsVisitorSchedule && <span className="badge badge-fits-schedule">&#10003; Fits your schedule</span>}
         {hasNews && <span className="badge badge-news">In the news</span>}
+        {hearing.learn_topics?.length > 0 && <span className="badge badge-learn-topic">Learn about this</span>}
+        {hearing.teaching_notes?.length > 0 && <span className="badge badge-teaching-note">Justice's Note</span>}
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}
       </div>

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import { COURT_INFO, COURT_LOCATION_TAG } from "../courtInfo.js";
 import JusticeLink from "../components/JusticeLink.jsx";
+import VideoEmbed from "../components/VideoEmbed.jsx";
 
 const ATTENDANCE_LABELS = {
   attending: "Attending",
@@ -38,6 +39,8 @@ export default function HearingDetail() {
           <span className="badge badge-federal">{COURT_LOCATION_TAG[hearing.court_location] || hearing.court_location}</span>
         )}
         {hearing.news_mentions?.length > 0 && <span className="badge badge-news">In the news</span>}
+        {hearing.learn_topics?.length > 0 && <span className="badge badge-learn-topic">Learn about this</span>}
+        {hearing.teaching_notes?.length > 0 && <span className="badge badge-teaching-note">Justice's Note</span>}
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}
       </div>
@@ -135,6 +138,31 @@ export default function HearingDetail() {
           ))}
         </div>
       )}
+
+      {hearing.learn_topics?.length > 0 && (
+        <div className="card">
+          <h3><span className="badge badge-learn-topic">Learn</span> About this kind of hearing</h3>
+          {hearing.learn_topics.map((t) => (
+            <div key={t.id} style={{ marginBottom: "1rem" }}>
+              <h4>{t.title}</h4>
+              <p className="blurb">{t.body_text}</p>
+              <VideoEmbed videoUrl={t.video_url} uploadedVideoUrl={t.has_uploaded_video ? api.learnTopicVideoUrl(t.id) : null} />
+              {t.external_links.length > 0 && (
+                <ul>
+                  {t.external_links.map((link, i) => (
+                    <li key={i}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+          <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+            See the full <Link to="/learn">Learn library</Link> for more.
+          </p>
+        </div>
+      )}
+
+      <TeachingNoteSection hearing={hearing} admin={admin} onChange={reload} />
 
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
         <a className="btn" href={api.icsUrl(hearing.id)}>
@@ -344,6 +372,155 @@ const STAGE_OPTIONS = [
   ["motions_hearing", "Motions Hearing"],
   ["other", "Other"],
 ];
+
+// Phase 9 doc: a one-off note tied to this exact hearing, structurally
+// and visually distinct from the general LearnTopic section above --
+// "these should not visually blend together, since one is general and
+// one is case-specific." Creation is Editor-only (the doc's own phrase
+// for the role check to reuse -- see routers/learn.py's module docstring
+// for why require_editor, not require_justice, is the exact match).
+function TeachingNoteSection({ hearing, admin, onChange }) {
+  const [showForm, setShowForm] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const canEdit = admin?.role === "editor";
+  const notes = hearing.teaching_notes || [];
+
+  if (notes.length === 0 && !canEdit) return null;
+
+  async function removeNote(id) {
+    setBusy(true);
+    try {
+      await api.deleteTeachingNote(id);
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3><span className="badge badge-teaching-note">Justice's Note</span> A Justice's Note on This Case</h3>
+      {notes.length === 0 && <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>Nothing here yet.</p>}
+      {notes.map((n) => (
+        <div key={n.id} style={{ marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--line)" }}>
+          <p className="blurb">{n.body_text}</p>
+          <VideoEmbed videoUrl={n.video_url} uploadedVideoUrl={n.has_uploaded_video ? api.teachingNoteVideoUrl(n.id) : null} />
+          {n.external_links.length > 0 && (
+            <ul>
+              {n.external_links.map((link, i) => (
+                <li key={i}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></li>
+              ))}
+            </ul>
+          )}
+          <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+            {n.created_by_display_name && `— ${n.created_by_display_name}`}
+          </p>
+          {canEdit && (
+            <CopyToArchiveAction note={n} hearing={hearing} disabled={busy} onDone={onChange} onRemove={() => removeNote(n.id)} />
+          )}
+        </div>
+      ))}
+      {canEdit && !showForm && (
+        <button className="btn btn-secondary" onClick={() => setShowForm(true)}>
+          Add a teaching note
+        </button>
+      )}
+      {canEdit && showForm && (
+        <TeachingNoteForm hearingId={hearing.id} onDone={() => { setShowForm(false); onChange(); }} onCancel={() => setShowForm(false)} />
+      )}
+    </div>
+  );
+}
+
+function CopyToArchiveAction({ note, hearing, disabled, onDone, onRemove }) {
+  const [stage, setStage] = useState("other");
+  const [message, setMessage] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const hearingHasPassed = hearing.date < new Date().toISOString().slice(0, 10);
+
+  async function copyToArchive() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.copyTeachingNoteToArchive(note.id, { proceeding_stage: stage });
+      setMessage({ ok: true, text: "Copied to the Archive." });
+      onDone();
+    } catch (err) {
+      setMessage({ ok: false, text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap", marginTop: "0.4rem" }}>
+      <select value={stage} onChange={(e) => setStage(e.target.value)} style={{ fontSize: "0.85rem" }}>
+        {STAGE_OPTIONS.map(([k, label]) => (
+          <option key={k} value={k}>{label}</option>
+        ))}
+      </select>
+      <button className="btn btn-secondary" onClick={copyToArchive} disabled={busy || disabled || !hearingHasPassed}
+              title={!hearingHasPassed ? "This hearing hasn't happened yet" : undefined}>
+        {busy ? "Copying…" : "Copy to Archive"}
+      </button>
+      <button className="btn btn-danger" onClick={onRemove} disabled={disabled}>Remove note</button>
+      {message && <span className={message.ok ? "message-success" : "message-error"} style={{ fontSize: "0.82rem" }}>{message.text}</span>}
+    </div>
+  );
+}
+
+function TeachingNoteForm({ hearingId, onDone, onCancel }) {
+  const [bodyText, setBodyText] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoFile, setVideoFile] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const note = await api.createTeachingNote(hearingId, {
+        body_text: bodyText, video_url: videoUrl || undefined, external_links: [],
+      });
+      if (videoFile) {
+        await api.uploadTeachingNoteVideo(note.id, videoFile);
+      }
+      onDone();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="form-grid" onSubmit={onSubmit} style={{ marginTop: "0.5rem" }}>
+      <div>
+        <label htmlFor="teachingNoteBody">What's unusual or worth explaining about this case?</label>
+        <textarea id="teachingNoteBody" required value={bodyText} onChange={(e) => setBodyText(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="teachingNoteVideoUrl">Video URL (YouTube, Vimeo, or a direct file link -- optional)</label>
+        <input id="teachingNoteVideoUrl" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+      </div>
+      <div>
+        <label htmlFor="teachingNoteVideoFile">Or upload a short video file (max 15MB -- optional)</label>
+        <input id="teachingNoteVideoFile" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime"
+               onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button className="btn" type="submit" disabled={busy || !bodyText.trim()}>
+          {busy ? "Saving…" : "Save note"}
+        </button>
+        <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancel</button>
+      </div>
+      {error && <p className="message-error">{error}</p>}
+    </form>
+  );
+}
 
 // Phase-2 doc, Section 3 + 5: "Mark Attendance" (a logged-in Justice,
 // reflection optional) and "Submit a Summary" (anyone, no login,

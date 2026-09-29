@@ -18,6 +18,14 @@ export default function HearingCardKey() {
         <span className="badge badge-fits-schedule">&#10003; Fits your schedule</span>
         <span>matches your own saved free time</span>
       </span>
+      <span className="hearing-card-key-item">
+        <span className="badge badge-learn-topic">Learn about this</span>
+        <span>a general explainer for this kind of hearing/case</span>
+      </span>
+      <span className="hearing-card-key-item">
+        <span className="badge badge-teaching-note">Justice's Note</span>
+        <span>a Justice wrote something about this exact case</span>
+      </span>
       {admin?.isJustice && (
         <span className="hearing-card-key-item">
           <span className="hearing-card-key-meter-swatch" aria-hidden="true" />

@@ -185,6 +185,170 @@ class RecommendationOut(BaseModel):
     created_at: datetime
 
 
+MAX_EXTERNAL_LINKS = 10
+
+
+class ExternalLinkIn(BaseModel):
+    """Phase 9 doc: one {label, url} entry in a LearnTopic/CaseTeachingNote's
+    external_links list -- stored JSON-encoded (Hearing.party_names'
+    convention), validated as a real list of these shapes on the way in."""
+    label: str
+    url: str
+
+    @field_validator("label")
+    @classmethod
+    def _cap_label(cls, value):
+        stripped = (value or "").strip()
+        if not stripped:
+            raise ValueError("A label is required for each link")
+        if len(stripped) > 120:
+            raise ValueError("Link label must be under 120 characters")
+        return stripped
+
+    @field_validator("url")
+    @classmethod
+    def _valid_url(cls, value):
+        stripped = (value or "").strip()
+        if not stripped.startswith(("http://", "https://")):
+            raise ValueError("Link URL must start with http:// or https://")
+        if len(stripped) > 500:
+            raise ValueError("Link URL must be under 500 characters")
+        return stripped
+
+
+class ExternalLinkOut(BaseModel):
+    label: str
+    url: str
+
+
+def parse_external_links(value):
+    if isinstance(value, str):
+        return json.loads(value) if value else []
+    return value or []
+
+
+def _validate_body_text(value: str, field_name: str, max_length: int = 5000) -> str:
+    stripped = (value or "").strip()
+    if not stripped:
+        raise ValueError(f"{field_name} is required")
+    if len(stripped) > max_length:
+        raise ValueError(f"{field_name} must be under {max_length} characters")
+    return stripped
+
+
+class LearnTopicIn(BaseModel):
+    """Phase 9 doc: create/replace-everything-but-video for a LearnTopic.
+    At least one of the two matching dimensions must be set -- enforced
+    here (a ValueError from a model_validator becomes a 422, same as any
+    other field_validator failure) rather than in the DB, since "matches
+    nothing" isn't a shape the database itself can express as a
+    constraint without a lot of ceremony for one rule."""
+    title: str
+    applies_to_hearing_type_category: Optional[HearingTypeCategory] = None
+    applies_to_case_category: Optional[CaseCategory] = None
+    body_text: str
+    video_url: Optional[str] = None
+    external_links: list[ExternalLinkIn] = []
+
+    @field_validator("title")
+    @classmethod
+    def _cap_title(cls, value):
+        stripped = (value or "").strip()
+        if not stripped:
+            raise ValueError("A title is required")
+        if len(stripped) > 200:
+            raise ValueError("Title must be under 200 characters")
+        return stripped
+
+    @field_validator("body_text")
+    @classmethod
+    def _cap_body(cls, value):
+        return _validate_body_text(value, "body_text")
+
+    @field_validator("external_links")
+    @classmethod
+    def _cap_links(cls, value):
+        if len(value) > MAX_EXTERNAL_LINKS:
+            raise ValueError(f"At most {MAX_EXTERNAL_LINKS} external links")
+        return value
+
+    @model_validator(mode="after")
+    def _at_least_one_dimension(self):
+        if not self.applies_to_hearing_type_category and not self.applies_to_case_category:
+            raise ValueError("Set at least one of hearing type or case category, or this topic would never match anything")
+        return self
+
+
+class LearnTopicUpdateIn(BaseModel):
+    """All fields optional -- only what's provided gets changed, same
+    pattern as ArchiveEntryUpdateIn."""
+    title: Optional[str] = None
+    applies_to_hearing_type_category: Optional[HearingTypeCategory] = None
+    applies_to_case_category: Optional[CaseCategory] = None
+    body_text: Optional[str] = None
+    video_url: Optional[str] = None
+    external_links: Optional[list[ExternalLinkIn]] = None
+
+
+class LearnTopicOut(BaseModel):
+    id: str
+    title: str
+    applies_to_hearing_type_category: Optional[HearingTypeCategory] = None
+    applies_to_case_category: Optional[CaseCategory] = None
+    body_text: str
+    video_url: Optional[str] = None
+    has_uploaded_video: bool = False
+    external_links: list[ExternalLinkOut] = []
+    created_by_display_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CaseTeachingNoteIn(BaseModel):
+    body_text: str
+    video_url: Optional[str] = None
+    external_links: list[ExternalLinkIn] = []
+
+    @field_validator("body_text")
+    @classmethod
+    def _cap_body(cls, value):
+        return _validate_body_text(value, "body_text")
+
+    @field_validator("external_links")
+    @classmethod
+    def _cap_links(cls, value):
+        if len(value) > MAX_EXTERNAL_LINKS:
+            raise ValueError(f"At most {MAX_EXTERNAL_LINKS} external links")
+        return value
+
+
+class CaseTeachingNoteUpdateIn(BaseModel):
+    body_text: Optional[str] = None
+    video_url: Optional[str] = None
+    external_links: Optional[list[ExternalLinkIn]] = None
+
+
+class CaseTeachingNoteOut(BaseModel):
+    id: str
+    hearing_id: str
+    body_text: str
+    video_url: Optional[str] = None
+    has_uploaded_video: bool = False
+    external_links: list[ExternalLinkOut] = []
+    created_by_display_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CopyToArchiveIn(BaseModel):
+    """Phase 9 doc: "Copy to Archive" -- reflection_text comes from the
+    note itself (not re-typed here), but proceeding_stage has no
+    equivalent on a CaseTeachingNote (it describes what was witnessed at
+    a specific attended hearing, which a teaching note doesn't imply),
+    so the Justice picks one at copy time rather than it being guessed."""
+    proceeding_stage: ProceedingStage
+
+
 class HearingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -213,6 +377,17 @@ class HearingOut(BaseModel):
     attendance: list[AttendanceOut] = []
     news_mentions: list[NewsMentionOut] = []
     community_submissions: list[CommunitySubmissionOut] = []
+    # Phase 9 doc: teaching_notes is a real relationship (flattened the
+    # same way _flatten_attendance handles HearingAttendance's .justice
+    # join below -- CaseTeachingNoteOut's created_by_display_name has no
+    # same-named ORM attribute to auto-populate from). learn_topics is
+    # NOT a relationship (LearnTopic matches by type/category, not a
+    # stored FK -- see app/learn.py) -- routers/public.py and
+    # routers/admin.py set it explicitly after construction; it's never
+    # populated by from_attributes, which is why there's no matching
+    # field_validator for it here.
+    teaching_notes: list[CaseTeachingNoteOut] = []
+    learn_topics: list[LearnTopicOut] = []
 
     @field_validator("party_names", mode="before")
     @classmethod
@@ -245,6 +420,34 @@ class HearingOut(BaseModel):
                 "title": row.justice.title,
                 "status": row.status,
                 "note": row.note,
+                "updated_at": row.updated_at,
+            })
+        return flattened
+
+    @field_validator("teaching_notes", mode="before")
+    @classmethod
+    def _flatten_teaching_notes(cls, value):
+        # Same reasoning as _flatten_attendance above: CaseTeachingNoteOut's
+        # created_by_display_name has no identically-named ORM attribute
+        # (only a .created_by relationship object) for from_attributes to
+        # auto-populate, and video_data (raw bytes) should never reach
+        # JSON at all -- has_uploaded_video is the honest stand-in.
+        flattened = []
+        for row in value or []:
+            if isinstance(row, dict):
+                flattened.append(row)
+                continue
+            flattened.append({
+                "id": row.id,
+                "hearing_id": row.hearing_id,
+                "body_text": row.body_text,
+                "video_url": row.video_url,
+                "has_uploaded_video": bool(row.video_data),
+                "external_links": parse_external_links(row.external_links),
+                "created_by_display_name": (
+                    (row.created_by.display_name or row.created_by.email) if row.created_by else None
+                ),
+                "created_at": row.created_at,
                 "updated_at": row.updated_at,
             })
         return flattened

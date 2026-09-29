@@ -17,6 +17,7 @@ from app.availability_slots import load_owner_cells, replace_owner_slots
 from app.config import REFRESH_COOLDOWN_MINUTES
 from app.db import SessionLocal, get_db
 from app.jobs.docket_pull import run_docket_pull
+from app.learn import learn_topic_out, matching_learn_topics
 from app.moderation import is_likely_spam_or_profane
 from app.rate_limit import check_rate_limit, client_ip
 from app.models import (
@@ -96,7 +97,7 @@ def list_hearings(
     elif has_news is False:
         filtered = [h for h in filtered if not h.has_news_mention]
 
-    return [HearingOut.from_orm_hearing(h) for h in filtered]
+    return [_with_learn_topics(HearingOut.from_orm_hearing(h), h, db) for h in filtered]
 
 
 @router.get("/hearings/{hearing_id}", response_model=HearingOut)
@@ -104,7 +105,17 @@ def get_hearing(hearing_id: str, db: Session = Depends(get_db)):
     hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
     if not hearing:
         raise HTTPException(404, "Hearing not found")
-    return HearingOut.from_orm_hearing(hearing)
+    return _with_learn_topics(HearingOut.from_orm_hearing(hearing), hearing, db)
+
+
+def _with_learn_topics(hearing_out: HearingOut, hearing: Hearing, db: Session) -> HearingOut:
+    """Phase 9 doc: LearnTopic matches by hearing_type_category/
+    case_category, not a stored FK (see app/learn.py), so -- unlike
+    news_mentions/community_submissions/teaching_notes, which are real
+    relationships HearingOut.from_orm_hearing() already picks up via
+    field_validator -- this has to be set explicitly after construction."""
+    hearing_out.learn_topics = [learn_topic_out(t) for t in matching_learn_topics(db, hearing)]
+    return hearing_out
 
 
 @router.post("/hearings/{hearing_id}/submissions", status_code=201)
