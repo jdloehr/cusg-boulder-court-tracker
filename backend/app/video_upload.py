@@ -19,24 +19,35 @@ copied over:
    for. Validation here is therefore weaker: a declared-Content-Type
    allowlist plus a real header-bytes sniff (see _sniff_container below)
    for the handful of common formats, not full decode-and-validate.
-2. A much tighter size cap than a photo's 5MB, but not so tight that it
-   defeats the feature -- an explainer genuinely needs a few minutes, not
-   seconds. 100MB comfortably covers a 3-5 minute clip at a reasonable
-   720p bitrate (~2.5-4 Mbps) with room for a less-efficient phone-camera
-   encode, not just a 15-20 second clip. This is a real, explicit
-   tradeoff against Render's free-tier Postgres storage plan, which is
-   small (order of 1GB) and shared with every other table in this
-   database -- a handful of uploaded videos at this cap is a meaningful
-   fraction of that. Accepted anyway because a teaching video that's too
-   short to actually explain anything isn't a real feature; pasting a
-   YouTube/Vimeo/direct-file URL (no size limit, no server storage at
-   all) remains the better path for anything longer than a few minutes,
-   and the UI says so. If upload volume ever becomes real, the fix is a
-   real object-storage service (S3-compatible), not a smaller cap.
+2. A cap lower than the "3-5 minute explainer" this feature is meant for
+   actually needs -- a real, unresolved infrastructure limitation, not a
+   design choice. This started at 100MB (comfortably covers a few
+   minutes at a reasonable bitrate) but a real ~1.5 minute phone video
+   failed in production with a bare "Failed to fetch" -- no HTTP
+   response at all, not the clean "file too large" 400 this module
+   itself would return. That means something between the browser and
+   this app (almost certainly Render's free-tier proxy, on either a
+   request-duration timeout for a slow upload or an undocumented body-
+   size limit -- Render doesn't publish one) killed the connection
+   before it ever reached this code. Confirmed NOT a bug in this
+   function: a 40MB upload against a local copy of this exact backend
+   completed in well under a second. Lowered to 25MB as a conservative
+   value likely to transfer within whatever that undocumented limit or
+   timeout actually is -- not verified against production directly (no
+   admin credentials available to test the real deployment with), so
+   treat this number as a reasonable guess, not a measured ceiling.
+   Given this, pasting a YouTube/Vimeo/direct-file URL (no upload at
+   all, so none of this applies) is the primary, reliable path for any
+   real explainer-length video on this host -- direct upload is a
+   convenience for a short/small clip, not the main path. The UI should
+   frame it that way. If direct upload for real-length video ever needs
+   to actually work reliably, the fix is a real object-storage service
+   (S3-compatible) with a resumable/chunked upload, not a bigger number
+   here that will hit the same wall.
 """
 from __future__ import annotations
 
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB -- see module docstring point 2
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB -- see module docstring point 2
 ALLOWED_CONTENT_TYPES = {"video/mp4", "video/webm", "video/ogg", "video/quicktime"}
 
 # Minimal container-format sniffing -- not a full decode (see module

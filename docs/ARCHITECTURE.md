@@ -720,23 +720,34 @@ instruction, since one is reusable and one is a one-off:
   `role=editor` by construction (Phase-3 doc, Section 2's merge
   decision), so this is "Justices only" in effect without adding a third
   role dependency alongside `require_editor`/`require_justice`.
-- **Video: paste a URL or upload a file, both supported.** A pasted
-  YouTube/Vimeo URL renders as an iframe embed; anything else (a direct
-  file link, or an uploaded file) renders as a native `<video>` tag --
-  see `frontend/src/components/VideoEmbed.jsx`. An uploaded file reuses
+- **Video: paste a URL (the reliable path) or upload a short file
+  directly (a convenience, not the main path).** A pasted YouTube/Vimeo
+  URL renders as an iframe embed; anything else (a direct file link, or
+  an uploaded file) renders as a native `<video>` tag -- see
+  `frontend/src/components/VideoEmbed.jsx`. An uploaded file reuses
   `AdminUser.photo_data`'s exact storage convention (Postgres BYTEA,
-  served via a dedicated `GET .../video` endpoint) -- confirmed this
-  project has no separate object-storage service provisioned before
-  assuming that was still the right call. Real, deliberate departure
-  from the photo path, though: no re-encoding (Pillow can't decode
-  video, and this project has no ffmpeg dependency), and a 100MB cap --
-  tighter than unlimited, but sized so a real 3-5 minute explainer at a
-  reasonable bitrate actually fits (an earlier 15MB cap only fit a
-  15-20 second clip, too short to explain anything, and was raised on
-  request). A real, explicit tradeoff against Render's free-tier
-  Postgres storage plan (small, shared with every other table) -- see
-  `app/video_upload.py`'s docstring for the full reasoning. Pasting a
-  URL remains the better path for anything longer than a few minutes.
+  served via a dedicated `GET .../video` endpoint). Real, deliberate
+  departure from the photo path, though: no re-encoding (Pillow can't
+  decode video, no ffmpeg dependency here), and a cap that took two
+  passes to get right -- raised from an initial 15MB (too tight to fit
+  more than a 15-20 second clip) to 100MB on request, then a real
+  ~1.5-minute upload failed live in production with a bare "Failed to
+  fetch" -- no HTTP response at all, not this module's own clean "file
+  too large" error. That means Render's free-tier proxy killed the
+  connection (almost certainly a request-duration timeout on a slow
+  upload, since Render doesn't publish a body-size limit) before it
+  reached the app at all -- confirmed not a bug in the handler itself (a
+  40MB upload against a local copy of the exact same backend completed
+  in under a second). Lowered to 25MB as a conservative, *unverified*
+  guess at a size likely to transfer within whatever that real limit is
+  -- not measured against production directly (no admin credentials
+  available to test the live deployment with). Given this, pasting a
+  URL is the actually-reliable path for anything resembling the "few
+  minutes" this feature is meant for; direct upload only really suits a
+  short clip, and the UI says so. See `app/video_upload.py`'s docstring
+  for the full account. If direct upload for real-length video ever
+  needs to work reliably, the fix is a real object-storage service with
+  chunked/resumable upload, not a bigger number here.
 - **"Copy to Archive" reuses the real Archive creation path**, not a
   hand-rolled duplicate: `routers/learn.py::copy_teaching_note_to_archive`
   calls `routers/archive.py::create_archive_entry` directly, so it

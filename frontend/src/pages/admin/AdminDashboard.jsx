@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api, clearAdmin, getStoredAdmin } from "../../api.js";
+import DocketSearchHint from "../../components/DocketSearchHint.jsx";
 import VideoEmbed from "../../components/VideoEmbed.jsx";
 import { CASE_CATEGORY_LABELS } from "../../courtInfo.js";
 
@@ -176,10 +177,13 @@ function NewsMentionCard({ m, children }) {
         {m.source_type && ` · ${SOURCE_TYPE_LABELS[m.source_type] || m.source_type}`}
       </p>
       {m.hearing && (
-        <p className="blurb">
-          <strong>{m.hearing.case_number}</strong> -- {m.hearing.hearing_type_display} ({m.hearing.date}),
-          parties: {m.hearing.party_names.join(", ")}
-        </p>
+        <>
+          <p className="blurb">
+            <strong>{m.hearing.case_number}</strong> -- {m.hearing.hearing_type_display} ({m.hearing.date}),
+            parties: {m.hearing.party_names.join(", ")}
+          </p>
+          <DocketSearchHint caseNumber={m.hearing.case_number} className="btn btn-secondary" />
+        </>
       )}
       {children}
     </div>
@@ -618,11 +622,14 @@ function LearnTopicForm({ topic, onDone, onCancel }) {
         <textarea id="ltBody" required value={bodyText} onChange={(e) => setBodyText(e.target.value)} />
       </div>
       <div>
-        <label htmlFor="ltVideoUrl">Video URL (YouTube, Vimeo, or a direct file link -- optional)</label>
+        <label htmlFor="ltVideoUrl">Video URL (YouTube, Vimeo, or a direct file link -- recommended for anything over a minute or two)</label>
         <input id="ltVideoUrl" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
       </div>
       <div>
-        <label htmlFor="ltVideoFile">Or upload a video file (max 100MB, a few minutes -- optional)</label>
+        <label htmlFor="ltVideoFile">
+          Or upload a short video file directly (max 25MB -- unreliable for longer clips on this host; use
+          a URL above instead if this fails)
+        </label>
         <input id="ltVideoFile" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime"
                onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
       </div>

@@ -274,7 +274,24 @@ export const api = {
 async function uploadVideo(path, file) {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_BASE}${path}`, { method: "PUT", headers: authHeaders(), body: form });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { method: "PUT", headers: authHeaders(), body: form });
+  } catch {
+    // fetch() itself throwing (a bare "Failed to fetch", no HTTP response
+    // at all) means the connection never completed -- the server never
+    // got a chance to run our own size/type validation and return a
+    // clear error. Reported live with a real video file: most likely
+    // Render's free-tier proxy dropping a large/slow upload before it
+    // reaches the app, which the raw browser message gives zero signal
+    // about. Give the one actionable thing we actually know: try a
+    // smaller file, or paste a video URL instead (no upload at all).
+    throw new Error(
+      "Upload failed before reaching the server -- this usually means the file is too large or the " +
+      "connection is too slow for this host's free tier. Try a smaller/shorter file, or paste a " +
+      "YouTube/Vimeo/direct-file URL instead."
+    );
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {

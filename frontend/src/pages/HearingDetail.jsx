@@ -4,6 +4,7 @@ import { api, getStoredAdmin } from "../api.js";
 import { COURT_INFO, COURT_LOCATION_TAG } from "../courtInfo.js";
 import JusticeLink from "../components/JusticeLink.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
+import DocketSearchHint from "../components/DocketSearchHint.jsx";
 
 const ATTENDANCE_LABELS = {
   attending: "Attending",
@@ -168,14 +169,7 @@ export default function HearingDetail() {
         <a className="btn" href={api.icsUrl(hearing.id)}>
           Add to calendar (.ics)
         </a>
-        <a
-          className="btn btn-secondary"
-          href={`https://www.coloradojudicial.gov/dockets?caseNumber=${encodeURIComponent(hearing.case_number)}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Confirm on official docket
-        </a>
+        <DocketSearchHint caseNumber={hearing.case_number} />
         <LivestreamLink hearing={hearing} />
       </div>
 
@@ -503,11 +497,14 @@ function TeachingNoteForm({ hearingId, onDone, onCancel }) {
         <textarea id="teachingNoteBody" required value={bodyText} onChange={(e) => setBodyText(e.target.value)} />
       </div>
       <div>
-        <label htmlFor="teachingNoteVideoUrl">Video URL (YouTube, Vimeo, or a direct file link -- optional)</label>
+        <label htmlFor="teachingNoteVideoUrl">Video URL (YouTube, Vimeo, or a direct file link -- recommended for anything over a minute or two)</label>
         <input id="teachingNoteVideoUrl" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
       </div>
       <div>
-        <label htmlFor="teachingNoteVideoFile">Or upload a video file (max 100MB, a few minutes -- optional)</label>
+        <label htmlFor="teachingNoteVideoFile">
+          Or upload a short video file directly (max 25MB -- unreliable for longer clips on this host; use
+          a URL above instead if this fails)
+        </label>
         <input id="teachingNoteVideoFile" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime"
                onChange={(e) => setVideoFile(e.target.files?.[0] || null)} />
       </div>
