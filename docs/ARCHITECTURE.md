@@ -748,6 +748,23 @@ instruction, since one is reusable and one is a one-off:
   for the full account. If direct upload for real-length video ever
   needs to work reliably, the fix is a real object-storage service with
   chunked/resumable upload, not a bigger number here.
+- **A real bug caught only by asking "will it actually play?"**: the
+  Phase-4 doc's Content-Security-Policy (`frontend/vercel.json`) had no
+  `frame-src` or `media-src` directive, so both silently fell back to
+  `default-src 'self'` -- meaning every video path this feature adds
+  (a YouTube/Vimeo iframe, a direct-file `<video>`, and even an uploaded
+  video served from our own API, a *different* origin than the frontend)
+  was blocked by the browser in production from the moment this phase
+  shipped, with no visible error anywhere in this app's own code or
+  logs -- confirmed by reading the live CSP header directly, not
+  guessed. Should have been checked when `VideoEmbed.jsx` was built, not
+  after. Fixed by adding `frame-src https://www.youtube.com
+  https://player.vimeo.com` (the only two origins our own embed code
+  ever generates) and `media-src 'self' https://cusg-court-tracker-api.onrender.com https:`
+  (the last, broader `https:` specifically to allow an editor-pasted
+  direct-file link hosted anywhere -- an intentional, small relaxation,
+  scoped to media playback only and to content only a trusted, `require_editor`-gated
+  Justice can set, not arbitrary public input).
 - **"Copy to Archive" reuses the real Archive creation path**, not a
   hand-rolled duplicate: `routers/learn.py::copy_teaching_note_to_archive`
   calls `routers/archive.py::create_archive_entry` directly, so it
