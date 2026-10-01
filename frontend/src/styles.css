@@ -999,7 +999,7 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   background: var(--paper-raised);
   border: none;
   text-align: left;
-  min-height: 5.5rem;
+  min-height: 4rem;
   padding: 0.35rem;
   display: flex;
   flex-direction: column;
@@ -1021,9 +1021,24 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   border-radius: 50%;
 }
 .month-grid-date.today { background: var(--accent); color: #fff; font-weight: 600; }
-.month-grid-chips { display: flex; flex-direction: column; gap: 0.15rem; }
-.month-grid-chips .hearing-tag { font-size: 0.62rem; padding: 0.1rem 0.35rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.month-grid-more { font-size: 0.68rem; color: var(--ink-soft); }
+
+/* Calendar-view doc's "qualifier": dots, not text chips -- the grid's
+   job is to show *where* things are busy, not to be read in full from
+   one cell. Solid, more saturated versions of the same 8 tag_color
+   hues used for the pill tags elsewhere (those use a soft background +
+   saturated text; a dot has no text, so it needs the saturated color
+   as its own fill to stay visible at this size). */
+.month-grid-dots { display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; }
+.month-grid-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; display: inline-block; padding: 0; border: none; cursor: pointer; }
+.month-grid-overflow { font-size: 0.62rem; color: var(--ink-soft); font-weight: 600; }
+.tag-dot-jury_trial { background: hsl(210, 60%, 32%); }
+.tag-dot-oral_argument { background: hsl(175, 55%, 26%); }
+.tag-dot-trial { background: hsl(265, 40%, 40%); }
+.tag-dot-sentencing { background: hsl(355, 50%, 36%); }
+.tag-dot-arraignment { background: hsl(32, 55%, 32%); }
+.tag-dot-scheduling { background: hsl(210, 25%, 42%); }
+.tag-dot-family_probate { background: hsl(320, 35%, 38%); }
+.tag-dot-other { background: var(--ink-soft); }
 
 .day-sidebar { position: sticky; top: 1rem; }
 .day-sidebar-label {
@@ -1032,7 +1047,21 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 }
 .day-sidebar-legend { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 0.3rem; }
 .day-sidebar-legend-item { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--ink-soft); }
-.day-sidebar-legend-swatch { width: 0.7rem; height: 0.7rem; border-radius: 3px; flex-shrink: 0; }
+/* Round, matching the actual dots in the grid (not the pill tags) --
+   this legend decodes the grid specifically. */
+.day-sidebar-legend-swatch { width: 0.7rem; height: 0.7rem; border-radius: 50%; flex-shrink: 0; }
+
+/* Calendar-view doc's "qualifier": the high-volume day summary --
+   grouped counts, a "Notable" section, and a search, all as an
+   overview/jumping-off point rather than a substitute for the List
+   view's real pagination on a heavy day. */
+.day-summary-notable { margin-top: 0.5rem; padding: 0.5rem; background: var(--accent-soft); border-radius: var(--radius); }
+.day-summary input[type="search"] {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.5rem;
+  margin-top: 0.25rem;
+}
 
 .day-availability-gauge { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 .day-availability-gauge-bar {

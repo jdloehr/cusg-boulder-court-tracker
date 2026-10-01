@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import { weekdayAbbr } from "../availabilityMatch.js";
 import { TAG_COLOR_LEGEND } from "../hearingTagColors.js";
@@ -7,7 +7,12 @@ import HearingTypeTag from "./HearingTypeTag.jsx";
 import { firstSentence } from "../textUtils.js";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MAX_CHIPS_PER_DAY = 3;
+const MAX_DOTS_PER_DAY = 3;
+// Calendar-view doc's "qualifier": past this many hearings in one day, a
+// flat list is "just as overwhelming as the crowded grid was, only pushed
+// one click deeper" -- switch the sidebar to a grouped summary instead.
+const HIGH_VOLUME_THRESHOLD = 20;
+const TAG_LABEL_BY_KEY = Object.fromEntries(TAG_COLOR_LEGEND.map((t) => [t.key, t.label]));
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -28,6 +33,15 @@ function isoDate(year, month, day) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Calendar-view doc's "qualifier": the grid's job is to show *where*
+// things are busy, not to be readable in full from one cell -- so the
+// day cell holds no text at all, formatted sensibly so a heavy real
+// docket day (Boulder arraignment/traffic sessions can run into the
+// hundreds) doesn't need the badge to grow to fit it.
+function formatOverflowCount(n) {
+  return n > 99 ? "99+" : `+${n}`;
+}
+
 // Calendar-view doc, Feature 1: a month-grid view behind a List/Month
 // toggle on the existing Calendar page (HearingList.jsx), not a separate
 // route. Fetches only the viewed month's hearings, reusing the existing
@@ -45,6 +59,7 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [teamAvailability, setTeamAvailability] = useState(null);
+  const [recommendedHearingIds, setRecommendedHearingIds] = useState(new Set());
 
   function goToMonth(date) {
     const params = new URLSearchParams(searchParams);
@@ -100,6 +115,15 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin?.isJustice]);
 
+  // Calendar-view doc's "qualifier": the sidebar's "Notable" section on a
+  // heavy day surfaces anything already flagged elsewhere (a Justice
+  // recommendation) -- fetched once, same "small, rarely changes
+  // mid-visit" reasoning Home.jsx/HearingList.jsx already use for this
+  // exact call.
+  useEffect(() => {
+    api.listRecommendations().then((recs) => setRecommendedHearingIds(new Set(recs.map((r) => r.hearing_id)))).catch(() => {});
+  }, []);
+
   const hearingsByDate = useMemo(() => {
     const map = new Map();
     for (const h of hearings || []) {
@@ -110,7 +134,7 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
   }, [hearings]);
 
   // Six full weeks (42 days), including the leading/trailing days from
-  // adjacent months -- those render grayed out with no chips, and
+  // adjacent months -- those render grayed out with no dots, and
   // deliberately aren't fetched (the doc's own "refetch only this
   // month's data").
   const gridStart = new Date(year, month, 1);
@@ -161,6 +185,7 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
             const dayHearings = hearingsByDate.get(iso) || [];
             const isToday = iso === todayISO();
             const isSelected = iso === selectedDate;
+            const overflow = dayHearings.length - MAX_DOTS_PER_DAY;
             return (
               <button
                 type="button"
@@ -168,21 +193,19 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
                 className={`month-grid-day ${inMonth ? "" : "outside-month"} ${isSelected ? "selected" : ""}`}
                 onClick={() => setSelectedDate(iso)}
                 aria-pressed={isSelected}
-                aria-label={d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                aria-label={`${d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}${
+                  dayHearings.length > 0 ? `, ${dayHearings.length} hearing${dayHearings.length === 1 ? "" : "s"}` : ""
+                }`}
               >
                 <span className={`month-grid-date ${isToday ? "today" : ""}`}>{d.getDate()}</span>
-                <span className="month-grid-chips">
-                  {dayHearings.slice(0, MAX_CHIPS_PER_DAY).map((h) => (
-                    <HearingTypeTag
-                      key={h.id}
-                      label={firstSentence(h.hearing_type_display)}
-                      color={h.tag_color}
-                      hearingId={h.id}
-                    />
+                {/* Qualifier: dots, not text chips -- the grid shows
+                    *where* things are busy, the sidebar explains what.
+                    Always dots regardless of count, never a mix. */}
+                <span className="month-grid-dots">
+                  {dayHearings.slice(0, MAX_DOTS_PER_DAY).map((h) => (
+                    <HearingDot key={h.id} hearing={h} />
                   ))}
-                  {dayHearings.length > MAX_CHIPS_PER_DAY && (
-                    <span className="month-grid-more">+{dayHearings.length - MAX_CHIPS_PER_DAY} more</span>
-                  )}
+                  {overflow > 0 && <span className="month-grid-overflow">{formatOverflowCount(overflow)}</span>}
                 </span>
               </button>
             );
@@ -194,16 +217,38 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
           hearings={hearingsByDate.get(selectedDate) || []}
           isJustice={admin?.isJustice}
           teamAvailability={teamAvailability}
+          recommendedHearingIds={recommendedHearingIds}
         />
       </div>}
     </div>
   );
 }
 
-function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability }) {
+// Qualifier: a small colored dot per hearing, no label text in the grid
+// cell itself -- clicking still goes straight to that hearing (same as
+// the chips it replaces), and a native `title` plus visible aria-label
+// cover the "hover or tap... lightweight tooltip with the hearing title
+// and time" ask without a custom tooltip-state machine (title shows on
+// hover on desktop and on long-press on most mobile browsers).
+function HearingDot({ hearing }) {
+  const label = `${firstSentence(hearing.hearing_type_display)} – ${hearing.time || "time TBD"}`;
+  return (
+    <Link
+      to={`/hearings/${hearing.id}`}
+      className={`month-grid-dot tag-dot-${hearing.tag_color}`}
+      title={label}
+      aria-label={label}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
+
+function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability, recommendedHearingIds }) {
+  const [search, setSearch] = useState("");
   const dateLabel = new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
   });
+  const isHighVolume = hearings.length > HIGH_VOLUME_THRESHOLD;
 
   return (
     <aside className="day-sidebar">
@@ -211,24 +256,32 @@ function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability }) {
       <h3 style={{ marginTop: 0 }}>{dateLabel}</h3>
 
       {hearings.length === 0 && <p style={{ color: "var(--ink-soft)", fontSize: "0.9rem" }}>Nothing scheduled.</p>}
-      <table className="schedule">
-        <tbody>
-          {hearings.map((h) => (
-            <tr key={h.id}>
-              <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.time || "TBD"}</td>
-              <td>
-                <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
-              </td>
-              <td>
-                <a href={`/hearings/${h.id}`}>{h.case_number}</a>
-              </td>
-              <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
-                {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+
+      {isHighVolume ? (
+        <HighVolumeDaySummary hearings={hearings} selectedDate={selectedDate} recommendedHearingIds={recommendedHearingIds}
+                               search={search} onSearchChange={setSearch} />
+      ) : (
+        hearings.length > 0 && (
+          <table className="schedule">
+            <tbody>
+              {hearings.map((h) => (
+                <tr key={h.id}>
+                  <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.time || "TBD"}</td>
+                  <td>
+                    <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
+                  </td>
+                  <td>
+                    <a href={`/hearings/${h.id}`}>{h.case_number}</a>
+                  </td>
+                  <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
+                    {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      )}
 
       {hearings.length > 0 && (
         <p style={{ marginTop: "0.5rem" }}>
@@ -244,12 +297,106 @@ function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability }) {
         <p className="day-sidebar-label">Hearing types</p>
         {TAG_COLOR_LEGEND.map((t) => (
           <span className="day-sidebar-legend-item" key={t.key}>
-            <span className={`day-sidebar-legend-swatch tag-${t.key}`} aria-hidden="true" />
+            <span className={`day-sidebar-legend-swatch tag-dot-${t.key}`} aria-hidden="true" />
             {t.label}
           </span>
         ))}
       </div>
     </aside>
+  );
+}
+
+const SEARCH_RESULT_CAP = 15;
+
+// Qualifier: past HIGH_VOLUME_THRESHOLD, a flat list "is just as
+// overwhelming as the crowded grid was, only pushed one click deeper."
+// Leads with grouped counts, surfaces anything already flagged
+// elsewhere (Notable), and offers a search -- but deliberately never
+// renders the full row-by-row list inline no matter how someone
+// filters; that's what the List-view handoff link (in the parent) is
+// for, where real pagination already makes sense.
+function HighVolumeDaySummary({ hearings, recommendedHearingIds, search, onSearchChange }) {
+  const counts = useMemo(() => {
+    const byColor = new Map();
+    for (const h of hearings) {
+      byColor.set(h.tag_color, (byColor.get(h.tag_color) || 0) + 1);
+    }
+    return [...byColor.entries()].sort(([, a], [, b]) => b - a);
+  }, [hearings]);
+
+  const notable = useMemo(
+    () => hearings.filter((h) => recommendedHearingIds.has(h.id) || h.news_mentions?.length > 0),
+    [hearings, recommendedHearingIds]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return hearings.filter((h) =>
+      h.case_number.toLowerCase().includes(q) ||
+      (h.courtroom || "").toLowerCase().includes(q) ||
+      h.hearing_type_display.toLowerCase().includes(q)
+    );
+  }, [hearings, search]);
+
+  return (
+    <div className="day-summary">
+      <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+        {hearings.length} hearings scheduled -- too many to list here. Grouped by type below.
+      </p>
+
+      {notable.length > 0 && (
+        <div className="day-summary-notable">
+          <p className="day-sidebar-label">Notable</p>
+          {notable.map((h) => (
+            <p key={h.id} style={{ margin: "0.2rem 0" }}>
+              <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />{" "}
+              <a href={`/hearings/${h.id}`}>{h.case_number}</a>
+              {recommendedHearingIds.has(h.id) && " ★"}
+              {h.news_mentions?.length > 0 && " • in the news"}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <p className="day-sidebar-label" style={{ marginTop: "0.75rem" }}>By type</p>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {counts.map(([color, count]) => (
+          <li key={color} style={{ display: "flex", alignItems: "center", gap: "0.4rem", margin: "0.15rem 0", fontSize: "0.88rem" }}>
+            <span className={`day-sidebar-legend-swatch tag-dot-${color}`} aria-hidden="true" />
+            {count} {TAG_LABEL_BY_KEY[color] || color}
+          </li>
+        ))}
+      </ul>
+
+      <label style={{ display: "block", marginTop: "0.75rem" }}>
+        <span className="day-sidebar-label">Find a specific case</span>
+        <input
+          type="search"
+          placeholder="Case number, courtroom, or hearing type"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          style={{ width: "100%" }}
+        />
+      </label>
+      {search.trim() && (
+        <div style={{ marginTop: "0.5rem" }}>
+          {filtered.slice(0, SEARCH_RESULT_CAP).map((h) => (
+            <p key={h.id} style={{ margin: "0.2rem 0", fontSize: "0.88rem" }}>
+              <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />{" "}
+              <a href={`/hearings/${h.id}`}>{h.case_number}</a>
+              {h.courtroom ? ` · Courtroom ${h.courtroom}` : ""}
+            </p>
+          ))}
+          {filtered.length === 0 && <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>No matches.</p>}
+          {filtered.length > SEARCH_RESULT_CAP && (
+            <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+              {filtered.length - SEARCH_RESULT_CAP} more match -- use "View full day on the docket" below for the full list.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

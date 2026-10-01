@@ -942,6 +942,44 @@ the day's averaged free-fraction (not a per-time-of-day timeline), per
 the user's chosen aggregation approach, reusing the exact hue-sweep
 formula `AvailabilityMeter.jsx` already uses elsewhere.
 
+### Phase 11 follow-up: fixing crowding on a busy day
+
+The first pass above used full-text tag chips stacked inside each day
+cell. Real feedback on a busy week: two or three hearings and the cell
+is already fighting for space, and a genuinely heavy day (Boulder
+arraignment/traffic dockets can run into the hundreds in one session)
+would overflow badly. Two real fixes, both frontend-only:
+
+- **The grid now shows dots, not chips** -- one small solid-colored
+  circle per hearing (same 8 `tag_color` hues, just solid instead of the
+  pill's soft-background-plus-text), capped at 3 dots plus a `+N`
+  overflow indicator (`"99+"` past 99, so the badge never needs to grow
+  to fit a three-digit count). No label text in the cell at all -- the
+  grid's job is to show *where* things are busy, the sidebar explains
+  *what*. A dot is still a real link straight to that hearing (same
+  `stopPropagation` as the tag it replaces) with a `title`/`aria-label`
+  carrying the hearing's type and time, covering "a lightweight tooltip
+  ... for anyone who wants a peek" without a custom tooltip-state
+  machine -- `title` covers hover on desktop and long-press on most
+  mobile browsers.
+- **The sidebar gained a high-volume mode** (`MonthCalendar.jsx::
+  HighVolumeDaySummary`, triggered past `HIGH_VOLUME_THRESHOLD = 20`
+  hearings in one day): a flat list of 140 hearings is "just as
+  overwhelming as the crowded grid was, only pushed one click deeper."
+  Past that threshold, the sidebar leads with grouped counts by
+  `tag_color`, a "Notable" section (any hearing that day already
+  flagged elsewhere -- a Justice recommendation, via the same
+  `GET /api/recommendations` call `Home.jsx`/`HearingList.jsx` already
+  make, or confirmed news coverage, already embedded on every
+  `HearingOut`), and a client-side search over case number/courtroom/
+  type. Deliberately never renders the full row-by-row list inline no
+  matter how someone filters, even a search match -- past a small
+  display cap it points at the existing "View full day on the docket"
+  link into List view, where real pagination already makes sense. No
+  backend changes needed for any of this; everything was already either
+  on the hearing objects already being fetched or one additional call to
+  an endpoint that already existed.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for
