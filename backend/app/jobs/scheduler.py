@@ -18,6 +18,7 @@ from apscheduler.triggers.cron import CronTrigger
 from app.db import SessionLocal
 from app.jobs.digest import run_weekly_digest
 from app.jobs.docket_pull import run_docket_pull
+from app.jobs.google_calendar_sync import run_google_calendar_sync
 from app.jobs.news_search import run_news_search
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,12 @@ def start_scheduler() -> BackgroundScheduler:
     # hearings are already there to get their initial search.
     scheduler.add_job(lambda: _run_with_session(run_news_search),
                        CronTrigger(hour=7, minute=30, timezone=tz), id="news_search_daily")
+    # Calendar-sync doc: daily Google Calendar sync for any Justice who's
+    # connected one -- staggered after the above two, though it has no
+    # real dependency on either (it just needs "the current docket
+    # window," a fixed date range it computes on its own).
+    scheduler.add_job(lambda: _run_with_session(run_google_calendar_sync),
+                       CronTrigger(hour=7, minute=45, timezone=tz), id="google_calendar_sync_daily")
     # Weekly digest (Section 5.3 default cadence).
     scheduler.add_job(lambda: _run_with_session(run_weekly_digest),
                        CronTrigger(day_of_week="mon", hour=8, minute=0, timezone=tz), id="weekly_digest")
@@ -60,5 +67,5 @@ def start_scheduler() -> BackgroundScheduler:
     scheduler.start()
     _scheduler = scheduler
     logger.info("Scheduler started (America/Denver): docket_pull(daily 07:00), "
-                "news_search(daily 07:30), weekly_digest(mon 08:00)")
+                "news_search(daily 07:30), google_calendar_sync(daily 07:45), weekly_digest(mon 08:00)")
     return scheduler

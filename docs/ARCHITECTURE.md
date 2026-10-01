@@ -980,6 +980,99 @@ would overflow badly. Two real fixes, both frontend-only:
   on the hearing objects already being fetched or one additional call to
   an endpoint that already existed.
 
+## Phase 12 additions (Google Calendar sync for Justice availability)
+
+A build doc asked to let a Justice link a real Google Calendar instead
+of painting availability by hand, syncing free/busy automatically via a
+freebusy-only OAuth scope that never exposes event content. Two real
+gaps surfaced during planning, both resolved with the user before any
+code was written:
+
+1. **This app's entire availability system is a recurring weekly
+   pattern** (`AvailabilitySlot.day_of_week` -- "free every Monday
+   9-10am," no concept of a specific calendar date), but a real Google
+   Calendar has specific meetings on specific dates. Resolved: a new
+   `AvailabilityOverride` table holds date-specific synced data, checked
+   first by the per-hearing meter and the month view's day-gauge
+   (`app/availability_slots.py::resolve_free_slots_for_date` -- override
+   wins if any row exists for that exact date, even one that resolved to
+   zero free slots; otherwise falls back to the recurring pattern,
+   completely unchanged for every manual-entry Justice). The pre-existing
+   full weekly Team Availability heatmap has no concept of a specific
+   date at all and was left out of scope for exact override data -- but
+   the sync job also derives a conservative recurring `AvailabilitySlot`
+   baseline (a (weekday, slot) is free only if free on *every* occurrence
+   of that weekday within the synced window) so that heatmap doesn't go
+   misleadingly blank for a Justice who no longer paints anything by
+   hand.
+2. **The doc's own two asks conflicted on Google's terms**: "freebusy-
+   only scope, enforced by the scope requested, not just a policy
+   promise" vs. "a Justice picks which calendar from a list." Checked
+   directly against Google's current API docs before building anything:
+   listing calendars (`calendarList.list`) requires the `calendar.
+   readonly` scope, which grants full event-content read access -- there
+   is no way to enumerate calendars under pure `calendar.freebusy` scope.
+   Resolved: every connection defaults to `"primary"` (a real, documented
+   Google alias that works with `freeBusy.query` without ever calling
+   `calendarList.list`), with an optional manual calendar-ID field for a
+   Justice who wants a different calendar. Keeps the privacy guarantee
+   literally enforced by the scope Google grants, exactly as the doc
+   insists on, at the cost of the picker UI it also asked for.
+
+**New tables**: `GoogleCalendarConnection` (one row per synced Justice --
+`calendar_id`, an encrypted refresh token, `last_synced_at`/
+`last_sync_error`), `AvailabilityOverride` (date-specific synced data,
+one row per (date, slot) actually synced with an explicit `is_free`, so
+"determined busy" and "never synced" stay unambiguous), and
+`GoogleCalendarOAuthState` (the OAuth CSRF `state` parameter -- same
+single-use, hashed-at-rest, short-expiry pattern `AdminInvite`/
+`PasswordResetToken` already use, just a 10-minute expiry instead of
+hours/days since a Justice completes this round trip within one browser
+session).
+
+**Encryption**: this codebase had no reversible encryption anywhere
+before this (TOTP secrets and passwords are either plaintext or one-way
+hashed -- neither works for a refresh token, which must be decrypted and
+reused, not just verified). New module `app/token_encryption.py` uses
+`cryptography.fernet.Fernet` (already a transitive dependency, confirmed
+before assuming it was available) backed by a new
+`GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` env var -- same "dev-only
+placeholder locally, a real secret required in production" pattern as
+`JWT_SECRET`.
+
+**OAuth flow + sync job**: `app/routers/google_calendar.py` (connect/
+callback/calendar-id/disconnect) and `app/jobs/google_calendar_sync.py`
+(the daily sync itself, registered in `scheduler.py`'s existing dual
+APScheduler + GitHub Actions mechanism, right after `news_search`). The
+callback is a real 302 redirect back to the frontend, not a JSON
+response -- Google redirects the bare browser there directly, with no
+way to carry a Bearer token, which is exactly what the single-use
+`state` token stands in for. The sync job converts real UTC busy
+intervals from `freeBusy.query` into real Mountain-Time slot
+determinations (DST-aware, via `zoneinfo`) and never calls any endpoint
+that could return event content -- confirmed by the scope choice above,
+not just by what the code happens to call today.
+
+**A real backend-level enforcement added beyond what was strictly
+asked**: `PATCH /api/justices/me/availability` (manual entry) now 400s
+while a Google Calendar connection exists, since a manual edit would
+just get silently overwritten by the next sync anyway -- rejecting it
+outright is more honest than accepting an edit that won't stick. The
+frontend already disables that UI while connected; this is defense in
+depth against a direct API call bypassing it.
+
+**Verification note**: the live OAuth consent screen, the real token
+exchange, and a real `freeBusy.query` call are **not** verifiable in
+this environment -- there's no real Google Cloud OAuth application
+configured here. Everything else (encryption round-trip, the override-
+vs-recurring resolver, the sync job's freebusy-parsing and baseline-
+derivation logic, OAuth state-token expiry/single-use, role-gating on
+every new endpoint) is covered by real tests with `httpx` mocked, same
+pattern `test_news_search.py` already established. One real manual
+end-to-end pass (a real test Google account, a real connect, a real
+synced row landing correctly) is still needed before this is genuinely
+done, not just code-complete.
+
 ## Running locally
 
 See the root `README.md` for exact commands. Short version: SQLite for

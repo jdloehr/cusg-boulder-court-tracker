@@ -153,3 +153,24 @@ PASSWORD_RESET_EXPIRE_HOURS = int(os.environ.get("PASSWORD_RESET_EXPIRE_HOURS", 
 # SENDGRID_API_KEY above. Safe to leave set indefinitely -- see that
 # module's docstring for why re-running it is a no-op once applied.
 JUSTICE_EMAIL_UPDATES = os.environ.get("JUSTICE_EMAIL_UPDATES", "")
+
+# --- Calendar-sync doc: Google Calendar OAuth (freebusy-only) ---------------
+# A real Google Cloud OAuth application -- client ID/secret and the
+# authorized redirect URI must be created there first; this app can't
+# generate them. GOOGLE_CALENDAR_REDIRECT_URI must exactly match what's
+# registered in that OAuth app's config (Google rejects a mismatch).
+GOOGLE_CALENDAR_CLIENT_ID = os.environ.get("GOOGLE_CALENDAR_CLIENT_ID", "")
+GOOGLE_CALENDAR_CLIENT_SECRET = os.environ.get("GOOGLE_CALENDAR_CLIENT_SECRET", "")
+GOOGLE_CALENDAR_REDIRECT_URI = os.environ.get("GOOGLE_CALENDAR_REDIRECT_URI", "")
+# A real Fernet key (Fernet.generate_key()), not a passphrase -- backs
+# app/token_encryption.py. This dev-only default only works locally;
+# losing/rotating the real one in production makes every stored refresh
+# token unrecoverable (same operational posture as rotating JWT_SECRET
+# logging everyone out -- Justices would just need to reconnect).
+GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = os.environ.get(
+    "GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY", "4K8kFhq4iUUuPk8dQyjDqCB2sImPLnbtJO0teM_6XJ0="
+)
+# How far ahead the sync job pulls real freebusy data -- "the current
+# docket window is enough, no need to pull a year of history" (the doc's
+# own words). Matches DOCKET_PULL_WINDOW_DAYS above exactly.
+GOOGLE_CALENDAR_SYNC_WINDOW_DAYS = int(os.environ.get("GOOGLE_CALENDAR_SYNC_WINDOW_DAYS", str(DOCKET_PULL_WINDOW_DAYS)))

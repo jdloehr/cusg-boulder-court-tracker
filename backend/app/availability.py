@@ -122,3 +122,22 @@ def hearing_matches_slots(
     if not day_slots:
         return False
     return bool(hearing_overlapping_slots(start_min, end_min) & day_slots)
+
+
+def hearing_matches_resolved_slots(
+    hearing_time: Optional[str], hearing_duration: Optional[str], resolved_free_slots: set[int],
+) -> bool:
+    """Calendar-sync doc: same overlap check as hearing_matches_slots
+    above, but for a caller that's already resolved which slots are
+    free on this hearing's *specific date* (app/availability_slots.py::
+    resolve_free_slots_for_date -- override-wins-else-recurring), not
+    just its day-of-week. Deliberately takes no hearing_date/day-lookup
+    of its own, so it can never silently re-derive the wrong (recurring-
+    only) answer for a synced Justice by accident."""
+    start_min = parse_hearing_time(hearing_time)
+    if start_min is None:
+        return False
+    if not resolved_free_slots:
+        return False
+    end_min = start_min + parse_duration_minutes(hearing_duration)
+    return bool(hearing_overlapping_slots(start_min, end_min) & resolved_free_slots)

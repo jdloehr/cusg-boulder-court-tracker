@@ -967,3 +967,88 @@ class CaseTeachingNote(Base):
 
     hearing: Mapped["Hearing"] = relationship(back_populates="teaching_notes")
     created_by: Mapped["Optional[AdminUser]"] = relationship()
+
+
+class GoogleCalendarConnection(Base):
+    """Calendar-sync doc: one row per Justice who's linked a Google
+    Calendar, replacing manual AvailabilitySlot entry for that Justice.
+    `calendar_id` defaults to "primary" -- a real, documented Google
+    alias that works with freeBusy.query without ever needing to call
+    calendarList.list, which (checked directly against Google's current
+    API docs before assuming otherwise) requires the broader
+    calendar.readonly scope. Staying on pure calendar.freebusy scope
+    means this app can *never* read an event's title/guests/description,
+    enforced by Google's own scope system, not just a policy promise --
+    the doc's own explicit requirement. A Justice who wants a different
+    calendar synced sets calendar_id directly (see
+    routers/google_calendar.py), rather than picking from a list.
+
+    `encrypted_refresh_token` is Fernet-encrypted (app/token_encryption.py)
+    -- the one secret in this schema that must be *decrypted and reused*
+    later (to get a fresh access token), not just verified, so the
+    one-way hashing every other token in this schema uses (AdminInvite,
+    PasswordResetToken) doesn't apply here."""
+    __tablename__ = "google_calendar_connections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    admin_user_id: Mapped[str] = mapped_column(ForeignKey("admin_users.id"), nullable=False, unique=True, index=True)
+    calendar_id: Mapped[str] = mapped_column(String(255), nullable=False, default="primary")
+    encrypted_refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
+    connected_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # None = healthy. Set on a failed sync (expired/revoked token, API
+    # error) -- the doc's own "flag it... don't let a broken sync
+    # silently zero out their availability" -- and never cleared except
+    # by a subsequent successful sync.
+    last_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    admin_user: Mapped["AdminUser"] = relationship()
+
+
+class AvailabilityOverride(Base):
+    """Calendar-sync doc: date-specific synced availability, layered on
+    top of (not replacing) AvailabilitySlot's recurring weekly pattern --
+    a real Google Calendar has specific meetings on specific dates, which
+    the pre-existing day_of_week-only model structurally can't represent.
+    Same polymorphic owner_type/owner_id convention as AvailabilitySlot
+    (only ever AvailabilityOwnerType.justice in practice today, kept
+    generic for consistency with that precedent).
+
+    Only ever written by app/jobs/google_calendar_sync.py for the current
+    docket window (the doc's own "no need to pull a year of history") --
+    one row per (date, slot) actually synced, with an explicit is_free
+    so "not free" and "not yet synced" are never ambiguous. Read via
+    app/availability_slots.py::resolve_free_slots_for_date, which falls
+    back to the recurring pattern when no override rows exist for a given
+    date -- every manual-entry Justice is completely unaffected, since
+    they never have rows here at all."""
+    __tablename__ = "availability_overrides"
+    __table_args__ = (
+        UniqueConstraint("owner_type", "owner_id", "specific_date", "slot_index",
+                          name="uq_availability_override_owner_date_slot"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    owner_type: Mapped[AvailabilityOwnerType] = mapped_column(Enum(AvailabilityOwnerType), nullable=False, index=True)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    specific_date: Mapped[datetime] = mapped_column(Date, nullable=False, index=True)
+    slot_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_free: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class GoogleCalendarOAuthState(Base):
+    """Calendar-sync doc: the OAuth CSRF `state` parameter, round-tripped
+    through Google's consent redirect -- same single-use, hashed-at-rest,
+    short-expiry pattern as AdminInvite/PasswordResetToken (see
+    app.auth.generate_secure_token/hash_token), just a much shorter
+    expiry (10 minutes, app/routers/google_calendar.py) since a Justice
+    completes this round trip within one browser session, not over days
+    like an emailed invite link."""
+    __tablename__ = "google_calendar_oauth_states"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    admin_user_id: Mapped[str] = mapped_column(ForeignKey("admin_users.id"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

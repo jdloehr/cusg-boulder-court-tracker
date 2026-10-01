@@ -934,6 +934,27 @@ class JusticeAvailabilityIn(BaseModel):
 
 class JusticeAvailabilityOut(BaseModel):
     cells: list[AvailabilityCell] = []
+    # Calendar-sync doc: carried on the existing GET /api/justices/me/
+    # availability response EditJusticeProfile.jsx already calls, rather
+    # than a second endpoint just for sync status.
+    google_calendar_connected: bool = False
+    google_calendar_last_synced_at: Optional[datetime] = None
+    google_calendar_last_sync_error: Optional[str] = None
+
+
+class GoogleCalendarConnectOut(BaseModel):
+    """What GET /api/account/google-calendar/connect returns -- a real
+    Google consent-screen URL for the frontend to navigate the browser
+    to directly (not fetch, since this has to be a real top-level
+    navigation for Google's own login/consent UI to render)."""
+    authorization_url: str
+
+
+class GoogleCalendarCalendarIdIn(BaseModel):
+    """The doc's "pick which calendar" ask, scoped down to a manual ID
+    entry -- see routers/google_calendar.py's module docstring for why
+    there's no picker. An empty/blank value resets to "primary"."""
+    calendar_id: str
 
 
 class AvailabilitySummaryRequest(BaseModel):

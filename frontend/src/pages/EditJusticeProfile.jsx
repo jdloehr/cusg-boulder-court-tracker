@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import AvailabilityGrid from "../components/AvailabilityGrid.jsx";
+import GoogleCalendarSync from "../components/GoogleCalendarSync.jsx";
 
 // Phase-3 doc, Section 3: a Justice edits only their own profile --
 // identity comes from the login (require_justice on the backend), never
@@ -21,6 +22,19 @@ export default function EditJusticeProfile() {
   const [availabilityCells, setAvailabilityCells] = useState([]);
   const [availabilityStatus, setAvailabilityStatus] = useState(null);
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [googleCalendarStatus, setGoogleCalendarStatus] = useState({ connected: false, lastSyncedAt: null, lastSyncError: null });
+  const [googleCalendarBanner, setGoogleCalendarBanner] = useState(null);
+
+  function loadAvailability() {
+    api.getMyAvailability().then((a) => {
+      setAvailabilityCells(a.cells || []);
+      setGoogleCalendarStatus({
+        connected: a.google_calendar_connected,
+        lastSyncedAt: a.google_calendar_last_synced_at,
+        lastSyncError: a.google_calendar_last_sync_error,
+      });
+    });
+  }
 
   useEffect(() => {
     if (!admin?.id) return;
@@ -31,7 +45,24 @@ export default function EditJusticeProfile() {
       setWhyCare(j.why_care || "");
       setFunFact(j.fun_fact || "");
     });
-    api.getMyAvailability().then((a) => setAvailabilityCells(a.cells || []));
+    loadAvailability();
+
+    // Calendar-sync doc: the OAuth callback redirects the bare browser
+    // back here with ?google_calendar=connected|error (it can't carry a
+    // JSON response the way a normal API call would) -- shown once,
+    // then scrubbed from the URL so refreshing doesn't re-show it.
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("google_calendar");
+    if (result) {
+      setGoogleCalendarBanner(
+        result === "connected"
+          ? { ok: true, message: "Google Calendar connected." }
+          : { ok: false, message: "Couldn't connect Google Calendar -- please try again." }
+      );
+      params.delete("google_calendar");
+      const next = params.toString();
+      window.history.replaceState(null, "", window.location.pathname + (next ? `?${next}` : ""));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin?.id]);
 
@@ -96,6 +127,10 @@ export default function EditJusticeProfile() {
         appears on the site (recommendations, attendance, the Archive).
       </p>
 
+      {googleCalendarBanner && (
+        <p className={googleCalendarBanner.ok ? "message-success" : "message-error"}>{googleCalendarBanner.message}</p>
+      )}
+
       <div className="card">
         <h3>Photo</h3>
         {justice.photo_url ? (
@@ -143,14 +178,24 @@ export default function EditJusticeProfile() {
           <Link to="/justices/team/availability">Team Availability</Link> heatmap so the court can see
           when hearings work for everyone.
         </p>
-        <AvailabilityGrid cells={availabilityCells} onChange={setAvailabilityCells} />
-        <button className="btn" type="button" onClick={onSaveAvailability} disabled={availabilityBusy} style={{ marginTop: "1rem" }}>
-          {availabilityBusy ? "Saving…" : "Save availability"}
-        </button>
-        {availabilityStatus && (
-          <p className={availabilityStatus.ok ? "message-success" : "message-error"}>{availabilityStatus.message}</p>
+        {googleCalendarStatus.connected ? (
+          <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+            Currently synced from Google Calendar -- disconnect it below to enter availability manually.
+          </p>
+        ) : (
+          <>
+            <AvailabilityGrid cells={availabilityCells} onChange={setAvailabilityCells} />
+            <button className="btn" type="button" onClick={onSaveAvailability} disabled={availabilityBusy} style={{ marginTop: "1rem" }}>
+              {availabilityBusy ? "Saving…" : "Save availability"}
+            </button>
+            {availabilityStatus && (
+              <p className={availabilityStatus.ok ? "message-success" : "message-error"}>{availabilityStatus.message}</p>
+            )}
+          </>
         )}
       </div>
+
+      <GoogleCalendarSync status={googleCalendarStatus} onChange={loadAvailability} />
     </article>
   );
 }

@@ -27,6 +27,7 @@ on:
     # support timezone= directly and doesn't have this gap).
     - cron: "0 13 * * *"   # docket pull: daily, 7:00 AM MDT / 6:00 AM MST
     - cron: "30 13 * * *"  # news search: daily, right after the docket pull
+    - cron: "45 13 * * *"  # calendar-sync doc: Google Calendar sync, right after news search
     - cron: "0 15 * * 1"   # weekly digest: Mondays, ~8-9am Boulder time
   workflow_dispatch: {}     # manual "Run workflow" button for testing
 
@@ -66,6 +67,32 @@ jobs:
           EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
           EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
         run: python scripts/run_news_search.py
+
+  google_calendar_sync:
+    if: github.event.schedule == '45 13 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GOOGLE_CALENDAR_CLIENT_ID: ${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}
+          GOOGLE_CALENDAR_CLIENT_SECRET: ${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}
+          GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY: ${{ secrets.GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY }}
+          # Same real email alerting as news_search above -- a sync
+          # failure is low-severity (app/alerting.py), but only useful
+          # if it's actually emailed, not just logged into a run log
+          # nobody reads.
+          ALERT_BACKEND: email
+          ALERT_EMAIL_ADDRESS: ${{ secrets.ALERT_EMAIL_ADDRESS }}
+          EMAIL_BACKEND: sendgrid
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
+          EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+        run: python scripts/run_google_calendar_sync.py
 
   weekly_digest:
     if: github.event.schedule == '0 15 * * 1'

@@ -41,8 +41,14 @@ from app.auth import (
     require_justice,
     verify_password,
 )
-from app.availability import NUM_SLOTS, WEEKDAY_ABBRS, hearing_matches_slots, parse_hearing_time
-from app.availability_slots import load_free_slots_by_day, load_owner_cells, replace_owner_slots
+from app.availability import NUM_SLOTS, WEEKDAY_ABBRS, hearing_matches_resolved_slots, parse_hearing_time
+from app.availability_slots import (
+    load_free_slots_by_day,
+    load_override_slots_by_date,
+    load_owner_cells,
+    replace_owner_slots,
+    resolve_free_slots_for_date,
+)
 from app.config import FRONTEND_URL, INVITE_EXPIRE_HOURS, PASSWORD_RESET_EXPIRE_HOURS
 from app.db import get_db
 from app.jobs.digest import send_email
@@ -51,6 +57,7 @@ from app.models import (
     AdminRole,
     AdminUser,
     AvailabilityOwnerType,
+    GoogleCalendarConnection,
     Hearing,
     JusticeAllowlistEntry,
     PasswordResetToken,
@@ -390,19 +397,40 @@ def get_justice_photo(justice_id: str, db: Session = Depends(get_db)):
 # rows (a real weekly grid, painted cell-by-cell) -- see
 # app/availability_slots.py for the shared load/replace helpers.
 
+def _justice_availability_out(db: Session, justice: AdminUser, cells: list) -> JusticeAvailabilityOut:
+    """Calendar-sync doc: carries connection status on the same response
+    EditJusticeProfile.jsx already fetches for the cell grid, rather
+    than a second endpoint."""
+    connection = db.query(GoogleCalendarConnection).filter(GoogleCalendarConnection.admin_user_id == justice.id).first()
+    return JusticeAvailabilityOut(
+        cells=cells,
+        google_calendar_connected=connection is not None,
+        google_calendar_last_synced_at=connection.last_synced_at if connection else None,
+        google_calendar_last_sync_error=connection.last_sync_error if connection else None,
+    )
+
+
 @router.get("/api/justices/me/availability", response_model=JusticeAvailabilityOut)
 def get_my_availability(justice: AdminUser = Depends(require_justice), db: Session = Depends(get_db)):
-    return JusticeAvailabilityOut(cells=load_owner_cells(db, AvailabilityOwnerType.justice, justice.id))
+    cells = load_owner_cells(db, AvailabilityOwnerType.justice, justice.id)
+    return _justice_availability_out(db, justice, cells)
 
 
 @router.patch("/api/justices/me/availability", response_model=JusticeAvailabilityOut)
 def update_my_availability(payload: JusticeAvailabilityIn, db: Session = Depends(get_db),
                             justice: AdminUser = Depends(require_justice)):
     """Full-replace semantics: send the complete current cell list, not
-    an incremental add/remove."""
+    an incremental add/remove. Calendar-sync doc: blocked while a Google
+    Calendar is connected -- sync "replaces manual entry," so a manual
+    edit here would just get silently overwritten by the next sync
+    anyway; rejecting it outright is more honest than accepting an edit
+    that won't stick. Disconnect first (DELETE /api/account/
+    google-calendar) to go back to manual entry."""
+    if db.query(GoogleCalendarConnection).filter(GoogleCalendarConnection.admin_user_id == justice.id).first():
+        raise HTTPException(400, "Availability is synced from Google Calendar -- disconnect it first to enter availability manually.")
     replace_owner_slots(db, AvailabilityOwnerType.justice, justice.id, payload.cells)
     db.commit()
-    return JusticeAvailabilityOut(cells=payload.cells)
+    return _justice_availability_out(db, justice, payload.cells)
 
 
 @router.post("/api/hearings/availability-summary", response_model=dict[str, AvailabilitySummaryEntry])
@@ -418,18 +446,31 @@ def hearings_availability_summary(payload: AvailabilitySummaryRequest, db: Sessi
     justices = db.query(AdminUser).filter(
         AdminUser.is_justice.is_(True), AdminUser.is_active.is_(True)
     ).all()
+    # Calendar-sync doc: a synced Justice's date-specific overrides win
+    # over their recurring pattern for any hearing whose date falls in
+    # the synced window -- loaded once per Justice across every hearing's
+    # date here, not per (hearing, Justice) pair, same "load once outside
+    # the loop" shape load_free_slots_by_day already uses for the
+    # recurring data.
+    hearing_dates = [h.date for h in hearings]
+    date_from = min(hearing_dates) if hearing_dates else None
+    date_to = max(hearing_dates) if hearing_dates else None
     justice_slots = [
-        (j, load_free_slots_by_day(db, AvailabilityOwnerType.justice, j.id))
+        (
+            j,
+            load_free_slots_by_day(db, AvailabilityOwnerType.justice, j.id),
+            load_override_slots_by_date(db, AvailabilityOwnerType.justice, j.id, date_from, date_to),
+        )
         for j in justices
     ]
 
     result: dict[str, AvailabilitySummaryEntry] = {}
     for hearing in hearings:
-        free_names = [
-            j.display_name or j.email
-            for j, free_slots_by_day in justice_slots
-            if hearing_matches_slots(hearing.date, hearing.time, hearing.duration, free_slots_by_day)
-        ]
+        free_names = []
+        for j, free_slots_by_day, override_slots_by_date in justice_slots:
+            resolved = resolve_free_slots_for_date(hearing.date, override_slots_by_date, free_slots_by_day)
+            if hearing_matches_resolved_slots(hearing.time, hearing.duration, resolved):
+                free_names.append(j.display_name or j.email)
         result[hearing.id] = AvailabilitySummaryEntry(
             free_count=len(free_names),
             total=len(justices),

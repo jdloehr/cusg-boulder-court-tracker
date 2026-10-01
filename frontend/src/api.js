@@ -209,6 +209,14 @@ export const api = {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ hearing_ids: hearingIds }),
     }),
   teamAvailability: () => request("/api/justices/team/availability", { headers: authHeaders() }),
+  // --- Calendar-sync doc: Google Calendar sync (freebusy-only) ---
+  googleCalendarConnect: () => request("/api/account/google-calendar/connect", { headers: authHeaders() }),
+  googleCalendarSetCalendarId: (calendarId) =>
+    request("/api/account/google-calendar/calendar-id", {
+      method: "POST", headers: authHeaders(), body: JSON.stringify({ calendar_id: calendarId }),
+    }),
+  googleCalendarDisconnect: () =>
+    request("/api/account/google-calendar", { method: "DELETE", headers: authHeaders() }),
   // Bypasses the shared request() helper: a photo upload is
   // multipart/form-data, and the browser needs to set that header itself
   // (with the multipart boundary) -- request() always forces

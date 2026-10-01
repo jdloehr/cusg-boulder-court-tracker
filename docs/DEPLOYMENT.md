@@ -201,6 +201,65 @@ means it actually reached the recipient's mail server; "Blocked" (with a
 full SMTP response like the one above) or "Bounced" tells you exactly
 why it didn't.
 
+## 6. Google Calendar sync (optional -- lets a Justice link a real calendar instead of painting availability by hand)
+
+Without this, the "Connect Google Calendar" button on a Justice's own
+profile shows a "not configured" error and nothing else breaks --
+manual availability-painting (`AvailabilityGrid`) keeps working exactly
+as before. This section is for turning the sync on.
+
+1. **Create a Google Cloud project** (or reuse one) at
+   [console.cloud.google.com](https://console.cloud.google.com).
+2. **APIs & Services -> Library** -> enable the **Google Calendar API**
+   for that project.
+3. **APIs & Services -> OAuth consent screen** -> set it up (External
+   user type is fine for a small group of Justices; it can stay in
+   "Testing" mode, which only allows explicitly-added test users to
+   actually connect -- add each Justice's real Google account email
+   under **Audience -> Test users**, or publish the app if you want
+   anyone to be able to connect without being pre-added).
+4. **APIs & Services -> Credentials -> Create Credentials -> OAuth
+   client ID** -> Application type **Web application**. Under
+   **Authorized redirect URIs**, add exactly:
+   ```
+   https://cusg-court-tracker-api.onrender.com/api/account/google-calendar/callback
+   ```
+   This has to match character-for-character what the backend sends
+   Google (`GOOGLE_CALENDAR_REDIRECT_URI` below) -- Google rejects the
+   whole flow on any mismatch (trailing slash, http vs. https, etc.).
+   Copy the **Client ID** and **Client Secret** it gives you.
+5. **Generate the token-encryption key.** A Justice's Google refresh
+   token is stored encrypted (never plaintext) -- generate a real
+   [Fernet](https://cryptography.io/en/latest/fernet/) key for this:
+   ```bash
+   cd backend && .venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+6. Render dashboard -> your backend service -> **Environment** -> add:
+   - `GOOGLE_CALENDAR_CLIENT_ID` = the Client ID from step 4
+   - `GOOGLE_CALENDAR_CLIENT_SECRET` = the Client Secret from step 4
+   - `GOOGLE_CALENDAR_REDIRECT_URI` = the exact URI from step 4
+   - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` = the key from step 5
+7. Redeploy (env var changes need one). Also add the same four values
+   as **repository secrets** (GitHub repo -> **Settings -> Secrets and
+   variables -> Actions**) since the daily sync also runs via the
+   GitHub Actions cron workflow described in section 4, alongside the
+   existing `DATABASE_URL` secret it already needs.
+8. Test it: log in as a Justice, go to **Edit my profile**, click
+   **Connect Google Calendar**, and complete Google's consent screen
+   with a test-user account from step 3. It redirects back with a
+   "Connected" banner; the actual free/busy sync runs once a day
+   (7:45am Mountain Time) -- or trigger it immediately via the GitHub
+   Actions tab's "Run workflow" button (`workflow_dispatch`) on
+   `scheduled-jobs.yml`, which also re-runs `docket_pull` and
+   `news_search` at the same time (there's no per-job trigger -- the
+   button runs the whole workflow file, same as every other job in it).
+
+A failed sync (revoked access, expired token, Google API error) never
+erases a Justice's last-known-good availability -- it's logged as
+`last_sync_error` (shown right on their profile) and a low-severity
+alert email fires if every connected Justice's sync fails on the same
+run; existing data is left untouched either way.
+
 ## 7. Phase 4: production hardening flags to set on Render
 
 Add these to the backend service's **Environment** tab (same place as
