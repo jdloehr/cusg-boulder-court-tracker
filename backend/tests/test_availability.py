@@ -430,3 +430,32 @@ def test_availability_cells_rejected_for_a_non_personal_filter_type(client):
         "availability_cells": [{"day_of_week": "mon", "slot_index": 4}],
     })
     assert r.status_code == 422
+
+
+def test_resubmitting_the_same_subscription_does_not_create_a_duplicate_row(client):
+    """Real bug caught manually: a double-click on "Subscribe" (or any
+    resubmit of the exact same form) used to insert a second row with no
+    dedup at all -- app/jobs/digest.py sends one email per row, so that
+    visitor would get every weekly digest twice, forever."""
+    payload = {
+        "email": "watcher@example.com", "filter_type": "hearing_type_category",
+        "filter_value": "jury_trial", "frequency": "weekly_digest",
+    }
+    first = client.post("/api/subscriptions", json=payload)
+    second = client.post("/api/subscriptions", json=payload)
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+
+
+def test_resubmitting_a_personal_availability_subscription_updates_its_cells(client):
+    first_cells = [{"day_of_week": "mon", "slot_index": 4}]
+    second_cells = [{"day_of_week": "tue", "slot_index": 10}]
+    payload = {
+        "email": "watcher@example.com", "filter_type": "personal_availability",
+        "filter_value": "n/a", "frequency": "weekly_digest",
+    }
+    first = client.post("/api/subscriptions", json={**payload, "availability_cells": first_cells})
+    second = client.post("/api/subscriptions", json={**payload, "availability_cells": second_cells})
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert second.json()["availability_cells"] == second_cells

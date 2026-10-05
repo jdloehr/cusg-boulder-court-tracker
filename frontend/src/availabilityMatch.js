@@ -28,9 +28,20 @@ export function parseHearingTimeMinutes(raw) {
   let hour = parseInt(match[1], 10);
   const minute = parseInt(match[2], 10);
   const ampm = match[3];
-  if (ampm === "PM" && hour !== 12) hour += 12;
-  if (ampm === "AM" && hour === 12) hour = 0;
-  if (hour > 23 || minute > 59) return null;
+  if (ampm) {
+    // Real drift bug caught manually (full-functionality pass): Python's
+    // strptime("%I...") only accepts a 12-hour-clock hour of 1-12, so
+    // "13:00 AM"/"0:30 AM" come back unparseable (None) on the backend --
+    // this used to skip straight to the +/-12 adjustment below without
+    // that range check, silently accepting those same malformed strings
+    // and returning a wrong, made-up minute value instead of null.
+    if (hour < 1 || hour > 12) return null;
+    if (ampm === "PM" && hour !== 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+  } else if (hour > 23) {
+    return null;
+  }
+  if (minute > 59) return null;
   return hour * 60 + minute;
 }
 

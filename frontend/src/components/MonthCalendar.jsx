@@ -67,6 +67,18 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
     setSearchParams(params);
   }
 
+  // Real bug caught manually: selectedDate never updated on Previous/Next
+  // month (or a bookmarked ?month= link) -- it stayed pinned to whatever
+  // day was selected before, which usually isn't even a cell in the newly
+  // viewed month. The sidebar then showed a stale date with "Nothing
+  // scheduled" and no cell in the grid was ever highlighted as selected.
+  // Re-pick today if it's in the newly viewed month, else the 1st.
+  useEffect(() => {
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const todayIso = todayISO();
+    setSelectedDate(todayIso.startsWith(monthPrefix) ? todayIso : isoDate(year, month, 1));
+  }, [year, month]);
+
   useEffect(() => {
     // Real bug, reported live: with no loading state at all, an in-flight
     // fetch looked identical to a genuinely empty month -- especially

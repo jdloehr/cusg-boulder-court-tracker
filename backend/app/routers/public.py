@@ -5,7 +5,7 @@ browsing, per Section 7: "none required to browse."
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -13,8 +13,10 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.academic_calendar import current_period
+from app.availability import parse_duration_minutes, parse_hearing_time
 from app.availability_slots import load_owner_cells, replace_owner_slots
 from app.config import REFRESH_COOLDOWN_MINUTES
+from app.jobs.google_calendar_sync import MOUNTAIN_TZ
 from app.db import SessionLocal, get_db
 from app.jobs.docket_pull import run_docket_pull
 from app.learn import learn_topic_out, matching_learn_topics
@@ -162,25 +164,58 @@ def submit_community_details(hearing_id: str, payload: CommunitySubmissionIn, re
 
 @router.get("/hearings/{hearing_id}/ics", response_class=PlainTextResponse)
 def hearing_ics(hearing_id: str, db: Session = Depends(get_db)):
-    """Section 5.1: "Add to calendar" (.ics export) per hearing."""
+    """Section 5.1: "Add to calendar" (.ics export) per hearing.
+
+    Real bug caught manually: this used to always emit an all-day
+    VALUE=DATE event and never actually used the hearing's real start
+    time (`time_str` was computed and then never referenced) -- every
+    exported event showed up with no time at all, when the docket
+    export almost always gives one. Now uses the same
+    parse_hearing_time/parse_duration_minutes this app already relies
+    on for the availability meter, converting the Mountain-time wall
+    clock value to a real UTC instant (same ZoneInfo pattern as
+    app/jobs/google_calendar_sync.py) -- falling back to the old
+    all-day representation only when the time genuinely can't be
+    parsed."""
     hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
     if not hearing:
         raise HTTPException(404, "Hearing not found")
 
     dt = hearing.date.strftime("%Y%m%d")
-    time_str = (hearing.time or "09:00").replace(" ", "").upper()
+    now_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    summary = f"{hearing.hearing_type_raw} - {hearing.case_number}"
+    description = (
+        f"{hearing.hearing_type_display}. Courtroom {hearing.courtroom or 'TBD'}. "
+        f"Confirm on the official docket before attending -- times and locations can change."
+    )
+    location = f"{hearing.court_location.value} courtroom {hearing.courtroom or 'TBD'}"
+
+    parsed_minutes = parse_hearing_time(hearing.time)
+    if parsed_minutes is not None:
+        start_local = datetime(
+            hearing.date.year, hearing.date.month, hearing.date.day,
+            parsed_minutes // 60, parsed_minutes % 60, tzinfo=MOUNTAIN_TZ,
+        )
+        start_utc = start_local.astimezone(timezone.utc)
+        end_utc = start_utc + timedelta(minutes=parse_duration_minutes(hearing.duration))
+        dt_lines = [
+            f"DTSTART:{start_utc.strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTEND:{end_utc.strftime('%Y%m%dT%H%M%SZ')}",
+        ]
+    else:
+        dt_lines = [f"DTSTART;VALUE=DATE:{dt}"]
+
     ics = "\n".join([
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//CUSG Boulder Court Tracker//EN",
         "BEGIN:VEVENT",
         f"UID:{hearing.id}@cusg-court-tracker",
-        f"DTSTAMP:{dt}T000000Z",
-        f"DTSTART;VALUE=DATE:{dt}",
-        f"SUMMARY:{hearing.hearing_type_display} - {hearing.case_number}",
-        f"DESCRIPTION:{hearing.hearing_type_display}. Courtroom {hearing.courtroom or 'TBD'}. "
-        f"Confirm on the official docket before attending -- times and locations can change.",
-        f"LOCATION:{hearing.court_location.value} courtroom {hearing.courtroom or 'TBD'}",
+        f"DTSTAMP:{now_stamp}",
+        *dt_lines,
+        f"SUMMARY:{summary}",
+        f"DESCRIPTION:{description}",
+        f"LOCATION:{location}",
         "END:VEVENT",
         "END:VCALENDAR",
     ])
@@ -196,22 +231,58 @@ def academic_calendar_current(db: Session = Depends(get_db)):
 def create_subscription(payload: SubscriptionCreate, request: Request, db: Session = Depends(get_db)):
     """Phase-4 doc, Section 2.2: rate-limited per IP like every other
     public write path -- nothing stopped someone from mass-creating
-    subscription rows before this."""
+    subscription rows before this.
+
+    Real bug caught manually (full-functionality pass): nothing stopped
+    the exact same (email, filter_type, filter_value, frequency)
+    combination from being inserted twice -- a double-click on the
+    "Subscribe" button, or someone re-submitting because they weren't
+    sure it worked the first time, silently created a permanent
+    duplicate row. app/jobs/digest.py::run_weekly_digest sends one email
+    per Subscription row with no dedup of its own, so that visitor would
+    get the identical weekly digest twice, forever, with no way to
+    notice or fix it themselves (each duplicate has its own unsubscribe
+    token, and only one is ever shown). Now reuses the existing active
+    subscription instead of inserting a second one -- the frontend
+    (Subscribe.jsx) never reads `id`/`unsubscribe_token` back, so this is
+    invisible to a real visitor either way. `personal_availability`'s
+    `filter_value` is just a placeholder (see SubscriptionFilterType's
+    docstring) -- its real content is `availability_cells`, so a
+    resubmit there still updates the existing row's cells rather than
+    silently keeping the stale ones."""
     if not check_rate_limit(f"subscribe:{client_ip(request)}", max_requests=10, window_seconds=600):
         raise HTTPException(429, "Too many requests -- try again in a few minutes.")
-    sub = Subscription(
-        email=payload.email,
-        filter_type=payload.filter_type,
-        filter_value=payload.filter_value,
-        frequency=payload.frequency,
-        unsubscribe_token=str(uuid.uuid4()),
+
+    sub = (
+        db.query(Subscription)
+        .filter(
+            Subscription.email == payload.email,
+            Subscription.filter_type == payload.filter_type,
+            Subscription.filter_value == payload.filter_value,
+            Subscription.frequency == payload.frequency,
+            Subscription.is_active.is_(True),
+        )
+        .first()
     )
-    db.add(sub)
-    db.flush()  # assigns sub.id (default=_uuid) before we can attach AvailabilitySlot rows to it
-    if payload.availability_cells:
-        replace_owner_slots(db, AvailabilityOwnerType.personal_subscription, sub.id, payload.availability_cells)
-    db.commit()
-    db.refresh(sub)
+    if sub:
+        if payload.availability_cells is not None:
+            replace_owner_slots(db, AvailabilityOwnerType.personal_subscription, sub.id, payload.availability_cells)
+            db.commit()
+    else:
+        sub = Subscription(
+            email=payload.email,
+            filter_type=payload.filter_type,
+            filter_value=payload.filter_value,
+            frequency=payload.frequency,
+            unsubscribe_token=str(uuid.uuid4()),
+        )
+        db.add(sub)
+        db.flush()  # assigns sub.id (default=_uuid) before we can attach AvailabilitySlot rows to it
+        if payload.availability_cells:
+            replace_owner_slots(db, AvailabilityOwnerType.personal_subscription, sub.id, payload.availability_cells)
+        db.commit()
+        db.refresh(sub)
+
     return SubscriptionOut(
         id=sub.id, email=sub.email, filter_type=sub.filter_type, filter_value=sub.filter_value,
         frequency=sub.frequency, unsubscribe_token=sub.unsubscribe_token,
