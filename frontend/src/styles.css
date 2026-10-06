@@ -303,31 +303,140 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 
 /* Phase-6.2 doc, Section 1: one continuous page listing every Justice
    inline, alternating photo side per entry, instead of a click-through
-   directory of circular tiles. */
+   directory of circular tiles.
+   Meet the Justices redesign (photo fix + editorial bio layout):
+   generous vertical space, a hairline between entries, motion handled
+   by the .revealed class toggled from an IntersectionObserver in
+   Justices.jsx. */
 .justice-entry {
   display: flex;
-  gap: 2rem;
+  gap: 2.5rem;
   align-items: flex-start;
   flex-wrap: wrap;
-  padding: 2rem 0;
+  padding: 3rem 0;
   border-bottom: 1px solid var(--line);
   scroll-margin-top: 1rem;
+  opacity: 0;
+  transform: translateX(-24px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.justice-entry-reverse { flex-direction: row-reverse; transform: translateX(24px); }
+.justice-entry.revealed { opacity: 1; transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) {
+  .justice-entry { transition: none; }
 }
 .justice-entry:first-of-type { padding-top: 0.5rem; }
-.justice-entry-reverse { flex-direction: row-reverse; }
-.justice-entry-photo { flex-shrink: 0; }
 .justice-entry-info { flex: 1; min-width: 16rem; }
+
+/* Real bug, confirmed before fixing: the <img> had a fixed width/
+   height and no object-fit at all, so any source photo that wasn't
+   already perfectly square got stretched or squashed to fill the
+   box. aspect-ratio keeps the frame square without a hardcoded
+   height; object-fit: cover crops instead of distorting;
+   object-position biases the crop toward the upper third, where most
+   portraits have the face. */
+.justice-photo-frame { position: relative; width: 12rem; flex-shrink: 0; }
+.justice-photo-block {
+  position: absolute;
+  inset: 0;
+  transform: translate(10px, 10px);
+  z-index: 0;
+}
 .justice-photo-square {
-  width: 12rem;
-  height: 12rem;
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  object-position: center 20%;
   border-radius: 0;
   margin: 0;
+  background: var(--accent-soft);
+}
+.justice-photo-placeholder-square {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 2.5rem;
+  color: var(--ink-soft);
+}
+
+.justice-eyebrow {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.justice-name {
+  font-size: 1.6rem;
+  margin: 0 0 0.75rem;
+}
+.justice-pull-quote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 1.1rem;
+  line-height: 1.5;
+  margin: 0 0 1.25rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--line);
+}
+.justice-bio {
+  font-size: 1rem;
+  line-height: 1.7;
+  max-width: 34rem;
+  margin: 0 0 1.25rem;
+}
+.justice-facts {
+  margin: 0 0 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.justice-facts div { padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
+.justice-facts div:last-child { border-bottom: none; }
+.justice-facts dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  margin: 0 0 0.15rem;
+}
+.justice-facts dd { margin: 0; }
+.justice-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.justice-pill {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
 }
 
 @media (max-width: 700px) {
-  .justice-entry, .justice-entry-reverse { flex-direction: column; }
-  .justice-photo-square { width: 100%; height: auto; aspect-ratio: 1; }
+  .justice-entry, .justice-entry-reverse { flex-direction: column; align-items: flex-start; transform: translateY(16px); }
+  .justice-entry.revealed { transform: translateY(0); }
+  .justice-photo-frame { width: 100%; max-width: 16rem; }
 }
+
+/* Reuses the Archive page's existing accent set (terracotta/sage/
+   ochre/plum -- "ochre" is this redesign's "gold") instead of adding
+   a second, competing color system. Cycled per Justice so two
+   adjacent entries never share a color; the same variable backs both
+   the offset block behind the photo and that Justice's pill tags,
+   just lighter for the pills via color-mix. */
+.justice-eyebrow-terracotta, .justice-pull-quote-terracotta { color: var(--terracotta); border-left-color: var(--terracotta); }
+.justice-eyebrow-sage, .justice-pull-quote-sage { color: var(--sage); border-left-color: var(--sage); }
+.justice-eyebrow-ochre, .justice-pull-quote-ochre { color: var(--ochre); border-left-color: var(--ochre); }
+.justice-eyebrow-plum, .justice-pull-quote-plum { color: var(--plum); border-left-color: var(--plum); }
+
+.justice-photo-block-terracotta { background: var(--terracotta); }
+.justice-photo-block-sage { background: var(--sage); }
+.justice-photo-block-ochre { background: var(--ochre); }
+.justice-photo-block-plum { background: var(--plum); }
+
+.justice-pill-terracotta { background: color-mix(in srgb, var(--terracotta) 18%, white); color: var(--terracotta); }
+.justice-pill-sage { background: color-mix(in srgb, var(--sage) 18%, white); color: var(--sage); }
+.justice-pill-ochre { background: color-mix(in srgb, var(--ochre) 18%, white); color: var(--ochre); }
+.justice-pill-plum { background: color-mix(in srgb, var(--plum) 18%, white); color: var(--plum); }
 
 /* --- Filter bar --- */
 

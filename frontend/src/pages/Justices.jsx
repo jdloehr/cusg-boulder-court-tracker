@@ -1,6 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
+
+// Meet the Justices redesign: cycles through the Archive page's
+// existing accent set (not a second, competing color system) so two
+// adjacent Justices never share a color. "ochre" is this redesign's
+// "gold" -- same variable, no new one needed.
+const ACCENT_CYCLE = ["terracotta", "sage", "ochre", "plum"];
+
+function reducedMotionPreferred() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
 
 // Phase-6.2 doc, Section 1: replaces the old click-through directory
 // (a grid of circular photos, each linking to its own /justices/:id
@@ -11,7 +25,10 @@ import { api, getStoredAdmin } from "../api.js";
 export default function Justices() {
   const [justices, setJustices] = useState(null);
   const [error, setError] = useState(null);
+  const [revealedIds, setRevealedIds] = useState(() => new Set());
+  const [reduceMotion] = useState(reducedMotionPreferred);
   const location = useLocation();
+  const sectionRefs = useRef(new Map());
 
   useEffect(() => {
     api.listJustices().then(setJustices).catch((e) => setError(e.message));
@@ -27,6 +44,39 @@ export default function Justices() {
     if (el) el.scrollIntoView();
   }, [justices, location.hash]);
 
+  // Each section slides in from its own side with a fade as it
+  // scrolls into view, once, via a single shared IntersectionObserver
+  // rather than one per section. The first section is treated as
+  // already revealed at render time (see isFirst below) instead of
+  // through the observer, since it's usually already above the fold
+  // on load -- first paint should never wait on a scroll event that
+  // may never come, and it's never even observed. A visitor who's
+  // asked for less motion is handled the same way, at render time
+  // (see the reduceMotion check below) -- no observer is created, and
+  // revealedIds never needs to be touched at all in that case.
+  useEffect(() => {
+    if (!justices || justices.length === 0 || reduceMotion || typeof IntersectionObserver === "undefined") return;
+    const firstId = justices[0].id;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const justRevealed = entries.filter((entry) => entry.isIntersecting);
+        if (justRevealed.length === 0) return;
+        setRevealedIds((prev) => {
+          const next = new Set(prev);
+          for (const entry of justRevealed) next.add(entry.target.dataset.justiceId);
+          return next;
+        });
+        for (const entry of justRevealed) observer.unobserve(entry.target);
+      },
+      { threshold: 0.15 }
+    );
+    for (const [id, el] of sectionRefs.current) {
+      if (id !== firstId && el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [justices, reduceMotion]);
+
   if (error) return <p className="message-error">{error}</p>;
   if (!justices) return <p>Loading&hellip;</p>;
 
@@ -35,60 +85,85 @@ export default function Justices() {
   return (
     <article>
       <h1>Meet the Justices</h1>
-      {/* Oct 2026 review, Phase 4 item 3: spells out what "the Court"
-          means here on first mention -- users shouldn't mistake a
-          student Justice for a real judge. */}
-      <p className="disclaimer">CUSG Justices (student government) -- the current roster.</p>
+      <p className="disclaimer">CUSG Justices (student government), the current roster.</p>
 
       {justices.map((j, index) => {
         const isMe = admin?.isJustice && admin.id === j.id;
+        const accent = ACCENT_CYCLE[index % ACCENT_CYCLE.length];
+        const isFirst = index === 0;
+        // The first section is always revealed -- it's usually already
+        // above the fold on load, so first paint never waits on a
+        // scroll event that may never come. Reduced motion means
+        // everything is shown already, with no slide or fade at all.
+        const revealed = isFirst || reduceMotion || revealedIds.has(j.id);
+        const interests = (j.fun_fact || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const hasAnyContent = j.bio || j.why_care || j.year_or_major || interests.length > 0;
+
         return (
           <section
             id={`justice-${j.id}`}
             key={j.id}
-            className={`justice-entry ${index % 2 === 1 ? "justice-entry-reverse" : ""}`}
+            ref={(el) => {
+              if (el) sectionRefs.current.set(j.id, el);
+            }}
+            data-justice-id={j.id}
+            className={`justice-entry ${index % 2 === 1 ? "justice-entry-reverse" : ""} ${revealed ? "revealed" : ""}`}
           >
-            {/* Oct 2026 review, Phase 4 item 9: hidden entirely when
-                there's no real photo -- .justice-entry-info (flex: 1)
-                naturally takes the full row instead of sitting next
-                to an empty placeholder slot. */}
-            {j.photo_url && (
-              <div className="justice-entry-photo">
-                <img className="justice-photo-square" src={api.justicePhotoUrl(j.id)} alt="" />
-              </div>
-            )}
+            <div className="justice-photo-frame">
+              <div className={`justice-photo-block justice-photo-block-${accent}`} aria-hidden="true" />
+              {j.photo_url ? (
+                <img
+                  className="justice-photo-square"
+                  src={api.justicePhotoUrl(j.id)}
+                  alt={j.display_name}
+                  loading={isFirst ? "eager" : "lazy"}
+                />
+              ) : (
+                // A neutral placeholder in the frame's own color, not
+                // an empty box -- a missing photo should never
+                // collapse or distort the layout next to a Justice
+                // who does have one.
+                <div className="justice-photo-square justice-photo-placeholder-square" aria-hidden="true">
+                  {(j.display_name || "?")[0]}
+                </div>
+              )}
+            </div>
             <div className="justice-entry-info">
-              <h2 style={{ marginBottom: "0.2rem" }}>{j.display_name}</h2>
-              {j.title && <p style={{ color: "var(--ink-soft)", marginTop: 0 }}>{j.title}</p>}
-              {j.year_or_major && <p style={{ marginTop: "0.2rem" }}>{j.year_or_major}</p>}
+              {j.title && <p className={`justice-eyebrow justice-eyebrow-${accent}`}>{j.title}</p>}
+              <h2 className="justice-name">{j.display_name}</h2>
               {isMe && (
-                <p style={{ marginTop: "0.5rem" }}>
+                <p style={{ marginTop: "-0.25rem", marginBottom: "1rem" }}>
                   <Link to="/justices/me/edit" className="btn btn-secondary">
                     Edit my profile
                   </Link>
                 </p>
               )}
-
-              {j.bio && (
-                <div className="card">
-                  <h3>Bio</h3>
-                  <p className="blurb">{j.bio}</p>
-                </div>
-              )}
               {j.why_care && (
-                <div className="card">
-                  <h3>Why I care about court-watching</h3>
-                  <p className="blurb">{j.why_care}</p>
+                <p className={`justice-pull-quote justice-pull-quote-${accent}`}>&ldquo;{j.why_care}&rdquo;</p>
+              )}
+              {j.bio && <p className="justice-bio">{j.bio}</p>}
+              {j.year_or_major && (
+                <dl className="justice-facts">
+                  <div>
+                    <dt>Year / Major</dt>
+                    <dd>{j.year_or_major}</dd>
+                  </div>
+                </dl>
+              )}
+              {interests.length > 0 && (
+                <div className="justice-pills">
+                  {interests.map((interest) => (
+                    <span key={interest} className={`justice-pill justice-pill-${accent}`}>
+                      {interest}
+                    </span>
+                  ))}
                 </div>
               )}
-              {j.fun_fact && (
-                <div className="card">
-                  <h3>Fun fact</h3>
-                  <p className="blurb">{j.fun_fact}</p>
-                </div>
-              )}
-              {!j.bio && !j.why_care && !j.fun_fact && (
-                <p style={{ color: "var(--ink-soft)" }}>This Justice hasn't filled out their profile yet.</p>
+              {!hasAnyContent && (
+                <p style={{ color: "var(--ink-soft)" }}>This Justice has not filled out their profile yet.</p>
               )}
             </div>
           </section>
