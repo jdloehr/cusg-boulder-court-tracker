@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import Home from "./pages/Home.jsx";
 import HearingList from "./pages/HearingList.jsx";
@@ -82,7 +83,50 @@ function AccountNavLink() {
   );
 }
 
+// Oct 2026 review, Phase 3 item 1: below ~720px, .site-nav stayed a
+// single flex row with no way to collapse it -- "Meet the Justices"
+// got cut off and "Justice Sign In" ended up off-screen (~115px past
+// the edge of a 390px-wide phone), unreachable by tap or by tab. This
+// button + the .site-nav[data-open] CSS below (see styles.css) turns
+// it into a real disclosure widget: hidden above 720px (the row fits
+// fine there), toggles a stacked panel below it.
+function MobileMenuButton({ open, onToggle, buttonRef }) {
+  return (
+    <button
+      type="button"
+      className="nav-menu-toggle"
+      aria-expanded={open}
+      aria-controls="site-nav"
+      aria-label={open ? "Close menu" : "Open menu"}
+      ref={buttonRef}
+      onClick={onToggle}
+    >
+      <span aria-hidden="true">{open ? "✕" : "☰"}</span>
+    </button>
+  );
+}
+
 export default function App() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+
+  // Closes on Escape with focus returned to the toggle button --
+  // standard behavior for a disclosure widget (WAI-ARIA Authoring
+  // Practices), and exactly the kind of gap an axe/keyboard-only pass
+  // flags: without this, a keyboard user who opens the menu has no way
+  // to close it except tabbing all the way through every link in it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKeyDown(e) {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
+
   return (
     <>
       <header className="site-header">
@@ -90,7 +134,12 @@ export default function App() {
           <NavLink to="/" className="wordmark">
             CUSG Court
           </NavLink>
-          <nav className="site-nav">
+          <MobileMenuButton open={menuOpen} onToggle={() => setMenuOpen((v) => !v)} buttonRef={menuButtonRef} />
+          {/* Closes on navigation: any click inside bubbles up here,
+              whether it's a NavLink or AccountNavLink's "Sign out"
+              button -- simpler and more direct than reacting to a
+              route-change effect for the same thing. */}
+          <nav className="site-nav" id="site-nav" data-open={menuOpen} onClick={() => setMenuOpen(false)}>
             <NavLink to="/hearings">Calendar</NavLink>
             <NavLink to="/recommendations">Recommendations</NavLink>
             <NavLink to="/archive">Archive</NavLink>

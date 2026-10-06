@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import { weekdayAbbr } from "../availabilityMatch.js";
 import { TAG_COLOR_LEGEND } from "../hearingTagColors.js";
@@ -194,7 +194,17 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
       )}
 
       {!error && hearings !== null && <div className="month-calendar-layout">
-        <div className="month-grid" role="grid" aria-label={viewedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}>
+        {/* Oct 2026 review, Phase 3 item 3: role="grid" removed -- the
+            WAI-ARIA grid pattern requires real roving-tabindex/arrow-key
+            cell navigation, which this never implemented, and an axe
+            audit flags that mismatch. aria-label alone (no role
+            override) still names this region without claiming grid
+            keyboard semantics it doesn't have; a plain list/table
+            wasn't needed since dropping the role is enough to resolve
+            the violation. */}
+        <p className="scroll-x-hint">Scroll to see the full week &rarr;</p>
+        <div className="scroll-x-wrap">
+        <div className="month-grid" aria-label={viewedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}>
           {WEEKDAY_LABELS.map((label) => (
             <div className="month-grid-weekday" key={label}>{label}</div>
           ))}
@@ -230,6 +240,7 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
             );
           })}
         </div>
+        </div>
 
         <DaySidebar
           selectedDate={selectedDate}
@@ -244,21 +255,22 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
 }
 
 // Qualifier: a small colored dot per hearing, no label text in the grid
-// cell itself -- clicking still goes straight to that hearing (same as
-// the chips it replaces), and a native `title` plus visible aria-label
-// cover the "hover or tap... lightweight tooltip with the hearing title
-// and time" ask without a custom tooltip-state machine (title shows on
-// hover on desktop and on long-press on most mobile browsers).
+// cell itself.
+//
+// Oct 2026 review, Phase 3 item 3 (axe audit): this used to be a <Link>
+// -- an interactive <a> nested inside the cell's own interactive
+// <button> (month-grid-day below), invalid HTML an axe audit flags as
+// "nested interactive controls" (also unreachable by keyboard tab order
+// correctly, since nested controls don't get their own stop). The cell
+// is now the *only* interactive element in the grid; a dot is purely
+// visual (still gets a `title` tooltip on hover/long-press), and
+// clicking straight through to one specific hearing now only happens
+// from the day sidebar's own list once a day is selected, not from the
+// grid itself.
 function HearingDot({ hearing }) {
   const label = `${firstSentence(hearing.hearing_type_display)} – ${hearing.time || "time TBD"}`;
   return (
-    <Link
-      to={`/hearings/${hearing.id}`}
-      className={`month-grid-dot tag-dot-${hearing.tag_color}`}
-      title={label}
-      aria-label={label}
-      onClick={(e) => e.stopPropagation()}
-    />
+    <span className={`month-grid-dot tag-dot-${hearing.tag_color}`} title={label} aria-hidden="true" />
   );
 }
 
@@ -281,24 +293,29 @@ function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability, recom
                                search={search} onSearchChange={setSearch} />
       ) : (
         hearings.length > 0 && (
-          <table className="schedule">
-            <tbody>
-              {hearings.map((h) => (
-                <tr key={h.id}>
-                  <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.time || "TBD"}</td>
-                  <td>
-                    <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
-                  </td>
-                  <td>
-                    <a href={`/hearings/${h.id}`}>{h.case_number}</a>
-                  </td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
-                    {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <p className="scroll-x-hint">Scroll to see every column &rarr;</p>
+            <div className="scroll-x-wrap">
+              <table className="schedule">
+                <tbody>
+                  {hearings.map((h) => (
+                    <tr key={h.id}>
+                      <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.time || "TBD"}</td>
+                      <td>
+                        <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
+                      </td>
+                      <td>
+                        <a href={`/hearings/${h.id}`}>{h.case_number}</a>
+                      </td>
+                      <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
+                        {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )
       )}
 

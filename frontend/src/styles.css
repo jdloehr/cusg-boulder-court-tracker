@@ -20,7 +20,20 @@
   --accent: #B45309;       /* amber -- CTAs + "in the news" flag, used sparingly */
   --accent-soft: #f3e3d0;
   --accent-hover: #92400E;
-  --focus-color: black;
+  /* Oct 2026 review, Phase 3 item 4: --accent itself is 2.9:1 against
+     --navy (an axe audit finding on .rec-lead-label, which sits on the
+     Recommendations page's navy lead card) -- this lighter amber is
+     6.8:1 against --navy, for the one spot that needs accent-colored
+     text on a dark surface instead of --paper. */
+  --accent-on-dark: #F59E0B;
+  /* Oct 2026 review, Phase 3 item 5: used to be plain black, which
+     disappears against a dark surface (.about-band, .rec-lead, any
+     navy button) since navy and black are close enough in luminance
+     to be indistinguishable. Now the *outer* ring of a two-tone halo
+     (see :focus-visible below) -- a light inner ring handles the dark
+     surfaces instead, so this only needs to keep working on light
+     ones, same as before. */
+  --focus-color: var(--navy);
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -64,7 +77,17 @@ a:hover { color: var(--accent); }
 
 button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
-:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
+/* Oct 2026 review, Phase 3 item 5: a two-tone "halo" instead of a
+   single-color outline -- a light inner ring plus a dark outer one,
+   so at least one of the two stays visible on literally any
+   background (a light page, a dark/navy card like .about-band or
+   .rec-lead, a dark button), rather than enumerating every current
+   and future dark surface by hand with a separate override. */
+:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px var(--focus-color);
+}
 
 /* --- Layout shell --- */
 
@@ -127,8 +150,39 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 }
 .nav-signin-pill:hover { color: #fff; background: var(--navy); }
 
+/* Oct 2026 review, Phase 3 item 1: hidden above 720px -- .site-nav
+   fits fine as a single row there, unchanged from before this. */
+.nav-menu-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.4rem 0.65rem;
+  color: var(--navy);
+  cursor: pointer;
+}
+.nav-menu-toggle:hover, .nav-menu-toggle:focus-visible { border-color: var(--navy); }
+
 @media (max-width: 720px) {
   .site-header .inner { padding: 1rem 1.25rem; }
+  .nav-menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  /* Collapsed by default below 720px; App.jsx toggles data-open via
+     the button above. Full-width stacked panel, not the single-row
+     flex this was before -- that's what let "Justice Sign In" run
+     off-screen with no way to reach it. */
+  .site-nav {
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.9rem;
+    width: 100%;
+    padding-top: 0.85rem;
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--line);
+  }
+  .site-nav[data-open="true"] { display: flex; }
 }
 
 
@@ -328,6 +382,23 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .schedule td { padding: 0.65rem 0.4rem; border-bottom: 1px solid var(--line); }
 .schedule tr:last-child td { border-bottom: none; }
 
+/* Oct 2026 review, Phase 3 item 2: the home "Get Started" table
+   (4 columns, one deliberately nowrap) and the month grid (7 equal
+   columns, each holding a date + dots) are both wider than a phone
+   screen once every column keeps its real minimum content width.
+   Wraps either in a horizontally-scrollable container instead of
+   letting the whole page scroll sideways or silently clipping
+   content -- with a plain-text hint as the visible affordance that
+   there's more to scroll to, shown only when it's actually needed. */
+.scroll-x-hint { display: none; font-size: 0.78rem; color: var(--ink-soft); margin: 0 0 0.35rem; }
+.scroll-x-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 700px) {
+  .scroll-x-hint { display: block; }
+  .schedule { min-width: 32rem; }
+  .month-grid { min-width: 30rem; }
+}
+
 .date-group-heading {
   font-family: var(--font-serif);
   font-weight: 600;
@@ -397,7 +468,9 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .badge-news { background: var(--accent); color: #fff; }
 .badge-federal { background: var(--navy); color: #fff; }
 .badge-changed { background: #e2c8a5; color: #5c3a12; }
-.badge-cancelled { background: #ddd; color: #666; text-decoration: line-through; }
+/* Oct 2026 review, Phase 3 item 4: #666 on #ddd was 4.23:1, just under
+   the 4.5:1 minimum -- #555 is 5.5:1, same gray family. */
+.badge-cancelled { background: #ddd; color: #555; text-decoration: line-through; }
 .badge-category { background: #eae6da; color: var(--ink-soft); }
 
 /* Calendar-view doc: clickable hearing-type tags, colored per the 8
@@ -778,7 +851,10 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 .rec-lead-label {
   position: relative;
   font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--accent); font-weight: 600; margin: 0 0 0.75rem;
+  /* Oct 2026 review, Phase 3 item 4: real contrast failure --
+     var(--accent) here was 2.9:1 against this card's --navy
+     background, well under 4.5:1. --accent-on-dark is 6.8:1. */
+  color: var(--accent-on-dark); font-weight: 600; margin: 0 0 0.75rem;
 }
 .rec-lead-quote {
   position: relative;
@@ -1018,8 +1094,12 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 }
 .month-grid-day:hover { background: var(--accent-soft); }
 .month-grid-day.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
-.month-grid-day.outside-month { background: #f6f4ef; color: #b8b3a6; }
-.month-grid-day.outside-month .month-grid-date { color: #b8b3a6; }
+/* Oct 2026 review, Phase 3 item 4: #b8b3a6 on this #f6f4ef background
+   was 1.9:1 -- reusing --ink-soft (already proven elsewhere in this
+   file) gives 5.9:1, comfortably past the 4.5:1 minimum, while staying
+   just as visually muted/de-emphasized as before. */
+.month-grid-day.outside-month { background: #f6f4ef; color: var(--ink-soft); }
+.month-grid-day.outside-month .month-grid-date { color: var(--ink-soft); }
 .month-grid-date {
   display: inline-flex;
   align-items: center;

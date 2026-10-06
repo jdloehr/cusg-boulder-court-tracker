@@ -109,24 +109,27 @@ export default function Home() {
 
       <section>
         <h2>Get Started in Boulder Courts</h2>
-        <table className="schedule">
-          <tbody>
-            {weeklyList.map((h) => (
-              <tr key={h.id}>
-                <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.date}</td>
-                <td>
-                  <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
-                </td>
-                <td>
-                  <Link to={`/hearings/${h.id}`}>{h.case_number}</Link>
-                </td>
-                <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
-                  {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p className="scroll-x-hint">Scroll to see every column &rarr;</p>
+        <div className="scroll-x-wrap">
+          <table className="schedule">
+            <tbody>
+              {weeklyList.map((h) => (
+                <tr key={h.id}>
+                  <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.date}</td>
+                  <td>
+                    <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
+                  </td>
+                  <td>
+                    <Link to={`/hearings/${h.id}`}>{h.case_number}</Link>
+                  </td>
+                  <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
+                    {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <p>
           <Link to="/hearings">View the full calendar &rarr;</Link>
         </p>
