@@ -61,6 +61,14 @@ def create_access_token(user: AdminUser) -> str:
         # separate, independent fields.
         "role": user.role.value if user.role else None,
         "is_justice": user.is_justice,
+        # Oct 2026 review item 7: lets a password reset, invite accept,
+        # or 2FA enable/disable immediately invalidate every token
+        # issued before that moment (get_current_admin/get_optional_admin
+        # below check this against the account's *current* value) --
+        # previously there was no way to revoke an already-issued
+        # session short of rotating JWT_SECRET, which logs out everyone,
+        # not just the one account that needed it.
+        "token_version": user.token_version,
         "exp": datetime.utcnow() + timedelta(minutes=JWT_EXPIRE_MINUTES),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -78,6 +86,16 @@ def get_current_admin(
     user = db.query(AdminUser).filter(AdminUser.id == payload.get("sub")).first()
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found or disabled")
+    # Oct 2026 review item 7: a token signed before the account's
+    # token_version was last bumped is a revoked session, indistinguishable
+    # from any other invalid token to whoever's holding it. A missing
+    # claim (a token issued before this check existed) is treated as 0,
+    # matching the column's own DB-level default -- so rolling this out
+    # doesn't force-logout every already-signed-in account; it only
+    # starts mattering the next time one of them resets a password,
+    # accepts an invite, or toggles 2FA.
+    if payload.get("token_version", 0) != user.token_version:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     return user
 
 
@@ -97,7 +115,11 @@ def get_optional_admin(
     except JWTError:
         return None
     user = db.query(AdminUser).filter(AdminUser.id == payload.get("sub")).first()
-    return user if (user and user.is_active) else None
+    if user is None or not user.is_active:
+        return None
+    if payload.get("token_version", 0) != user.token_version:  # Oct 2026 review item 7
+        return None
+    return user
 
 
 def require_editor(user: AdminUser = Depends(get_current_admin)) -> AdminUser:

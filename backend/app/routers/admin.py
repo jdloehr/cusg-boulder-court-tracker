@@ -18,7 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.auth import create_access_token, get_current_admin, require_editor, verify_password
+from app.auth import create_access_token, get_current_admin, hash_password, require_editor, verify_password
 from app.db import get_db
 from app.jobs.appellate_supplement import PRESET_COURTS, search_candidates
 from app.rate_limit import check_rate_limit, client_ip
@@ -64,12 +64,46 @@ def _log(db: Session, admin: AdminUser, action: str, target_type: str,
                              target_type=target_type, target_id=target_id, detail=detail))
 
 
-# Phase-4 doc, Section 2.3: account lockout, layered on top of the
-# existing per-IP rate limit below (that one stops one address hammering
-# any account; this one stops a distributed attempt -- many IPs -- aimed
-# at one specific account).
-LOCKOUT_THRESHOLD = 10
-LOCKOUT_MINUTES = 15
+# Oct 2026 review item 4: the original Phase-4 doc, Section 2.3 design
+# was a flat 10-failure / 15-minute lockout with a distinct 423
+# response. Both turned out to be real problems, found in the Oct 2026
+# review:
+# - A flat lockout is itself a denial-of-service lever -- anyone who
+#   knows (or guesses) an account's email can lock it out for 15
+#   minutes at a time indefinitely, including the real owner, just by
+#   sending 10 wrong passwords. Nothing about it requires guessing
+#   correctly or even being the same IP twice (this stacks with, not
+#   instead of, the per-IP rate limit below).
+# - The 423 response -- and the plain fact that *something* distinct
+#   happens after enough failed attempts -- leaks whether an email has
+#   an account at all, before a single correct credential is ever
+#   checked.
+# Replaced with per-account exponential backoff (a correct password is
+# *never* refused outright, it just becomes progressively slower to
+# retry a wrong one) and a response that's indistinguishable from a
+# plain wrong password either way. Reuses the existing
+# failed_login_attempts/locked_until columns -- same fields, new
+# semantics (locked_until is now "next allowed attempt," not "locked
+# until a flat timer expires") -- rather than adding new ones.
+LOGIN_BACKOFF_GRACE_ATTEMPTS = 2  # the first couple of typos cost nothing
+LOGIN_BACKOFF_MAX_SECONDS = 300  # capped at 5 minutes, per the review
+
+
+def _login_backoff_seconds(attempts: int) -> int:
+    if attempts <= LOGIN_BACKOFF_GRACE_ATTEMPTS:
+        return 0
+    return min(2 ** (attempts - LOGIN_BACKOFF_GRACE_ATTEMPTS), LOGIN_BACKOFF_MAX_SECONDS)
+
+
+# A real, validly-formatted bcrypt hash of a string nobody will ever
+# actually submit -- checked (and always fails) when the email doesn't
+# match any account, so that request costs roughly the same time as one
+# for a real email with a wrong password. Skipping bcrypt entirely for
+# an unknown email would be a timing side-channel revealing which
+# emails have accounts -- computed once at import time, not per
+# request, since bcrypt's own deliberate slowness is the whole point
+# and re-hashing it per request would just add needless load.
+_DUMMY_PASSWORD_HASH = hash_password("not-a-real-password-this-is-only-for-timing")
 
 
 @router.post("/login", response_model=AdminLoginResponse)
@@ -85,40 +119,47 @@ def login(payload: AdminLoginRequest, request: Request, db: Session = Depends(ge
     brute-forcing any one of those accounts without needing to track a
     separate counter per email address).
 
-    Phase-4 doc, Section 2.3 adds: account lockout after repeated failed
-    attempts (regardless of IP), and a second factor for accounts that
-    have TOTP enabled -- a 428 response (not 401) signals "right password,
-    now send a code" so the frontend can prompt for one without treating
-    it as a failed login."""
+    Phase-4 doc, Section 2.3 / Oct 2026 review: a second factor for
+    accounts that have TOTP enabled -- a 428 response (not 401) signals
+    "right password, now send a code" so the frontend can prompt for one
+    without treating it as a failed login (this one's fine to keep
+    distinct: reaching it already proves the caller knows the real
+    password, so it's not an enumeration leak the way the old 423 was).
+    Backoff and credential-enumeration protections are per
+    _login_backoff_seconds/_DUMMY_PASSWORD_HASH above."""
     if not check_rate_limit(f"login:{client_ip(request)}", max_requests=10, window_seconds=600):
         raise HTTPException(429, "Too many login attempts from this address -- try again in a few minutes.")
 
     user = db.query(AdminUser).filter(AdminUser.email == payload.email).first()
     now = datetime.utcnow()
 
-    if user and user.locked_until and user.locked_until > now:
-        retry_at = user.locked_until.isoformat(timespec="minutes")
-        raise HTTPException(
-            423, f"Account temporarily locked after repeated failed attempts. Try again after {retry_at}Z."
-        )
+    if user is None:
+        verify_password(payload.password, _DUMMY_PASSWORD_HASH)  # timing-equalizing dummy check
+        raise HTTPException(401, "Invalid credentials")
+
+    if user.locked_until and user.locked_until > now:
+        # Same response as a wrong password -- indistinguishable from
+        # one, so this can't be used to probe which accounts exist or
+        # have had recent failed attempts.
+        raise HTTPException(401, "Invalid credentials")
 
     def _register_failure() -> None:
-        if not user:
-            return
         user.failed_login_attempts += 1
-        if user.failed_login_attempts >= LOCKOUT_THRESHOLD:
-            user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
-            user.failed_login_attempts = 0
+        delay = _login_backoff_seconds(user.failed_login_attempts)
+        user.locked_until = now + timedelta(seconds=delay) if delay else None
         db.commit()
 
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not verify_password(payload.password, user.hashed_password):
         _register_failure()
         raise HTTPException(401, "Invalid credentials")
 
     if user.totp_enabled:
         if not payload.totp_code:
             raise HTTPException(428, "2FA code required")
-        if not verify_totp_code(user.totp_secret, payload.totp_code):
+        accepted, step = verify_totp_code(user.totp_secret, payload.totp_code, user.last_totp_step)
+        if accepted:
+            user.last_totp_step = step  # Oct 2026 review item 6
+        else:
             remaining = consume_backup_code(
                 json.loads(user.totp_backup_code_hashes) if user.totp_backup_code_hashes else [],
                 payload.totp_code,

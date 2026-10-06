@@ -49,19 +49,24 @@ export default function Subscribe() {
     setBusy(true);
     setStatus(null);
     try {
-      await api.createSubscription({
+      const res = await api.createSubscription({
         email,
         filter_type: filterType,
         filter_value: filterValue,
         frequency,
         availability_cells: filterType === "personal_availability" ? availabilityCells : undefined,
       });
+      // Oct 2026 review item 2: a brand-new (or still-unconfirmed)
+      // subscription gets no mail at all until the emailed confirmation
+      // link is used -- res.is_confirmed is only ever true here for a
+      // resubmit of something already confirmed earlier.
       setStatus({
         ok: true,
-        message:
-          filterType === "new_recommendation"
+        message: res.is_confirmed
+          ? filterType === "new_recommendation"
             ? "You're subscribed -- you'll get an email as soon as a Justice recommends a new hearing."
-            : "You're subscribed. Look for the first digest next Monday.",
+            : "You're subscribed. Look for the first digest next Monday."
+          : "Almost there -- check your email and click the confirmation link to start receiving mail.",
       });
       setEmail("");
     } catch (err) {

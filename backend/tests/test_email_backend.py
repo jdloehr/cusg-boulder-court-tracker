@@ -56,6 +56,49 @@ def test_sendgrid_success_posts_expected_payload(monkeypatch):
     assert captured["json"]["content"] == [{"type": "text/plain", "value": "Set your password here: ..."}]
 
 
+def test_sendgrid_without_unsubscribe_url_omits_headers_field(monkeypatch):
+    """No list_unsubscribe_url given (e.g. an invite/reset email, which
+    isn't a subscription) -- no "headers" key at all, not an empty one;
+    SendGrid should see exactly what it saw before this was added."""
+    monkeypatch.setattr(digest, "EMAIL_BACKEND", "sendgrid")
+    monkeypatch.setattr(digest, "SENDGRID_API_KEY", "fake-key")
+    monkeypatch.setattr(digest, "EMAIL_FROM_ADDRESS", "noreply@example.com")
+
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["json"] = json
+        return httpx.Response(202, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    digest.send_email("justice@example.com", "You're invited", "Set your password here: ...")
+    assert "headers" not in captured["json"]
+
+
+def test_sendgrid_with_unsubscribe_url_adds_list_unsubscribe_header(monkeypatch):
+    """Oct 2026 review item 1: a List-Unsubscribe header (RFC 2369) so
+    mail clients can offer their own one-click unsubscribe affordance,
+    independent of the link already in the body text."""
+    monkeypatch.setattr(digest, "EMAIL_BACKEND", "sendgrid")
+    monkeypatch.setattr(digest, "SENDGRID_API_KEY", "fake-key")
+    monkeypatch.setattr(digest, "EMAIL_FROM_ADDRESS", "noreply@example.com")
+
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["json"] = json
+        return httpx.Response(202, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    digest.send_email(
+        "subscriber@example.com", "This week's hearings", "...",
+        list_unsubscribe_url="https://cusg-boulder-court-tracker.vercel.app/unsubscribe/abc123",
+    )
+    assert captured["json"]["headers"] == {
+        "List-Unsubscribe": "<https://cusg-boulder-court-tracker.vercel.app/unsubscribe/abc123>"
+    }
+
+
 def test_sendgrid_error_response_is_logged_not_raised(monkeypatch, caplog):
     monkeypatch.setattr(digest, "EMAIL_BACKEND", "sendgrid")
     monkeypatch.setattr(digest, "SENDGRID_API_KEY", "fake-key")

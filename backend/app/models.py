@@ -598,6 +598,26 @@ class ArchiveEntry(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # Oct 2026 review item 9: reverses this class's original "no
+    # pre-publish approval queue for anonymous input" design (see the
+    # class docstring above) for the non-Justice submission path
+    # specifically -- a fully anonymous, unmoderated public write turned
+    # out to be a real content-moderation gap the after-the-fact
+    # safeguards (submitter_ip tracing, any-Justice-can-edit-or-remove)
+    # didn't actually close before publication. Reuses SubmissionStatus
+    # (CommunitySubmission's own enum) rather than inventing a parallel
+    # one. DEFAULT 'approved' at the DB level (see the migration) so
+    # every pre-existing entry -- all published instantly under the old
+    # behavior -- stays visible with no backfill; routers/archive.py
+    # explicitly passes status=pending for a new non-Justice submission,
+    # overriding that default. A Justice's own "Mark Attendance" entry
+    # still publishes immediately (status=approved), same as before.
+    status: Mapped[SubmissionStatus] = mapped_column(
+        Enum(SubmissionStatus), nullable=False, default=SubmissionStatus.approved, index=True
+    )
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     hearing: Mapped["Hearing"] = relationship()
 
 
@@ -634,6 +654,27 @@ class Subscription(Base):
     unsubscribe_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, default=_uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Oct 2026 review item 2 (double opt-in): a freshly created
+    # subscription starts unconfirmed and is excluded from every
+    # digest/alert query in app/jobs/digest.py until this flips to True
+    # via the emailed confirmation link (routers/public.py). The
+    # migration's DB-level column default is `true`, not this Python-
+    # level one -- see app/migrations.py's comment -- so a pre-existing
+    # row (created before this column existed, when there was no
+    # confirmation step at all) is treated as already confirmed; every
+    # NEW row created through the app explicitly passes
+    # is_confirmed=False, overriding the default.
+    is_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Hashed (sha256 via app.auth.hash_token -- same reasoning as
+    # AdminInvite/PasswordResetToken: a database read alone shouldn't
+    # hand out a working confirmation). Cleared to None once confirmed,
+    # which doubles as "already used" -- no separate used_at column,
+    # since there's nothing left to protect once is_confirmed is True.
+    # Deliberately no expiry (unlike AdminInvite/PasswordResetToken):
+    # confirming late doesn't grant access or change any data beyond
+    # "yes, start sending what was already requested," so there's no
+    # realistic harm in an old link still working.
+    confirmation_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # Phase-6.2 doc, Section 6: JSON-encoded list of {day_of_week,
     # start_time, end_time} range blocks -- superseded by AvailabilitySlot
     # rows (owner_type=personal_subscription) as of Phase 6.3's grid
@@ -754,6 +795,23 @@ class AdminUser(Base):
     # also high-entropy random strings, not human-chosen secrets).
     # Consuming one removes it from the list.
     totp_backup_code_hashes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Oct 2026 review item 6: the most recently *accepted* TOTP time
+    # step (app/totp.py's verify_totp_code), rejecting anything at or
+    # before it so a code can't be replayed a second time inside its
+    # own +/-1-step validity window. NULL until the first successful
+    # TOTP login.
+    last_totp_step: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Oct 2026 review item 7: embedded in every JWT this account is
+    # issued (app.auth.create_access_token) and checked on every
+    # authenticated request (get_current_admin/get_optional_admin) --
+    # bumping this immediately invalidates every token issued before
+    # the bump, with no way to forge a match without the real secret.
+    # Incremented on password reset, invite accept, and 2FA enable/
+    # disable (the four events where an already-issued session should
+    # stop being trusted). Previously there was no way to revoke a
+    # session short of rotating JWT_SECRET, which logs out everyone,
+    # not just the one account that needed it.
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # --- Phase-6.2 doc, Section 4: recurring weekly availability --------
     # JSON-encoded list of {day_of_week, start_time, end_time} range

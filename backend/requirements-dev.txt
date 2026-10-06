@@ -1,0 +1,16 @@
+# Oct 2026 review item 13: pytest itself, plus the handful of packages
+# only pytest needs (confirmed via `pip show <pkg>` -> Required-by, in
+# the venv this was split out of -- none of these are imported anywhere
+# under app/ or scripts/). exceptiongroup is deliberately NOT repeated
+# here: it's a real runtime dependency of anyio (see requirements.txt's
+# own comment on it), so it lives there instead, even though pytest
+# happens to need it too.
+#
+# Install for running tests: pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+iniconfig==2.1.0
+packaging==26.3
+pluggy==1.6.0
+Pygments==2.21.0
+pytest==8.4.2
+tomli==2.4.1

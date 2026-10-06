@@ -44,15 +44,22 @@ directly, I just can't create the GitHub repo or authenticate for you.)
    `https://cusg-court-tracker-api.onrender.com`) -- the frontend needs it
    in step 3.
 5. Open the service's **Shell** tab (Render dashboard) and run the
-   one-time seed commands against the real production database:
+   one-time command that creates the real Justice accounts:
    ```bash
-   python scripts/seed_demo_data.py     # real docket pull + news pull + academic calendar + federal case
    python scripts/create_justices.py    # the 7 real Justice accounts -- SAVE the printed passwords
    ```
-   Consider deleting the two demo curation accounts
-   (`editor@cusg-demo.colorado.edu` / `contributor@cusg-demo.colorado.edu`,
-   password `changeme`) afterward, or at least changing their passwords --
-   there's no self-serve password-reset flow yet (see README's "Not done").
+   **Never run `scripts/seed_demo_data.py` against this (or any other
+   real) production database.** It's a local-dev/demo-only convenience
+   that creates two fictional curation accounts --
+   `editor@cusg-demo.colorado.edu` / `contributor@cusg-demo.colorado.edu`
+   -- both with the hardcoded password `changeme`, plus fixture-ish
+   content (a demo subscription, a demo curated blurb) meant to fill an
+   otherwise-empty local database for development, not to exist in a
+   real deployment. Real docket data arrives on its own via the
+   scheduled jobs in section 4 below -- nothing needs to be seeded by
+   hand for that. (If `changeme` accounts already exist in a real
+   deployment's `admin_users` table, delete them -- see this repo's own
+   Oct 2026 review notes for the exact check.)
 
 ## 3. Frontend on Vercel
 

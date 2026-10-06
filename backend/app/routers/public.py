@@ -13,13 +13,15 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.academic_calendar import current_period
+from app.auth import generate_secure_token, hash_token
 from app.availability import parse_duration_minutes, parse_hearing_time
 from app.availability_slots import load_owner_cells, replace_owner_slots
-from app.config import REFRESH_COOLDOWN_MINUTES
+from app.config import FRONTEND_URL, REFRESH_COOLDOWN_MINUTES
+from app.jobs.digest import send_email
 from app.jobs.google_calendar_sync import MOUNTAIN_TZ
 from app.db import SessionLocal, get_db
 from app.jobs.docket_pull import run_docket_pull
-from app.learn import learn_topic_out, matching_learn_topics
+from app.learn import learn_topic_out, load_all_learn_topics, topics_matching_hearing
 from app.moderation import is_likely_spam_or_profane
 from app.rate_limit import check_rate_limit, client_ip
 from app.models import (
@@ -40,11 +42,22 @@ from app.schemas import (
     CommunitySubmissionIn,
     DataStatusOut,
     HearingOut,
+    SubscriptionConfirmInfoOut,
     SubscriptionCreate,
     SubscriptionOut,
 )
 
 router = APIRouter(prefix="/api", tags=["public"])
+
+# Oct 2026 review item 10: date_from/date_to were unbounded -- a
+# `date_from=0001-01-01&date_to=9999-12-31` (or any similarly wide pair)
+# forces a full-table scan sorted entirely in Python (see the
+# time_sort_key comment below), with no limit on the response size
+# either. 120 days is comfortably past every real planning-window option
+# this site's own UI offers (HearingList.jsx's widest is "This semester,"
+# 120 days) -- a legitimate caller never needs more than that in one
+# request.
+MAX_DATE_RANGE_DAYS = 120
 
 
 @router.get("/hearings", response_model=list[HearingOut])
@@ -63,13 +76,20 @@ def list_hearings(
     news mention regardless of type. Pass show_all_types=true or explicit
     filters to broaden."""
     today = date.today()
+    effective_date_from = date_from or today
+    effective_date_to = date_to or today + timedelta(days=14)
+    if (effective_date_to - effective_date_from).days > MAX_DATE_RANGE_DAYS:
+        raise HTTPException(
+            422, f"date_from-date_to span can't exceed {MAX_DATE_RANGE_DAYS} days -- narrow the window."
+        )
+
     q = db.query(Hearing).filter(
         Hearing.is_excluded.is_(False),
         Hearing.status != HearingStatus.cancelled,
     )
 
-    q = q.filter(Hearing.date >= (date_from or today))
-    q = q.filter(Hearing.date <= (date_to or today + timedelta(days=14)))
+    q = q.filter(Hearing.date >= effective_date_from)
+    q = q.filter(Hearing.date <= effective_date_to)
 
     if hearing_type_category:
         q = q.filter(Hearing.hearing_type_category == hearing_type_category)
@@ -99,7 +119,13 @@ def list_hearings(
     elif has_news is False:
         filtered = [h for h in filtered if not h.has_news_mention]
 
-    return [_with_learn_topics(HearingOut.from_orm_hearing(h), h, db) for h in filtered]
+    # Oct 2026 review item 10: loads every Learn topic once for the
+    # whole response instead of re-querying per hearing (the old
+    # _with_learn_topics(..., db) did one `matching_learn_topics` query
+    # per row -- a real N+1 pattern that got worse the more hearings
+    # were in the requested window).
+    topics = load_all_learn_topics(db)
+    return [_with_learn_topics(HearingOut.from_orm_hearing(h), h, topics) for h in filtered]
 
 
 @router.get("/hearings/{hearing_id}", response_model=HearingOut)
@@ -107,16 +133,18 @@ def get_hearing(hearing_id: str, db: Session = Depends(get_db)):
     hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
     if not hearing:
         raise HTTPException(404, "Hearing not found")
-    return _with_learn_topics(HearingOut.from_orm_hearing(hearing), hearing, db)
+    return _with_learn_topics(HearingOut.from_orm_hearing(hearing), hearing, load_all_learn_topics(db))
 
 
-def _with_learn_topics(hearing_out: HearingOut, hearing: Hearing, db: Session) -> HearingOut:
+def _with_learn_topics(hearing_out: HearingOut, hearing: Hearing, topics: list) -> HearingOut:
     """Phase 9 doc: LearnTopic matches by hearing_type_category/
     case_category, not a stored FK (see app/learn.py), so -- unlike
     news_mentions/community_submissions/teaching_notes, which are real
     relationships HearingOut.from_orm_hearing() already picks up via
-    field_validator -- this has to be set explicitly after construction."""
-    hearing_out.learn_topics = [learn_topic_out(t) for t in matching_learn_topics(db, hearing)]
+    field_validator -- this has to be set explicitly after construction.
+    `topics` is every LearnTopic, already loaded once by the caller --
+    see load_all_learn_topics/topics_matching_hearing's docstrings."""
+    hearing_out.learn_topics = [learn_topic_out(t) for t in topics_matching_hearing(topics, hearing)]
     return hearing_out
 
 
@@ -162,6 +190,29 @@ def submit_community_details(hearing_id: str, payload: CommunitySubmissionIn, re
     return {"status": "received", "message": "Thanks -- a member of the CUSG team will review this before it appears."}
 
 
+def _ics_escape_text(value: str) -> str:
+    """RFC 5545 section 3.3.11 (TEXT value type): a backslash,
+    semicolon, or comma inside a text value must itself be escaped with
+    a leading backslash, and a literal newline is encoded as the two
+    characters "\\n" (backslash-n), never an actual line break -- an
+    unescaped one would corrupt the file's own CRLF-delimited line
+    structure, splitting one property into two malformed ones. Order
+    matters: backslashes are escaped *first*, or the backslashes this
+    function itself introduces for `;`/`,`/newlines would get escaped a
+    second time. Applied to every TEXT-typed field below (UID, SUMMARY,
+    DESCRIPTION, LOCATION) -- courtroom and case-number values
+    ultimately come from the docket export's own free text, not
+    something this app controls, so this isn't purely theoretical."""
+    return (
+        value.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
+    )
+
+
 @router.get("/hearings/{hearing_id}/ics", response_class=PlainTextResponse)
 def hearing_ics(hearing_id: str, db: Session = Depends(get_db)):
     """Section 5.1: "Add to calendar" (.ics export) per hearing.
@@ -176,7 +227,16 @@ def hearing_ics(hearing_id: str, db: Session = Depends(get_db)):
     clock value to a real UTC instant (same ZoneInfo pattern as
     app/jobs/google_calendar_sync.py) -- falling back to the old
     all-day representation only when the time genuinely can't be
-    parsed."""
+    parsed.
+
+    Oct 2026 review item 11 (RFC 5545 compliance): lines are joined
+    with CRLF, not a bare "\\n" -- the spec requires CRLF line endings,
+    and at least one real calendar client (reported during review)
+    silently dropped or mis-rendered events from a bare-LF .ics file.
+    TEXT fields are escaped per _ics_escape_text above. Line folding
+    (wrapping a line past 75 octets) is NOT implemented -- out of scope
+    for what was asked, and this app's own text fields are short enough
+    in practice that it hasn't caused a reported problem."""
     hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
     if not hearing:
         raise HTTPException(404, "Hearing not found")
@@ -205,20 +265,20 @@ def hearing_ics(hearing_id: str, db: Session = Depends(get_db)):
     else:
         dt_lines = [f"DTSTART;VALUE=DATE:{dt}"]
 
-    ics = "\n".join([
+    ics = "\r\n".join([
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//CUSG Boulder Court Tracker//EN",
         "BEGIN:VEVENT",
-        f"UID:{hearing.id}@cusg-court-tracker",
+        f"UID:{_ics_escape_text(hearing.id)}@cusg-court-tracker",
         f"DTSTAMP:{now_stamp}",
         *dt_lines,
-        f"SUMMARY:{summary}",
-        f"DESCRIPTION:{description}",
-        f"LOCATION:{location}",
+        f"SUMMARY:{_ics_escape_text(summary)}",
+        f"DESCRIPTION:{_ics_escape_text(description)}",
+        f"LOCATION:{_ics_escape_text(location)}",
         "END:VEVENT",
         "END:VCALENDAR",
-    ])
+    ]) + "\r\n"
     return PlainTextResponse(ics, media_type="text/calendar")
 
 
@@ -249,7 +309,17 @@ def create_subscription(payload: SubscriptionCreate, request: Request, db: Sessi
     `filter_value` is just a placeholder (see SubscriptionFilterType's
     docstring) -- its real content is `availability_cells`, so a
     resubmit there still updates the existing row's cells rather than
-    silently keeping the stale ones."""
+    silently keeping the stale ones.
+
+    Oct 2026 review item 2 (double opt-in): a brand-new subscription is
+    created unconfirmed and gets no mail at all -- every digest/alert
+    query in app/jobs/digest.py now filters on is_confirmed -- until the
+    emailed confirmation link is used. This endpoint takes anyone's
+    email with no proof they control it; without this, it could be used
+    to sign a stranger up for unwanted mail. Resubmitting the exact same
+    subscription while it's still unconfirmed re-sends a fresh
+    confirmation link (the old token stops working) rather than
+    silently doing nothing, in case the first email never arrived."""
     if not check_rate_limit(f"subscribe:{client_ip(request)}", max_requests=10, window_seconds=600):
         raise HTTPException(429, "Too many requests -- try again in a few minutes.")
 
@@ -268,13 +338,18 @@ def create_subscription(payload: SubscriptionCreate, request: Request, db: Sessi
         if payload.availability_cells is not None:
             replace_owner_slots(db, AvailabilityOwnerType.personal_subscription, sub.id, payload.availability_cells)
             db.commit()
+        if not sub.is_confirmed:
+            _send_subscription_confirmation(db, sub)
     else:
+        confirm_token = generate_secure_token()
         sub = Subscription(
             email=payload.email,
             filter_type=payload.filter_type,
             filter_value=payload.filter_value,
             frequency=payload.frequency,
             unsubscribe_token=str(uuid.uuid4()),
+            is_confirmed=False,
+            confirmation_token_hash=hash_token(confirm_token),
         )
         db.add(sub)
         db.flush()  # assigns sub.id (default=_uuid) before we can attach AvailabilitySlot rows to it
@@ -282,12 +357,62 @@ def create_subscription(payload: SubscriptionCreate, request: Request, db: Sessi
             replace_owner_slots(db, AvailabilityOwnerType.personal_subscription, sub.id, payload.availability_cells)
         db.commit()
         db.refresh(sub)
+        _send_subscription_confirmation(db, sub, confirm_token)
 
     return SubscriptionOut(
         id=sub.id, email=sub.email, filter_type=sub.filter_type, filter_value=sub.filter_value,
-        frequency=sub.frequency, unsubscribe_token=sub.unsubscribe_token,
+        frequency=sub.frequency, unsubscribe_token=sub.unsubscribe_token, is_confirmed=sub.is_confirmed,
         availability_cells=load_owner_cells(db, AvailabilityOwnerType.personal_subscription, sub.id),
     )
+
+
+def _send_subscription_confirmation(db: Session, sub: Subscription, token: Optional[str] = None) -> None:
+    """Shared by both the first-creation and the re-send-on-resubmit
+    paths above. `token` is only given right after `sub` was created
+    (the plaintext its confirmation_token_hash was already set from,
+    still in scope); on a resubmit of an unconfirmed subscription, a
+    fresh token/hash pair is generated and committed here instead, so
+    the stale link in any earlier email stops working -- same
+    invalidate-then-reissue reasoning as _issue_invite in
+    routers/account.py."""
+    if token is None:
+        token = generate_secure_token()
+        sub.confirmation_token_hash = hash_token(token)
+        db.commit()
+    confirm_url = f"{FRONTEND_URL}/subscriptions/confirm/{token}"
+    send_email(
+        sub.email, "Confirm your CUSG Boulder Court Tracker subscription",
+        "One more step -- confirm this email subscription to start receiving mail. If you didn't "
+        f"request this, ignore this message and nothing further will happen:\n{confirm_url}",
+    )
+
+
+def _load_pending_confirmation(db: Session, token: str) -> Subscription:
+    sub = db.query(Subscription).filter(Subscription.confirmation_token_hash == hash_token(token)).first()
+    if not sub:
+        raise HTTPException(404, "Confirmation link not found or already used")
+    return sub
+
+
+@router.get("/subscriptions/confirm/{token}", response_model=SubscriptionConfirmInfoOut)
+def get_subscription_confirmation(token: str, db: Session = Depends(get_db)):
+    """Public -- what the confirm-subscription page shows before
+    actually confirming. No expiry (see Subscription.confirmation_token_
+    hash's docstring in app/models.py), but the token is single-use: it
+    gets cleared to None by the POST below, at which point a lookup here
+    404s the same as an unknown token."""
+    return _load_pending_confirmation(db, token)
+
+
+@router.post("/subscriptions/confirm/{token}")
+def confirm_subscription(token: str, request: Request, db: Session = Depends(get_db)):
+    if not check_rate_limit(f"subscription-confirm:{client_ip(request)}", max_requests=10, window_seconds=600):
+        raise HTTPException(429, "Too many attempts from this address -- try again in a few minutes.")
+    sub = _load_pending_confirmation(db, token)
+    sub.is_confirmed = True
+    sub.confirmation_token_hash = None
+    db.commit()
+    return {"status": "confirmed"}
 
 
 @router.delete("/subscriptions/{token}")

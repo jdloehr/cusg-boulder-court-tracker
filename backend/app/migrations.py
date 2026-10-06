@@ -186,6 +186,40 @@ POSTGRES_MIGRATIONS = [
     # overwrites hearing_type_display/hearing_type_category on every
     # existing row it re-sees -- no backfill script needed.
     "ALTER TABLE hearings ADD COLUMN IF NOT EXISTS tag_color VARCHAR(32) NOT NULL DEFAULT 'other';",
+
+    # Oct 2026 review item 2: double opt-in for email subscriptions.
+    # DEFAULT true here (not matching the model's own Python-side
+    # default, which exists only as a fallback/documentation -- app
+    # code always passes is_confirmed explicitly) is deliberate: every
+    # pre-existing row was created back when there was no confirmation
+    # step at all, so it should be treated as already confirmed, not
+    # silently dropped from every digest/alert going forward.
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS is_confirmed BOOLEAN NOT NULL DEFAULT true;",
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS confirmation_token_hash VARCHAR(64);",
+
+    # Oct 2026 review item 7: lets a password reset, invite-accept, or
+    # 2FA enable/disable immediately invalidate any JWT issued before
+    # that moment (app/auth.py checks this against the token's own
+    # embedded value) -- previously, there was no way to revoke an
+    # already-issued session short of rotating JWT_SECRET for everyone.
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;",
+
+    # Oct 2026 review item 6: TOTP replay protection -- the most
+    # recently *accepted* 30-second time step, so a code already used
+    # once (intercepted, shoulder-surfed, or just resubmitted) can't be
+    # replayed again within its own validity window. NULL for an
+    # account that has never completed a TOTP login.
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_totp_step INTEGER;",
+
+    # Oct 2026 review item 9: anonymous (non-Justice) Archive
+    # submissions now go through the same pending/approved review queue
+    # CommunitySubmission already uses, instead of publishing instantly.
+    # DEFAULT 'approved' so every pre-existing entry (all of which were
+    # published immediately under the old behavior) stays visible with
+    # no backfill step; new non-Justice submissions explicitly pass
+    # status=pending in routers/archive.py, overriding the default --
+    # same pattern as is_confirmed above.
+    "ALTER TABLE archive_entries ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'approved';",
 ]
 
 

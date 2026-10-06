@@ -132,3 +132,56 @@ def test_ics_404s_for_unknown_hearing(client_factory):
     client, _db = client_factory
     resp = client.get("/api/hearings/does-not-exist/ics")
     assert resp.status_code == 404
+
+
+# --- RFC 5545 compliance (Oct 2026 review item 11) --------------------------
+
+def test_ics_uses_crlf_line_endings_throughout(client_factory):
+    """RFC 5545 requires CRLF, not a bare LF -- at least one real
+    calendar client (reported during the review) silently dropped or
+    mis-rendered events from a bare-LF .ics file."""
+    client, db = client_factory
+    h = _hearing()
+    db.add(h)
+    db.commit()
+
+    body = client.get(f"/api/hearings/{h.id}/ics").text
+    assert "\r\n" in body
+    assert "\n" not in body.replace("\r\n", "")  # no bare LF left once every CRLF is accounted for
+    assert body.startswith("BEGIN:VCALENDAR\r\n")
+    assert body.endswith("END:VCALENDAR\r\n")
+
+
+def test_ics_escapes_commas_semicolons_and_backslashes_in_text_fields(client_factory):
+    """RFC 5545 section 3.3.11 -- a courtroom or case-number value
+    ultimately comes from the docket export's own free text, not
+    something this app controls, so this isn't purely theoretical."""
+    client, db = client_factory
+    h = _hearing(courtroom='F; Dept 3, "Annex"\\Building')
+    db.add(h)
+    db.commit()
+
+    body = client.get(f"/api/hearings/{h.id}/ics").text
+    location_line = next(line for line in body.split("\r\n") if line.startswith("LOCATION:"))
+    assert location_line == r'LOCATION:boulder_county courtroom F\; Dept 3\, "Annex"\\Building'
+
+
+def test_ics_escapes_a_literal_newline_in_text_fields_as_backslash_n(client_factory):
+    """A literal line break inside a TEXT value must become the two
+    characters "\\n", never an actual CRLF -- an unescaped one would
+    split one property into two malformed lines."""
+    client, db = client_factory
+    h = _hearing(courtroom="F\nSecond floor")
+    db.add(h)
+    db.commit()
+
+    body = client.get(f"/api/hearings/{h.id}/ics").text
+    location_line = next(line for line in body.split("\r\n") if line.startswith("LOCATION:"))
+    assert location_line == "LOCATION:boulder_county courtroom F\\nSecond floor"
+
+
+def test_ics_escape_helper_escapes_backslashes_before_the_escapes_it_introduces():
+    """Order matters: a literal backslash in the input must not get
+    double-escaped by the ;/,/\\n handling applied afterward."""
+    from app.routers.public import _ics_escape_text
+    assert _ics_escape_text("a\\b;c,d") == r"a\\b\;c\,d"

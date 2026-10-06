@@ -32,7 +32,15 @@ from app.auth import get_optional_admin, require_justice
 from app.db import get_db
 from app.rate_limit import check_rate_limit, client_ip
 from app.moderation import is_likely_spam_or_profane
-from app.models import AdminUser, ArchiveEntry, ArchiveSubmitterRole, CaseCategory, Hearing, ProceedingStage
+from app.models import (
+    AdminUser,
+    ArchiveEntry,
+    ArchiveSubmitterRole,
+    CaseCategory,
+    Hearing,
+    ProceedingStage,
+    SubmissionStatus,
+)
 from app.schemas import ArchiveEntryIn, ArchiveEntryOut, ArchiveEntryUpdateIn, AttendeeOut
 
 router = APIRouter(prefix="/api/archive", tags=["archive"])
@@ -73,6 +81,7 @@ def _to_out(entry: ArchiveEntry, db: Session) -> ArchiveEntryOut:
         submitted_by_role=entry.submitted_by_role,
         submitted_by_justice_id=entry.submitted_by_justice_id,
         created_at=entry.created_at,
+        status=entry.status,
     )
 
 
@@ -86,8 +95,19 @@ def list_archive(
 ):
     """Public, no login. "Filterable by proceeding stage, case category,
     and date, shown reverse-chronologically -- a straightforward filtered
-    list is enough" (Section 5)."""
-    q = db.query(ArchiveEntry).join(Hearing, ArchiveEntry.hearing_id == Hearing.id)
+    list is enough" (Section 5).
+
+    Oct 2026 review item 9: only ever shows approved entries -- a
+    pending (or rejected) non-Justice submission is invisible here
+    until an Editor reviews it (see the review-queue endpoints below).
+    A Justice's own "Mark Attendance" entry is created pre-approved
+    (see create_archive_entry) and shows up immediately, same as
+    before this change."""
+    q = (
+        db.query(ArchiveEntry)
+        .join(Hearing, ArchiveEntry.hearing_id == Hearing.id)
+        .filter(ArchiveEntry.status == SubmissionStatus.approved)
+    )
     if proceeding_stage:
         q = q.filter(ArchiveEntry.proceeding_stage == proceeding_stage)
     if case_category:
@@ -100,9 +120,37 @@ def list_archive(
     return [_to_out(e, db) for e in entries]
 
 
+# Oct 2026 review item 9: registered *before* GET /{entry_id} below --
+# FastAPI matches routes in registration order, and "/review-queue"
+# would otherwise be swallowed by /{entry_id}'s single-path-segment
+# pattern (treating "review-queue" as an entry id and 404ing) exactly
+# the way routers/account.py's module docstring already warns about for
+# /justices/team/availability vs. /justices/{justice_id}.
+@router.get("/review-queue/pending", response_model=list[ArchiveEntryOut])
+def review_queue_archive_entries(db: Session = Depends(get_db), justice: AdminUser = Depends(require_justice)):
+    """Justice-gated, not require_editor -- Archive moderation already
+    follows "any Justice can edit or remove any entry" (update_archive_
+    entry/delete_archive_entry below), so review/approval uses the same
+    authority rather than introducing a narrower one just for this."""
+    entries = (
+        db.query(ArchiveEntry)
+        .filter(ArchiveEntry.status == SubmissionStatus.pending)
+        .order_by(ArchiveEntry.created_at)
+        .all()
+    )
+    return [_to_out(e, db) for e in entries]
+
+
 @router.get("/{entry_id}", response_model=ArchiveEntryOut)
 def get_archive_entry(entry_id: str, db: Session = Depends(get_db)):
-    entry = db.query(ArchiveEntry).filter(ArchiveEntry.id == entry_id).first()
+    """Public. Same approved-only restriction as list_archive above --
+    a pending entry's direct link 404s exactly like a nonexistent one,
+    rather than leaking that *something* exists at that id."""
+    entry = (
+        db.query(ArchiveEntry)
+        .filter(ArchiveEntry.id == entry_id, ArchiveEntry.status == SubmissionStatus.approved)
+        .first()
+    )
     if not entry:
         raise HTTPException(404, "Archive entry not found")
     return _to_out(entry, db)
@@ -157,11 +205,51 @@ def create_archive_entry(
         submitted_by_role=ArchiveSubmitterRole.justice if is_justice else ArchiveSubmitterRole.regular_user,
         submitted_by_justice_id=justice.id if is_justice else None,
         submitter_ip=ip,
+        # Oct 2026 review item 9: a Justice's own "Mark Attendance"
+        # entry still publishes immediately (same trusted-roster
+        # reasoning as every other Justice-only action in this app) --
+        # only the fully anonymous, no-login "Submit a Summary" path now
+        # goes through the same pending/approved review queue
+        # CommunitySubmission already uses, instead of also publishing
+        # instantly the way it used to.
+        status=SubmissionStatus.approved if is_justice else SubmissionStatus.pending,
     )
     db.add(entry)
     db.commit()
     db.refresh(entry)
     return _to_out(entry, db)
+
+
+# --- Review queue (Oct 2026 review item 9) -----------------------------------
+# The GET listing lives up near list_archive/get_archive_entry above
+# (registration order matters -- see the comment there). Mirrors
+# routers/admin.py's community-submission review-queue pattern
+# (approve_community_submission/reject_community_submission) -- same
+# SubmissionStatus enum, same shape, just for ArchiveEntry instead.
+
+@router.post("/{entry_id}/approve", response_model=ArchiveEntryOut)
+def approve_archive_entry(entry_id: str, db: Session = Depends(get_db), justice: AdminUser = Depends(require_justice)):
+    entry = db.query(ArchiveEntry).filter(ArchiveEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(404, "Archive entry not found")
+    entry.status = SubmissionStatus.approved
+    entry.reviewed_by = justice.email
+    entry.reviewed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(entry)
+    return _to_out(entry, db)
+
+
+@router.post("/{entry_id}/reject")
+def reject_archive_entry(entry_id: str, db: Session = Depends(get_db), justice: AdminUser = Depends(require_justice)):
+    entry = db.query(ArchiveEntry).filter(ArchiveEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(404, "Archive entry not found")
+    entry.status = SubmissionStatus.rejected
+    entry.reviewed_by = justice.email
+    entry.reviewed_at = datetime.utcnow()
+    db.commit()
+    return {"status": "rejected"}
 
 
 @router.patch("/{entry_id}", response_model=ArchiveEntryOut)

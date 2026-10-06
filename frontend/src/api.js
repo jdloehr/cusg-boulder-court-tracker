@@ -72,6 +72,8 @@ export const api = {
   createSubscription: (payload) =>
     request("/api/subscriptions", { method: "POST", body: JSON.stringify(payload) }),
   unsubscribe: (token) => request(`/api/subscriptions/${token}`, { method: "DELETE" }),
+  getSubscriptionConfirmation: (token) => request(`/api/subscriptions/confirm/${token}`),
+  confirmSubscription: (token) => request(`/api/subscriptions/confirm/${token}`, { method: "POST" }),
 
   // --- admin ---
   adminLogin: (email, password, totpCode) =>
@@ -88,6 +90,11 @@ export const api = {
     request(`/api/admin/community-submissions/${id}/approve`, { method: "POST", headers: authHeaders() }),
   rejectCommunitySubmission: (id) =>
     request(`/api/admin/community-submissions/${id}/reject`, { method: "POST", headers: authHeaders() }),
+  reviewQueueArchiveEntries: () => request("/api/archive/review-queue/pending", { headers: authHeaders() }),
+  approveArchiveEntry: (id) =>
+    request(`/api/archive/${id}/approve`, { method: "POST", headers: authHeaders() }),
+  rejectArchiveEntry: (id) =>
+    request(`/api/archive/${id}/reject`, { method: "POST", headers: authHeaders() }),
   // Phase 8 doc: confirm relevance / dismiss on a Tier 2 "weekly reading
   // list" item -- every row already has its hearing_id (the search was
   // run for that specific hearing), so there's no case-number linking or

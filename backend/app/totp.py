@@ -20,6 +20,8 @@ from __future__ import annotations
 import base64
 import io
 import secrets
+from datetime import datetime
+from typing import Optional
 
 import pyotp
 import qrcode
@@ -49,14 +51,38 @@ def qr_code_data_uri(uri: str) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-def verify_totp_code(secret: str, code: str) -> bool:
+def verify_totp_code(secret: str, code: str, last_accepted_step: Optional[int] = None) -> tuple[bool, Optional[int]]:
+    """Returns (accepted, step) -- `step` is the time step to persist as
+    this account's new last_accepted_step on success (AdminUser.
+    last_totp_step), or None when the code is rejected.
+
+    Oct 2026 review item 6 (TOTP replay): the previous version just
+    returned a bool from pyotp's own .verify(valid_window=1), which
+    accepts *any* code within the +/-1 step tolerance every time it's
+    checked -- a real TOTP code, once typed (or intercepted, or
+    shoulder-surfed), stays valid and reusable for its whole ~90-second
+    window, and would still verify a second time 30 seconds later since
+    nothing was ever marked "already used." Rejecting anything at or
+    before the most recently *accepted* step closes that, at the cost
+    of also rejecting an honest same-step double-submit (a flaky
+    network retry, say) -- an acceptable trade for a one-time code, and
+    the user can just wait for the next one. Same +/-1 step tolerance
+    as before for clock drift, just evaluated by hand (pyotp.TOTP.at(),
+    not .verify()) so the matching step number is known rather than
+    thrown away."""
     if not secret or not code:
-        return False
-    # valid_window=1 tolerates the code from one 30-second step before/
-    # after "now" -- accounts for ordinary clock drift between the
-    # server and someone's phone without meaningfully widening the
-    # guessable window.
-    return pyotp.TOTP(secret).verify(code.strip(), valid_window=1)
+        return False, None
+    totp = pyotp.TOTP(secret)
+    stripped = code.strip()
+    current_step = totp.timecode(datetime.now())
+    for offset in (-1, 0, 1):
+        step = current_step + offset
+        if totp.at(step * totp.interval) != stripped:
+            continue
+        if last_accepted_step is not None and step <= last_accepted_step:
+            return False, None  # replay of an already-consumed step
+        return True, step
+    return False, None
 
 
 def generate_backup_codes() -> tuple[list[str], list[str]]:

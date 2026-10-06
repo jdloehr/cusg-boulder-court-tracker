@@ -276,6 +276,14 @@ def accept_invite(token: str, payload: InviteAcceptIn, request: Request, db: Ses
     # also a full Editor. See AdminUser's docstring in app/models.py.
     user.role = AdminRole.editor
     user.is_active = True
+    # Oct 2026 review item 7: a re-invite (fixing a typo, or a
+    # deliberate reset) sets a brand-new password on an account that
+    # might already have sessions open elsewhere -- those should stop
+    # working the moment the password does. Harmless for a genuinely
+    # new account (0 -> 1, nothing to revoke yet); create_access_token
+    # below reads the already-incremented value either way, so the
+    # token this call itself returns is always valid.
+    user.token_version = (user.token_version or 0) + 1
 
     invite.used_at = datetime.utcnow()
     db.commit()
@@ -334,6 +342,7 @@ def reset_password(token: str, payload: ResetPasswordIn, request: Request, db: S
         raise HTTPException(404, "Account not found")
 
     user.hashed_password = hash_password(payload.password)
+    user.token_version += 1  # Oct 2026 review item 7, same reasoning as accept_invite above
     reset.used_at = datetime.utcnow()
     db.commit()
     return {"status": "reset"}
@@ -526,10 +535,20 @@ def team_availability(db: Session = Depends(get_db), justice: AdminUser = Depend
 def setup_2fa(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     """Generates a new secret and returns it as both a QR code and plain
     text for manual entry -- doesn't take effect until confirm_2fa proves
-    the account holder actually has it working. Calling this again before
-    confirming just replaces the pending secret (e.g. the QR code expired
-    off-screen, or scanning failed) -- harmless since nothing is enabled
-    yet either way."""
+    the account holder actually has it working.
+
+    Oct 2026 review item 5: refuses outright (409) if 2FA is already
+    enabled, instead of the previous behavior of silently replacing the
+    active secret with a new, unconfirmed one. That used to mean one
+    call to this endpoint -- no password, no proof of anything -- could
+    sabotage an already-working second factor out from under its real
+    owner (every future login's TOTP check would run against a secret
+    no authenticator app has ever been enrolled with). Disabling 2FA
+    already requires the password (disable_2fa below); this routes
+    "set up a *replacement* 2FA" through that same proof-of-intent
+    instead of letting setup silently double as a bypass for it."""
+    if admin.totp_enabled:
+        raise HTTPException(409, "2FA is already enabled on this account -- disable it first to set up a new one")
     secret = generate_totp_secret()
     admin.totp_secret = secret
     db.commit()
@@ -542,12 +561,18 @@ def confirm_2fa(payload: TotpConfirmIn, db: Session = Depends(get_db),
                  admin: AdminUser = Depends(get_current_admin)):
     if not admin.totp_secret:
         raise HTTPException(400, "Start setup first (POST /api/account/2fa/setup)")
-    if not verify_totp_code(admin.totp_secret, payload.code):
+    accepted, step = verify_totp_code(admin.totp_secret, payload.code, admin.last_totp_step)
+    if not accepted:
         raise HTTPException(400, "That code didn't match -- check your authenticator app and try again")
 
     plaintext_codes, hashed_codes = generate_backup_codes()
     admin.totp_enabled = True
     admin.totp_backup_code_hashes = json.dumps(hashed_codes)
+    admin.last_totp_step = step  # Oct 2026 review item 6: replay protection starts here
+    # Oct 2026 review item 7: enabling 2FA changes this account's
+    # security posture -- any session already open from before this
+    # moment stops working, same reasoning as a password reset.
+    admin.token_version += 1
     db.commit()
     return TotpConfirmOut(backup_codes=plaintext_codes)
 
@@ -560,5 +585,7 @@ def disable_2fa(payload: TotpDisableIn, db: Session = Depends(get_db),
     admin.totp_secret = None
     admin.totp_enabled = False
     admin.totp_backup_code_hashes = None
+    admin.last_totp_step = None
+    admin.token_version += 1  # Oct 2026 review item 7, same reasoning as confirm_2fa above
     db.commit()
     return {"status": "disabled"}

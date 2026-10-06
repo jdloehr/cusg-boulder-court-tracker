@@ -213,7 +213,17 @@ def test_removing_a_recommendation_requires_a_justice_login(client):
 
 def test_new_recommendation_emails_every_justice_and_separate_subscribers(client, monkeypatch):
     sent = []
-    monkeypatch.setattr("app.jobs.digest.send_email", lambda to, subject, body: sent.append((to, subject, body)))
+    fake_send = lambda to, subject, body, **kw: sent.append((to, subject, body))  # noqa: E731
+    # Patched in both places that hold their own reference to the real
+    # function -- digest.py's own module namespace (where
+    # notify_all_justices_of_new_recommendation/
+    # notify_subscribers_of_new_recommendation call it) and
+    # routers/public.py's copy (a `from ... import send_email`, used by
+    # create_subscription's confirmation email below). See
+    # test_subscription_confirmation.py's client fixture for the same
+    # two-places reasoning.
+    monkeypatch.setattr("app.jobs.digest.send_email", fake_send)
+    monkeypatch.setattr("app.routers.public.send_email", fake_send)
 
     client.post("/api/subscriptions", json={
         "email": "watcher@example.com", "filter_type": "new_recommendation",
@@ -224,6 +234,14 @@ def test_new_recommendation_emails_every_justice_and_separate_subscribers(client
         "email": "other@example.com", "filter_type": "hearing_type_category",
         "filter_value": "jury_trial", "frequency": "weekly_digest",
     })
+    # Oct 2026 review item 2: a brand-new subscription starts unconfirmed
+    # and gets no mail at all until the confirmation link is used --
+    # confirm "watcher@example.com" the same way a real visitor would,
+    # via the link in the confirmation email `sent` just captured.
+    confirm_body = next(body for to, _subject, body in sent if to == "watcher@example.com")
+    confirm_token = confirm_body.rsplit("/", 1)[-1].strip()
+    client.post(f"/api/subscriptions/confirm/{confirm_token}")
+    sent.clear()  # the confirmation emails themselves aren't part of what this test asserts on
 
     headers = _auth(client, "joshua@test.local")
     client.post("/api/recommendations", json={"hearing_id": "hearing-1", "note": "worth it"}, headers=headers)

@@ -75,8 +75,12 @@ cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Pull real live data, seed demo curation accounts + academic calendar +
-# one real federal case + one curated blurb. Safe to re-run.
+# Local dev / demo database ONLY -- never run this against a real
+# production database (see docs/DEPLOYMENT.md). Pulls real live data,
+# but also creates two fictional curation accounts with the hardcoded
+# password `changeme` (editor@cusg-demo.colorado.edu /
+# contributor@cusg-demo.colorado.edu), plus other demo-only fixture
+# content. Safe to re-run locally.
 python scripts/seed_demo_data.py
 
 # Create the 7 real CUSG Justice accounts (random passwords, printed once
@@ -86,16 +90,19 @@ python scripts/create_justices.py
 uvicorn app.main:app --reload   # http://localhost:8000
 ```
 
-Demo curation logins (created by the seed script, for the Editor/
-Contributor tooling): `editor@cusg-demo.colorado.edu` / `changeme` (Editor)
-and `contributor@cusg-demo.colorado.edu` / `changeme` (Contributor). Change
-these before any real deployment. Justice logins come from whatever
-`create_justices.py` printed when you ran it.
+Demo curation logins (created by the seed script above, local dev only):
+`editor@cusg-demo.colorado.edu` / `changeme` (Editor) and
+`contributor@cusg-demo.colorado.edu` / `changeme` (Contributor). Justice
+logins come from whatever `create_justices.py` printed when you ran it.
 
-Run the test suite (55 tests, well under 30s, no network needed except one
-live CourtListener integration test that skips gracefully if offline):
+Run the test suite (well under 30s, no network needed except a couple of
+live CourtListener/CourtListener-adjacent integration tests that skip
+gracefully if offline). `pytest` itself -- and the handful of packages only
+it needs -- live in `requirements-dev.txt`, kept out of the production
+install (see that file's own comment for why):
 
 ```bash
+pip install -r requirements-dev.txt
 pytest
 ```
 

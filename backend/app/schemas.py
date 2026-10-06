@@ -558,11 +558,25 @@ class SubscriptionOut(BaseModel):
     filter_value: str
     frequency: SubscriptionFrequency
     unsubscribe_token: str
+    # Oct 2026 review item 2 (double opt-in): False until the emailed
+    # confirmation link is used. Lets the frontend tell a visitor "check
+    # your email to confirm" instead of implying they're already
+    # subscribed -- see routers/public.py::create_subscription.
+    is_confirmed: bool = True
     # Populated by the router via app.availability_slots.load_owner_cells --
     # there's no JSON column behind this any more (see AvailabilitySlot in
     # app/models.py), so unlike Phase 6.2 there's no field_validator here
     # parsing a JSON string; the router always passes a real list.
     availability_cells: list[AvailabilityCell] = []
+
+
+class SubscriptionConfirmInfoOut(BaseModel):
+    """Public: what the confirm-subscription page shows before
+    confirming -- just enough to say "confirm ___ for ___" back to
+    whoever opened the link, same reasoning as InviteInfoOut below."""
+    email: str
+    filter_type: SubscriptionFilterType
+    frequency: SubscriptionFrequency
 
 
 class DataStatusOut(BaseModel):
@@ -755,6 +769,11 @@ class ArchiveEntryOut(BaseModel):
     # this field existed -- see ArchiveEntry.submitted_by_justice_id.
     submitted_by_justice_id: Optional[str] = None
     created_at: datetime
+    # Oct 2026 review item 9: a non-Justice submission starts pending
+    # and only becomes publicly listable once an Editor approves it --
+    # see routers/archive.py. Default 'approved' matches every entry
+    # that existed before this column did.
+    status: SubmissionStatus = SubmissionStatus.approved
     # submitter_ip deliberately excluded -- internal-only, see
     # ArchiveEntry's docstring in app/models.py.
 

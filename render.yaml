@@ -27,8 +27,34 @@ services:
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
+      # Oct 2026 review item 8: this used to be "1" -- running the
+      # in-process APScheduler (app/jobs/scheduler.py) *and* the
+      # GitHub Actions cron workflow (.github/workflows/scheduled-
+      # jobs.yml) against the same production database meant every
+      # scheduled job (docket pull, news search, the weekly digest,
+      # the Google Calendar sync) ran twice a day -- duplicate digest
+      # emails to every subscriber being the most visible symptom.
+      # GitHub Actions already runs all of them; this app process
+      # doesn't need to as well.
       - key: ENABLE_SCHEDULER
-        value: "1"
+        value: "0"
+      # Oct 2026 review item 8: disables the interactive API docs
+      # (app/main.py) and turns on the startup check in app/config.py
+      # that refuses to boot if JWT_SECRET or
+      # GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY below are still their
+      # committed placeholder defaults -- see the human checklist in
+      # docs/DEPLOYMENT.md before this is synced to the live service.
+      - key: ENVIRONMENT
+        value: production
+      # Required once ENVIRONMENT=production (see above) if Google
+      # Calendar sync is in use at all -- sync: false means Render
+      # won't overwrite a value set by hand in the dashboard, and
+      # won't generate one automatically either (unlike JWT_SECRET
+      # above): a real Fernet key (Fernet.generate_key()) has to be
+      # generated and entered once, by a human, same as
+      # COURTLISTENER_API_TOKEN below.
+      - key: GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY
+        sync: false
       # Optional, enables CourtListener RECAP/docket-level queries -- see
       # docs/DATA_SOURCE_FINDINGS.md section 5. Leave unset to use the
       # free, token-less search endpoints only.

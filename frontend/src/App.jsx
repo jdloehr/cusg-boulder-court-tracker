@@ -3,6 +3,8 @@ import Home from "./pages/Home.jsx";
 import HearingList from "./pages/HearingList.jsx";
 import HearingDetail from "./pages/HearingDetail.jsx";
 import Subscribe from "./pages/Subscribe.jsx";
+import ConfirmSubscription from "./pages/ConfirmSubscription.jsx";
+import Unsubscribe from "./pages/Unsubscribe.jsx";
 import About from "./pages/About.jsx";
 import Welcome from "./pages/Welcome.jsx";
 import Recommendations from "./pages/Recommendations.jsx";
@@ -96,6 +98,8 @@ export default function App() {
           <Route path="/justices/team/availability" element={<TeamAvailability />} />
           <Route path="/justices/:id" element={<JusticeIdRedirect />} />
           <Route path="/subscribe" element={<Subscribe />} />
+          <Route path="/subscriptions/confirm/:token" element={<ConfirmSubscription />} />
+          <Route path="/unsubscribe/:token" element={<Unsubscribe />} />
           <Route path="/about" element={<About />} />
           <Route path="/about-project" element={<AboutProject />} />
           <Route path="/privacy" element={<Privacy />} />

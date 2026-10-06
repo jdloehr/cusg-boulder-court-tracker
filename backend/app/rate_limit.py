@@ -14,6 +14,8 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 
+from app.config import TRUSTED_PROXY_HOPS
+
 _hits: dict[str, deque] = defaultdict(deque)
 
 
@@ -43,8 +45,31 @@ def reset_for_tests() -> None:
 def client_ip(request) -> str:
     """Best-effort client IP -- checks X-Forwarded-For first since Render
     (like most PaaS hosts) sits behind a proxy, where request.client.host
-    would otherwise just be the proxy's own address."""
+    would otherwise just be the proxy's own address.
+
+    Real bug, Oct 2026 review item 3: this used to return the *first*
+    entry in X-Forwarded-For, which is entirely attacker-controlled --
+    anyone can send their own `X-Forwarded-For: 1.2.3.4` and every rate
+    limit keyed on this function (login, subscribe, refresh, ...) would
+    key off that spoofed value, making the limit bypassable by just
+    rotating the fake value per request. The header's real shape, left
+    to right, is "whatever the client sent (0 or more spoofed entries),
+    then one entry appended by each real proxy the request actually
+    passed through" -- each proxy appends the address it saw the
+    request arrive from, so the LAST TRUSTED_PROXY_HOPS entries (not the
+    first one) are the ones no client-side spoofing can touch, and the
+    real client IP is exactly TRUSTED_PROXY_HOPS entries from the right
+    (Render is one proxy hop, hence the default of 1). If the header has
+    fewer entries than that -- malformed, or this process somehow
+    received a request that didn't pass through every expected proxy --
+    there's nothing trustworthy to extract from it, so this falls back
+    to request.client.host (the immediate TCP peer) instead of guessing
+    which entry is real."""
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    direct = request.client.host if request.client else "unknown"
+    if not forwarded:
+        return direct
+    parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+    if len(parts) < TRUSTED_PROXY_HOPS:
+        return direct
+    return parts[-TRUSTED_PROXY_HOPS]

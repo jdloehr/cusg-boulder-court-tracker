@@ -66,6 +66,9 @@ jobs:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
           EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+          # Oct 2026 review: any email this job sends needs an absolute
+          # link (unsubscribe, etc.) -- see app/jobs/digest.py.
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         run: python scripts/run_news_search.py
 
   google_calendar_sync:
@@ -92,6 +95,7 @@ jobs:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
           EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         run: python scripts/run_google_calendar_sync.py
 
   weekly_digest:
@@ -114,6 +118,7 @@ jobs:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
           EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         run: python -c "
           from app.db import SessionLocal
           from app.jobs.digest import run_weekly_digest

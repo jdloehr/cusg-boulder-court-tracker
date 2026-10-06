@@ -576,7 +576,7 @@ function ArchiveSubmission({ hearing, admin }) {
     setBusy(true);
     setStatus(null);
     try {
-      await api.createArchiveEntry({
+      const res = await api.createArchiveEntry({
         hearing_id: hearing.id,
         proceeding_stage: stage,
         judge_name: judgeName || undefined,
@@ -584,7 +584,17 @@ function ArchiveSubmission({ hearing, admin }) {
         submitted_by_name: name || "Anonymous",
         website: website || undefined,
       });
-      setStatus({ ok: true, message: "Added to the Archive." });
+      // Oct 2026 review item 9: a non-Justice submission is now
+      // reviewed before it appears -- res.status tells us which
+      // happened (a Justice's own entry is still status=approved,
+      // immediate, same as before this change).
+      setStatus({
+        ok: true,
+        message:
+          res.status === "approved"
+            ? "Added to the Archive."
+            : "Submitted -- a member of the CUSG team will review it before it appears in the Archive.",
+      });
       setReflection("");
       setJudgeName("");
     } catch (err) {
@@ -600,7 +610,7 @@ function ArchiveSubmission({ hearing, admin }) {
       <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
         {isJustice
           ? "You'll be added as an attendee. A reflection is optional."
-          : "Publishes immediately under your name -- see the Archive."}
+          : "Reviewed by the CUSG team under your name before it appears -- see the Archive."}
       </p>
       <form className="form-grid" onSubmit={onSubmit}>
         <div>

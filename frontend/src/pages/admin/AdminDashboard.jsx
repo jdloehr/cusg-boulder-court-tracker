@@ -9,6 +9,7 @@ const TABS = [
   { key: "hearings", label: "Review Queue: Hearings" },
   { key: "news", label: "Review Queue: News" },
   { key: "community", label: "Review Queue: Community" },
+  { key: "archive", label: "Review Queue: Archive" },
   { key: "reports", label: "Reports" },
   { key: "federal", label: "Appellate Supplement" },
   { key: "learn", label: "Learn Library" },
@@ -67,6 +68,7 @@ export default function AdminDashboard() {
           {tab === "hearings" && <HearingReviewQueue admin={admin} />}
           {tab === "news" && <NewsReviewQueue onCountChange={setNewsQueueCount} />}
           {tab === "community" && <CommunitySubmissionQueue admin={admin} />}
+          {tab === "archive" && <ArchiveReviewQueue admin={admin} />}
           {tab === "federal" && <AppellateSupplement admin={admin} />}
           {tab === "learn" && <LearnLibraryAdmin admin={admin} />}
           {tab === "calendar" && <AcademicCalendar admin={admin} />}
@@ -317,6 +319,75 @@ function CommunitySubmissionQueue({ admin }) {
     </div>
   );
 }
+
+// --- Archive entries (Oct 2026 review item 9) -------------------------------
+// Anonymous ("Submit a Summary") Archive posts used to publish instantly;
+// now they land here first, same review-queue pattern as
+// CommunitySubmissionQueue above. A Justice's own "Mark Attendance" entry
+// still skips this -- it never shows up here at all.
+
+function ArchiveReviewQueue({ admin }) {
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState(null);
+
+  function load() {
+    api.reviewQueueArchiveEntries().then(setItems).catch((e) => setError(e.message));
+  }
+  useEffect(load, []);
+
+  async function approve(id) {
+    await api.approveArchiveEntry(id);
+    load();
+  }
+  async function reject(id) {
+    await api.rejectArchiveEntry(id);
+    load();
+  }
+
+  if (error) return <p className="message-error">{error}</p>;
+  if (!items) return <p>Loading&hellip;</p>;
+
+  return (
+    <div>
+      <h2>Visitor-submitted Archive entries</h2>
+      <p className="disclaimer">
+        Someone browsing the site wrote up a hearing they attended, with no login. Approving
+        publishes it to the public Archive under their name; rejecting discards it. A Justice's own
+        "Mark Attendance" entry skips this queue entirely and publishes immediately.
+      </p>
+      {items.length === 0 && <p>Nothing in the queue right now.</p>}
+      {items.map((e) => (
+        <div className="card" key={e.id}>
+          <h3>Case {e.hearing_case_number}</h3>
+          <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+            {e.hearing_date} &middot; {STAGE_LABELS[e.proceeding_stage] || e.proceeding_stage} &middot; submitted by{" "}
+            {e.submitted_by_name}
+          </p>
+          {e.judge_name && <p><strong>Judge:</strong> {e.judge_name}</p>}
+          {e.reflection_text && <p className="blurb">{e.reflection_text}</p>}
+          {admin.isJustice ? (
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button className="btn" onClick={() => approve(e.id)}>Approve</button>
+              <button className="btn btn-danger" onClick={() => reject(e.id)}>Reject</button>
+            </div>
+          ) : (
+            <p style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>Only a Justice can approve or reject.</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const STAGE_LABELS = {
+  opening_statements: "Opening Statements",
+  closing_arguments: "Closing Arguments",
+  sentencing: "Sentencing",
+  oral_argument: "Oral Argument",
+  jury_selection: "Jury Selection",
+  motions_hearing: "Motions Hearing",
+  other: "Other",
+};
 
 // --- Federal supplement: search CourtListener, flag, publish ---
 

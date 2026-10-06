@@ -95,6 +95,12 @@ def test_public_can_submit_a_summary_no_login(client):
     body = r.json()
     assert body["submitted_by_role"] == "regular_user"
     assert body["submitted_by_name"] == "A. Student"
+    # Oct 2026 review item 9: a non-Justice submission starts pending,
+    # not instantly published -- the full review-queue flow is covered
+    # separately below.
+    assert body["status"] == "pending"
+    assert client.get("/api/archive").json() == []
+    assert client.get(f"/api/archive/{body['id']}").status_code == 404
 
 
 def test_public_submission_requires_a_reflection(client):
@@ -145,17 +151,94 @@ def test_justice_marking_attendance_needs_no_reflection_and_adds_self_as_attende
     assert body["submitted_by_justice_id"] is not None
     assert body["attendees"] == [{"name": "Joshua Loehr", "justice_id": body["submitted_by_justice_id"]}]
     assert body["reflection_text"] is None
+    # Oct 2026 review item 9: a Justice's own entry still publishes
+    # immediately, unlike the public "Submit a Summary" path above.
+    assert body["status"] == "approved"
+    assert len(client.get("/api/archive").json()) == 1
+
+
+# --- Review queue (Oct 2026 review item 9) -----------------------------------
+
+def test_pending_submission_is_hidden_from_review_queue_for_a_non_justice(client):
+    client.post("/api/archive", json={
+        "hearing_id": "past-hearing", "proceeding_stage": "sentencing",
+        "reflection_text": "Pending submission.", "submitted_by_name": "A. Student",
+    })
+    assert client.get("/api/archive/review-queue/pending").status_code == 401
+
+
+def test_review_queue_lists_pending_and_not_approved_entries(client):
+    headers = _auth(client)
+    pending = client.post("/api/archive", json={
+        "hearing_id": "past-hearing", "proceeding_stage": "sentencing",
+        "reflection_text": "Pending submission, awaiting review.", "submitted_by_name": "A. Student",
+    }).json()
+    # A Justice's own entry is pre-approved -- never shows up in the queue.
+    client.post("/api/archive", json={
+        "hearing_id": "past-hearing", "proceeding_stage": "jury_selection",
+        "submitted_by_name": "ignored",
+    }, headers=headers)
+
+    queue = client.get("/api/archive/review-queue/pending", headers=headers).json()
+    assert [e["id"] for e in queue] == [pending["id"]]
+
+
+def test_approving_a_pending_entry_makes_it_publicly_visible(client):
+    headers = _auth(client)
+    created = client.post("/api/archive", json={
+        "hearing_id": "past-hearing", "proceeding_stage": "sentencing",
+        "reflection_text": "Pending submission, awaiting review.", "submitted_by_name": "A. Student",
+    }).json()
+
+    approved = client.post(f"/api/archive/{created['id']}/approve", headers=headers)
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
+    assert [e["id"] for e in client.get("/api/archive").json()] == [created["id"]]
+    assert client.get("/api/archive/review-queue/pending", headers=headers).json() == []
+
+
+def test_rejecting_a_pending_entry_keeps_it_out_of_the_public_list(client):
+    headers = _auth(client)
+    created = client.post("/api/archive", json={
+        "hearing_id": "past-hearing", "proceeding_stage": "sentencing",
+        "reflection_text": "Pending submission, awaiting review.", "submitted_by_name": "A. Student",
+    }).json()
+
+    rejected = client.post(f"/api/archive/{created['id']}/reject", headers=headers)
+    assert rejected.status_code == 200
+    assert rejected.json() == {"status": "rejected"}
+
+    assert client.get("/api/archive").json() == []
+    assert client.get("/api/archive/review-queue/pending", headers=headers).json() == []
+
+
+def test_approve_and_reject_require_a_justice_login(client):
+    created = client.post("/api/archive", json={
+        "hearing_id": "past-hearing", "proceeding_stage": "sentencing",
+        "reflection_text": "Pending submission.", "submitted_by_name": "A. Student",
+    }).json()
+    assert client.post(f"/api/archive/{created['id']}/approve").status_code == 401
+    assert client.post(f"/api/archive/{created['id']}/reject").status_code == 401
 
 
 def test_archive_is_filterable_and_reverse_chronological(client):
-    client.post("/api/archive", json={
+    # Oct 2026 review item 9: a public submission starts pending and is
+    # invisible in the public list until approved -- approve each one
+    # here (as a Justice) so this test can focus on what it's actually
+    # about, filtering/sorting of publicly *visible* entries, not the
+    # moderation workflow itself (covered separately below).
+    headers = _auth(client)
+    first = client.post("/api/archive", json={
         "hearing_id": "past-hearing", "proceeding_stage": "sentencing",
         "reflection_text": "First real entry, worth reading.", "submitted_by_name": "A",
-    })
-    client.post("/api/archive", json={
+    }).json()
+    second = client.post("/api/archive", json={
         "hearing_id": "past-hearing", "proceeding_stage": "jury_selection",
         "reflection_text": "Second real entry, also worth reading.", "submitted_by_name": "B",
-    })
+    }).json()
+    client.post(f"/api/archive/{first['id']}/approve", headers=headers)
+    client.post(f"/api/archive/{second['id']}/approve", headers=headers)
 
     all_entries = client.get("/api/archive").json()
     assert len(all_entries) == 2
@@ -176,6 +259,12 @@ def test_any_justice_can_edit_or_remove_any_entry(client):
     }).json()
 
     headers = _auth(client)
+    # Approved first, so the final assertion below (list is empty after
+    # deleting) actually exercises deletion -- a still-pending entry
+    # would already be invisible in the public list either way.
+    client.post(f"/api/archive/{created['id']}/approve", headers=headers)
+    assert len(client.get("/api/archive").json()) == 1
+
     edited = client.patch(f"/api/archive/{created['id']}", json={"judge_name": "Hon. Jane Ortiz"}, headers=headers)
     assert edited.status_code == 200
     assert edited.json()["judge_name"] == "Hon. Jane Ortiz"

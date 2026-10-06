@@ -46,8 +46,16 @@ app.add_middleware(
     # known, flagged gap ("tighten... in production") since Phase 1;
     # Phase 4's security-hardening pass is what actually closes it.
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Oct 2026 review item 12: both used to be "*" -- every router in
+    # this app only ever registers GET/POST/PUT/PATCH/DELETE routes
+    # (confirmed by grepping every @router. decorator), and the
+    # frontend (frontend/src/api.js) only ever sends Content-Type and
+    # Authorization. Restricting to exactly what's used narrows what a
+    # malicious page on some other origin could even attempt, with no
+    # loss of real functionality -- update both lists together if a
+    # future endpoint genuinely needs a new method or header.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(public.router)

@@ -15,14 +15,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
 # Real, closed allow-list instead of "*" -- this API only has one real
 # frontend client. Comma-separated env var so the actual Vercel URL (or a
-# future custom domain) can be set without a code change; the defaults
-# cover this project's known production frontend plus local dev.
+# future custom domain) can be set without a code change.
+#
+# Oct 2026 review item 12: the default used to always include the two
+# localhost dev ports, even in production -- harmless in the sense that
+# nothing on the public internet is actually listening there, but still
+# a wider allow-list than production needs, and a mismatch with the
+# "closed allow-list" the comment above already promises. The default
+# now drops them whenever ENVIRONMENT=production; an explicit
+# ALLOWED_ORIGINS env var always wins regardless of ENVIRONMENT, same as
+# before.
+_ALLOWED_ORIGINS_PROD_DEFAULT = "https://cusg-boulder-court-tracker.vercel.app"
+_ALLOWED_ORIGINS_DEV_DEFAULT = _ALLOWED_ORIGINS_PROD_DEFAULT + ",http://localhost:5173,http://localhost:3000"
 ALLOWED_ORIGINS = [
     o.strip() for o in os.environ.get(
         "ALLOWED_ORIGINS",
-        "https://cusg-boulder-court-tracker.vercel.app,http://localhost:5173,http://localhost:3000",
+        _ALLOWED_ORIGINS_PROD_DEFAULT if ENVIRONMENT == "production" else _ALLOWED_ORIGINS_DEV_DEFAULT,
     ).split(",") if o.strip()
 ]
+
+# Oct 2026 review item 3: app.rate_limit.client_ip trusted the *first*
+# X-Forwarded-For entry, which is entirely client-controlled -- anyone
+# can send `X-Forwarded-For: 1.2.3.4` themselves and every rate limit
+# keyed on IP (login, subscribe, refresh, ...) would key off that fake
+# value instead of their real address, making every per-IP limit
+# trivially bypassable by rotating a fake value per request. Render
+# sits exactly one real proxy hop in front of this app and appends the
+# real client IP as the *last* entry (see client_ip's own docstring for
+# the full reasoning) -- configurable here in case a future deployment
+# adds another trusted hop (a CDN in front of Render, say) without a
+# code change.
+TRUSTED_PROXY_HOPS = int(os.environ.get("TRUSTED_PROXY_HOPS", "1"))
 
 # --- Database ---------------------------------------------------------------
 # Local dev/demo default: file-based SQLite so this runs with zero external
@@ -93,7 +116,8 @@ COURTLISTENER_API_BASE = "https://www.courtlistener.com/api/rest/v4"
 COURTLISTENER_API_TOKEN = os.environ.get("COURTLISTENER_API_TOKEN")
 
 # --- Auth (admin/curation tool, Section 5.4) --------------------------------
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-only-secret-change-me")
+_JWT_SECRET_DEV_DEFAULT = "dev-only-secret-change-me"
+JWT_SECRET = os.environ.get("JWT_SECRET", _JWT_SECRET_DEV_DEFAULT)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "480"))
 
@@ -167,10 +191,34 @@ GOOGLE_CALENDAR_REDIRECT_URI = os.environ.get("GOOGLE_CALENDAR_REDIRECT_URI", ""
 # losing/rotating the real one in production makes every stored refresh
 # token unrecoverable (same operational posture as rotating JWT_SECRET
 # logging everyone out -- Justices would just need to reconnect).
+_GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY_DEV_DEFAULT = "4K8kFhq4iUUuPk8dQyjDqCB2sImPLnbtJO0teM_6XJ0="
 GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY = os.environ.get(
-    "GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY", "4K8kFhq4iUUuPk8dQyjDqCB2sImPLnbtJO0teM_6XJ0="
+    "GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY", _GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY_DEV_DEFAULT
 )
 # How far ahead the sync job pulls real freebusy data -- "the current
 # docket window is enough, no need to pull a year of history" (the doc's
 # own words). Matches DOCKET_PULL_WINDOW_DAYS above exactly.
 GOOGLE_CALENDAR_SYNC_WINDOW_DAYS = int(os.environ.get("GOOGLE_CALENDAR_SYNC_WINDOW_DAYS", str(DOCKET_PULL_WINDOW_DAYS)))
+
+# --- Oct 2026 review item 8: refuse to boot on an insecure production -------
+# default. Both placeholders above are public (committed to this open
+# source tree) -- a production deployment that forgot to override
+# either one would otherwise run indefinitely with a JWT_SECRET anyone
+# could forge a valid admin token against, or a
+# GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY anyone could decrypt a stored
+# Google refresh token with. Local dev and CI never set
+# ENVIRONMENT=production, so this never fires there -- see the human
+# checklist in docs/DEPLOYMENT.md for setting the real values in
+# Render's Environment tab before this is ever allowed to matter.
+if ENVIRONMENT == "production":
+    _insecure_defaults = []
+    if JWT_SECRET == _JWT_SECRET_DEV_DEFAULT:
+        _insecure_defaults.append("JWT_SECRET")
+    if GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY == _GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY_DEV_DEFAULT:
+        _insecure_defaults.append("GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY")
+    if _insecure_defaults:
+        raise RuntimeError(
+            f"ENVIRONMENT=production but {' and '.join(_insecure_defaults)} still "
+            f"equal{'s' if len(_insecure_defaults) == 1 else ''} its committed placeholder default. "
+            "Set a real value in Render's Environment tab before deploying -- see docs/DEPLOYMENT.md."
+        )

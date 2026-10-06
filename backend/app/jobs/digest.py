@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.academic_calendar import current_period
 from app.availability import hearing_matches_slots
 from app.availability_slots import load_free_slots_by_day
-from app.config import EMAIL_BACKEND, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME, SENDGRID_API_KEY
+from app.config import EMAIL_BACKEND, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME, FRONTEND_URL, SENDGRID_API_KEY
 from app.models import (
     AcademicPeriodType,
     AdminUser,
@@ -42,24 +42,33 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 
-def send_email(to: str, subject: str, body: str) -> None:
+def send_email(to: str, subject: str, body: str, *, list_unsubscribe_url: str | None = None) -> None:
     if EMAIL_BACKEND == "console":
         logger.info("EMAIL to=%s subject=%r\n%s", to, subject, body)
         return
     if EMAIL_BACKEND == "sendgrid":
-        _send_via_sendgrid(to, subject, body)
+        _send_via_sendgrid(to, subject, body, list_unsubscribe_url=list_unsubscribe_url)
         return
     raise NotImplementedError(f"Unknown EMAIL_BACKEND {EMAIL_BACKEND!r}")
 
 
-def _send_via_sendgrid(to: str, subject: str, body: str) -> None:
+def _send_via_sendgrid(to: str, subject: str, body: str, *, list_unsubscribe_url: str | None = None) -> None:
     """Never raises -- a failed send (bad API key, an unverified sender,
     SendGrid being briefly down) shouldn't crash the request that
     triggered it. The digest job already tolerates per-recipient failures
     (Section 8's failure-alerting is separate from this), and an invite/
     reset email failing is recoverable anyway -- the invite link is also
     returned directly in the API response (see routers/account.py), and
-    an Editor can just re-send. Failures are logged loudly instead."""
+    an Editor can just re-send. Failures are logged loudly instead.
+
+    Oct 2026 review: `list_unsubscribe_url`, when given, becomes a
+    standard List-Unsubscribe header (RFC 2369) -- most mail clients
+    show their own "Unsubscribe" affordance for it, independent of
+    whatever link is in the body text. Not the full RFC 8058 one-click
+    POST variant (that needs a dedicated endpoint that works with no
+    auth and no body, which DELETE /api/subscriptions/{token} already
+    effectively is, but formalizing that is more than "straightforward"
+    -- left as a follow-up)."""
     if not SENDGRID_API_KEY or not EMAIL_FROM_ADDRESS:
         logger.error(
             "EMAIL_BACKEND=sendgrid but SENDGRID_API_KEY/EMAIL_FROM_ADDRESS aren't both set -- "
@@ -67,15 +76,18 @@ def _send_via_sendgrid(to: str, subject: str, body: str) -> None:
         )
         return
     try:
+        payload = {
+            "personalizations": [{"to": [{"email": to}]}],
+            "from": {"email": EMAIL_FROM_ADDRESS, "name": EMAIL_FROM_NAME},
+            "subject": subject,
+            "content": [{"type": "text/plain", "value": body}],
+        }
+        if list_unsubscribe_url:
+            payload["headers"] = {"List-Unsubscribe": f"<{list_unsubscribe_url}>"}
         resp = httpx.post(
             "https://api.sendgrid.com/v3/mail/send",
             headers={"Authorization": f"Bearer {SENDGRID_API_KEY}"},
-            json={
-                "personalizations": [{"to": [{"email": to}]}],
-                "from": {"email": EMAIL_FROM_ADDRESS, "name": EMAIL_FROM_NAME},
-                "subject": subject,
-                "content": [{"type": "text/plain", "value": body}],
-            },
+            json=payload,
             timeout=10,
         )
         if resp.status_code >= 400:
@@ -153,6 +165,18 @@ class DigestSummary:
     quiet_week: bool
 
 
+def _unsubscribe_url(token: str) -> str:
+    """Real bug, found in the Oct 2026 review: every call site below
+    built `/unsubscribe/<token>` -- a relative path, meaningless once
+    it's sitting in plain-text email body (no browser location to
+    resolve it against), and the frontend had no `/unsubscribe/:token`
+    route to land on even if a client tried. FRONTEND_URL-based,
+    matching the exact same pattern routers/account.py already uses
+    for invite/reset links; empty FRONTEND_URL (local dev) falls back
+    to the same bare relative path as before, unchanged there."""
+    return f"{FRONTEND_URL}/unsubscribe/{token}"
+
+
 def run_weekly_digest(db: Session, today: date | None = None) -> DigestSummary:
     today = today or date.today()
     period = current_period(db, today)
@@ -161,7 +185,9 @@ def run_weekly_digest(db: Session, today: date | None = None) -> DigestSummary:
 
     subs = (
         db.query(Subscription)
-        .filter(Subscription.is_active.is_(True),
+        # Oct 2026 review item 2: no mail to an address that hasn't
+        # confirmed it via the emailed link yet.
+        .filter(Subscription.is_active.is_(True), Subscription.is_confirmed.is_(True),
                 Subscription.frequency == SubscriptionFrequency.weekly_digest)
         .all()
     )
@@ -169,9 +195,10 @@ def run_weekly_digest(db: Session, today: date | None = None) -> DigestSummary:
     for sub in subs:
         matching = hearings_matching_subscription(db, sub)
         subject = "CUSG Boulder Court Tracker: quiet week" if quiet_week else "CUSG Boulder Court Tracker: this week's hearings"
+        unsubscribe_url = _unsubscribe_url(sub.unsubscribe_token)
         body = render_digest(matching, quiet_week, period_label)
-        body += f"\n\nUnsubscribe: /unsubscribe/{sub.unsubscribe_token}"
-        send_email(sub.email, subject, body)
+        body += f"\n\nUnsubscribe: {unsubscribe_url}"
+        send_email(sub.email, subject, body, list_unsubscribe_url=unsubscribe_url)
 
     return DigestSummary(subscriptions_processed=len(subs), quiet_week=quiet_week)
 
@@ -184,6 +211,7 @@ def notify_realtime_subscribers_of_change(db: Session, hearing: Hearing) -> int:
         db.query(Subscription)
         .filter(
             Subscription.is_active.is_(True),
+            Subscription.is_confirmed.is_(True),  # Oct 2026 review item 2
             Subscription.frequency == SubscriptionFrequency.realtime_for_followed_case,
             Subscription.filter_type == SubscriptionFilterType.case_number,
             Subscription.filter_value.ilike(hearing.case_number),
@@ -192,13 +220,14 @@ def notify_realtime_subscribers_of_change(db: Session, hearing: Hearing) -> int:
     )
     for sub in subs:
         subject = f"Update on case {hearing.case_number}"
+        unsubscribe_url = _unsubscribe_url(sub.unsubscribe_token)
         body = (
             f"Status: {hearing.status.value}\n"
             f"{hearing.change_note or ''}\n\n"
             f"{hearing.date} {hearing.time or ''} | {hearing.hearing_type_display}\n"
-            f"Unsubscribe: /unsubscribe/{sub.unsubscribe_token}"
+            f"Unsubscribe: {unsubscribe_url}"
         )
-        send_email(sub.email, subject, body)
+        send_email(sub.email, subject, body, list_unsubscribe_url=unsubscribe_url)
     return len(subs)
 
 
@@ -211,6 +240,7 @@ def notify_subscribers_of_new_recommendation(db: Session, recommendation) -> int
         db.query(Subscription)
         .filter(
             Subscription.is_active.is_(True),
+            Subscription.is_confirmed.is_(True),  # Oct 2026 review item 2
             Subscription.filter_type == SubscriptionFilterType.new_recommendation,
             Subscription.frequency == SubscriptionFrequency.realtime_for_followed_case,
         )
@@ -220,15 +250,16 @@ def notify_subscribers_of_new_recommendation(db: Session, recommendation) -> int
     justice_name = recommendation.justice.display_name or recommendation.justice.email
     for sub in subs:
         subject = "New court recommendation"
+        unsubscribe_url = _unsubscribe_url(sub.unsubscribe_token)
         body = (
             f"{justice_name} recommended a hearing to watch:\n\n"
             f"{hearing.hearing_type_display}\n"
             f"Case {hearing.case_number} | {hearing.date} {hearing.time or ''}\n"
             f"{recommendation.note or ''}\n\n"
-            f"See it at /recommendations\n"
-            f"Unsubscribe: /unsubscribe/{sub.unsubscribe_token}"
+            f"See it at {FRONTEND_URL}/recommendations\n"
+            f"Unsubscribe: {unsubscribe_url}"
         )
-        send_email(sub.email, subject, body)
+        send_email(sub.email, subject, body, list_unsubscribe_url=unsubscribe_url)
     return len(subs)
 
 
