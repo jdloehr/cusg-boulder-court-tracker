@@ -14,8 +14,21 @@ export const COURT_LOCATION_LABELS = {
   unknown: "Location unconfirmed",
 };
 
+// Oct 2026 review, Phase 4 item 7: boulder_county, boulder_district,
+// and longmont_combined are all local Boulder-area courts (the same
+// two physical buildings -- see COURT_INFO below, where boulder_county
+// and boulder_district share one address) -- a plain row/detail-page
+// "which courthouse" line already names them. The black badge
+// treatment (same visual weight as a real federal/appellate court)
+// was never meant for a Longmont hearing and made it look like a
+// bigger deal than "the other Boulder-area building."
+export function isLocalCourt(courtLocation) {
+  return courtLocation === "boulder_county" || courtLocation === "boulder_district" || courtLocation === "longmont_combined";
+}
+
 // Short form for the badge shown on every hearing row/detail page --
-// "Add a tag that designates which court it's coming from."
+// "Add a tag that designates which court it's coming from." Only ever
+// shown for a non-local court now -- see isLocalCourt above.
 export const COURT_LOCATION_TAG = {
   boulder_county: "Boulder County",
   boulder_district: "Boulder Combined",

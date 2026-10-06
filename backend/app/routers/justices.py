@@ -118,6 +118,9 @@ def _recommendation_out(rec: HearingRecommendation) -> RecommendationOut:
         hearing_date=rec.hearing.date,
         justice_id=rec.justice_id,
         justice_display_name=rec.justice.display_name or rec.justice.email, justice_title=rec.justice.title,
+        # Oct 2026 review, Phase 4 item 9: same convention as
+        # routers/account.py::_photo_url.
+        justice_photo_url=f"/api/justices/{rec.justice.id}/photo" if rec.justice.photo_data else None,
         note=rec.note, created_at=rec.created_at, is_pinned=rec.is_pinned,
     )
 

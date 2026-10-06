@@ -35,7 +35,10 @@ export default function Justices() {
   return (
     <article>
       <h1>Meet the Justices</h1>
-      <p className="disclaimer">The CUSG Court's current roster.</p>
+      {/* Oct 2026 review, Phase 4 item 3: spells out what "the Court"
+          means here on first mention -- users shouldn't mistake a
+          student Justice for a real judge. */}
+      <p className="disclaimer">CUSG Justices (student government) -- the current roster.</p>
 
       {justices.map((j, index) => {
         const isMe = admin?.isJustice && admin.id === j.id;
@@ -45,15 +48,15 @@ export default function Justices() {
             key={j.id}
             className={`justice-entry ${index % 2 === 1 ? "justice-entry-reverse" : ""}`}
           >
-            <div className="justice-entry-photo">
-              {j.photo_url ? (
+            {/* Oct 2026 review, Phase 4 item 9: hidden entirely when
+                there's no real photo -- .justice-entry-info (flex: 1)
+                naturally takes the full row instead of sitting next
+                to an empty placeholder slot. */}
+            {j.photo_url && (
+              <div className="justice-entry-photo">
                 <img className="justice-photo-square" src={api.justicePhotoUrl(j.id)} alt="" />
-              ) : (
-                <div className="justice-photo-square justice-photo-placeholder" aria-hidden="true">
-                  {(j.display_name || "?")[0]}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
             <div className="justice-entry-info">
               <h2 style={{ marginBottom: "0.2rem" }}>{j.display_name}</h2>
               {j.title && <p style={{ color: "var(--ink-soft)", marginTop: 0 }}>{j.title}</p>}

@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import ColonnadeMotif from "../components/ColonnadeMotif.jsx";
 import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS } from "../courtInfo.js";
-import { firstSentence } from "../textUtils.js";
+import { caseName, firstSentence, formatHearingDate } from "../textUtils.js";
 
 // Phase-6.2 doc, Section 3: the approved homepage design -- a distinct
 // marketing/landing page at "/", separate from the filterable docket
@@ -50,7 +50,8 @@ export default function Home() {
             <p className="hero-eyebrow">A Project of the CUSG Judicial Branch</p>
             <h1 className="hero-headline">Watch Colorado law happen.</h1>
             <p className="hero-intro">
-              Every week, real jury trials and oral arguments happen a short walk from campus.
+              Every week, real jury trials and oral arguments happen a short bus or bike ride from
+              campus.
               This tool is meant to connect{" "}
               <strong style={{ color: "var(--accent)" }}>
                 anyone curious about helping others through law
@@ -59,7 +60,7 @@ export default function Home() {
             </p>
             <div className="hero-actions">
               <Link to="/hearings" className="btn btn-navy">
-                Browse This Week's Docket
+                Browse the Calendar
               </Link>
               <Link to="/subscribe" className="btn btn-secondary">
                 Get the Weekly Digest
@@ -76,9 +77,18 @@ export default function Home() {
                     &#9733; Justice-Recommended
                   </span>
                 )}
-                <h3 style={{ marginTop: 0 }}>{firstSentence(pick.hearing_type_display)}</h3>
+                {/* Oct 2026 review, Phase 4 item 4: the case name
+                    leads, same as the hearing detail page's own <h1>
+                    (textUtils.js::caseName) -- falls back to the
+                    hearing type when no parties were parsed. */}
+                <h3 style={{ marginTop: 0 }}>{caseName(pick) || firstSentence(pick.hearing_type_display)}</h3>
+                {caseName(pick) && (
+                  <p style={{ margin: "0 0 0.2rem", color: "var(--ink-soft)", fontSize: "0.85rem" }}>
+                    {firstSentence(pick.hearing_type_display)}
+                  </p>
+                )}
                 <p style={{ margin: "0.2rem 0", color: "var(--ink-soft)", fontSize: "0.9rem" }}>
-                  {pick.date} &middot; {pick.time || "Time TBD"}
+                  {formatHearingDate(pick.date)} &middot; {pick.time || "Time TBD"}
                   {pick.duration ? ` (${pick.duration})` : ""}
                 </p>
                 <p style={{ margin: "0.2rem 0", color: "var(--ink-soft)", fontSize: "0.9rem" }}>
@@ -99,13 +109,9 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="pull-quote">
-        <hr className="pull-quote-divider" />
-        <p>
-          &ldquo;Tell me and I forget. Teach me and I remember. Involve me and I learn.&rdquo;
-        </p>
-        <hr className="pull-quote-divider below" />
-      </div>
+      {/* Oct 2026 review, Phase 4 item 9: removed -- an unattributed
+          quote with no real connection to this project or its
+          content. */}
 
       <section>
         <h2>Get Started in Boulder Courts</h2>
@@ -115,15 +121,28 @@ export default function Home() {
             <tbody>
               {weeklyList.map((h) => (
                 <tr key={h.id}>
-                  <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>{h.date}</td>
+                  {/* Oct 2026 review, Phase 4 item 5: shared date
+                      formatter instead of the raw ISO string. */}
+                  <td style={{ whiteSpace: "nowrap", color: "var(--ink-soft)", fontSize: "0.85rem" }}>
+                    {formatHearingDate(h.date)}
+                  </td>
                   <td>
                     <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
                   </td>
                   <td>
-                    <Link to={`/hearings/${h.id}`}>{h.case_number}</Link>
+                    {/* Item 4: the case name leads; the case number
+                        stays visible underneath for anyone checking
+                        the official docket. */}
+                    <Link to={`/hearings/${h.id}`}>{caseName(h) || h.case_number}</Link>
+                    {caseName(h) && (
+                      <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)" }}>Case {h.case_number}</div>
+                    )}
                   </td>
-                  <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
-                    {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
+                  {/* Item 6: time + courthouse (Boulder vs. Longmont),
+                      not the bare courtroom letter, which meant
+                      nothing without already knowing which building. */}
+                  <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem", whiteSpace: "nowrap" }}>
+                    {h.time || "Time TBD"} &middot; {COURT_LOCATION_LABELS[h.court_location] || h.court_location}
                   </td>
                 </tr>
               ))}

@@ -211,6 +211,12 @@ class RecommendationOut(BaseModel):
     justice_id: str
     justice_display_name: str
     justice_title: Optional[str] = None
+    # Oct 2026 review, Phase 4 item 9: None when the Justice hasn't
+    # uploaded a photo -- same convention as JusticeOut.photo_url
+    # (app/routers/account.py::_photo_url). Lets the Recommendations
+    # page show a real photo when one exists instead of always
+    # rendering an empty placeholder square.
+    justice_photo_url: Optional[str] = None
     note: Optional[str] = None
     created_at: UTCDatetime
     is_pinned: bool = False

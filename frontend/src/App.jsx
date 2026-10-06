@@ -52,18 +52,16 @@ function NotFound() {
   );
 }
 
-// Phase-6.2 doc, Section 3: moved out of the footer into the header's far
-// right -- still unobtrusive when signed out (Phase-3 doc, Section 2's
-// original reasoning), just relocated now that the header nav itself is
-// shorter. Page-redesign doc: the signed-out state is now a bordered
-// pill (nav-signin-pill), not a muted text link -- the signed-in state
-// (name/role/sign-out) stays a plain text row, since it holds several
-// items, not a single CTA.
+// Phase-6.2 doc, Section 3: lives at the header's far right.
+// Oct 2026 review, Phase 4 item 1: back to a plain small text link
+// (not the bordered pill this became in the page-redesign doc) --
+// de-emphasized relative to the 5 main links, which matter to every
+// visitor; this one only matters to the 7 Justices.
 function AccountNavLink() {
   const admin = getStoredAdmin();
   const navigate = useNavigate();
 
-  if (!admin) return <NavLink to="/admin/login" className="nav-signin-pill">Justice Sign In</NavLink>;
+  if (!admin) return <NavLink to="/admin/login" className="nav-signin-link">Justice Sign In</NavLink>;
 
   const label = admin.displayName || admin.email;
   return (
@@ -131,22 +129,33 @@ export default function App() {
     <>
       <header className="site-header">
         <div className="inner">
+          {/* Oct 2026 review, Phase 4 item 2: "CUSG Court" kept, with
+              "Boulder Court Tracker" as a subtitle -- .wordmark small
+              already had styling for exactly this, just never
+              actually rendered. */}
           <NavLink to="/" className="wordmark">
             CUSG Court
+            <small>Boulder Court Tracker</small>
           </NavLink>
           <MobileMenuButton open={menuOpen} onToggle={() => setMenuOpen((v) => !v)} buttonRef={menuButtonRef} />
-          {/* Closes on navigation: any click inside bubbles up here,
-              whether it's a NavLink or AccountNavLink's "Sign out"
-              button -- simpler and more direct than reacting to a
-              route-change effect for the same thing. */}
+          {/* Closes on navigation: any click on a link inside bubbles
+              up here -- simpler and more direct than reacting to a
+              route-change effect for the same thing.
+              Oct 2026 review, Phase 4 item 1: reorganized to the 5
+              things a first-time visitor actually needs quick access
+              to; Archive, Meet the Justices, and Welcome moved to the
+              footer (below) -- still one click away, just not
+              competing for header space with the main 5.
+              AccountNavLink lives outside this nav (below) so it
+              stays reachable even while this is collapsed on mobile. */}
           <nav className="site-nav" id="site-nav" data-open={menuOpen} onClick={() => setMenuOpen(false)}>
             <NavLink to="/hearings">Calendar</NavLink>
-            <NavLink to="/recommendations">Recommendations</NavLink>
-            <NavLink to="/archive">Archive</NavLink>
+            <NavLink to="/about">First visit?</NavLink>
             <NavLink to="/learn">Learn</NavLink>
-            <NavLink to="/justices">Meet the Justices</NavLink>
-            <AccountNavLink />
+            <NavLink to="/recommendations">Picks</NavLink>
+            <NavLink to="/subscribe">Subscribe</NavLink>
           </nav>
+          <AccountNavLink />
         </div>
       </header>
 
@@ -189,9 +198,15 @@ export default function App() {
           </a>{" "}
           before attending.
         </p>
+        {/* Oct 2026 review, Phase 4 item 1: Archive and Meet the
+            Justices moved here from the main nav above (Welcome was
+            already here) -- still one click away, just not competing
+            for header space with the main 5 links. */}
         <p className="site-footer-links">
-          <NavLink to="/welcome">Welcome</NavLink> &middot; <NavLink to="/subscribe">Subscribe</NavLink>{" "}
-          &middot; <NavLink to="/about">Visiting a Courtroom</NavLink> &middot;{" "}
+          <NavLink to="/welcome">Welcome</NavLink> &middot; <NavLink to="/archive">Archive</NavLink>{" "}
+          &middot; <NavLink to="/justices">Meet the Justices</NavLink> &middot;{" "}
+          <NavLink to="/subscribe">Subscribe</NavLink> &middot;{" "}
+          <NavLink to="/about">Visiting a Courtroom</NavLink> &middot;{" "}
           <NavLink to="/about-project">About</NavLink> &middot; <NavLink to="/privacy">Privacy</NavLink>
         </p>
         <p className="site-footer-affiliation">

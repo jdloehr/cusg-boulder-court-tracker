@@ -39,34 +39,19 @@ export default function Learn() {
 
   return (
     <article>
+      {/* Oct 2026 review, Phase 4 item 10: removed the "LEARN / 00"
+          label (a meaningless numeral -- there's only ever one Learn
+          page, nothing it's "0 of"). */}
       <header className="learn-header">
-        <p className="learn-eyebrow">LEARN / 00</p>
         <h1 className="learn-headline">Understand What You're About to Watch</h1>
         <p style={{ color: "var(--ink-soft)" }}>
           Written by CUSG Justices, for anyone new to a courtroom.
         </p>
       </header>
 
-      <div className="learn-pill-strip">
-        {Object.entries(HEARING_TYPE_LABELS).map(([k, label]) => (
-          <button
-            key={k}
-            className={`learn-pill ${hearingTypeCategory === k ? "active" : ""}`}
-            onClick={() => toggle(hearingTypeCategory, setHearingTypeCategory, k)}
-          >
-            {label}
-          </button>
-        ))}
-        {caseCategoryEntries.map(([k, label]) => (
-          <button
-            key={k}
-            className={`learn-pill ${caseCategory === k ? "active" : ""}`}
-            onClick={() => toggle(caseCategory, setCaseCategory, k)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Oct 2026 review, Phase 4 item 10: removed this whole chip row
+          -- it duplicated the exact same filter buttons already in
+          .learn-sidebar below, just in a different shape. */}
 
       <div className="learn-body">
         <aside className="learn-sidebar">

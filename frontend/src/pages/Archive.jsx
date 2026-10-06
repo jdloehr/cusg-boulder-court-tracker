@@ -4,6 +4,7 @@ import { api, getStoredAdmin } from "../api.js";
 import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import JusticeLink from "../components/JusticeLink.jsx";
 import ReportLink from "../components/ReportLink.jsx";
+import { formatHearingDate } from "../textUtils.js";
 
 const STAGE_LABELS = {
   opening_statements: "Opening Statements",
@@ -64,7 +65,10 @@ export default function Archive() {
   return (
     <article>
       <header className="archive-header">
-        <p className="archive-eyebrow">CUSG Judicial Branch Archive</p>
+        {/* Oct 2026 review, Phase 4 item 3: the first mention of "the
+            Court" on this page now spells out what that means -- users
+            shouldn't mistake a student Justice for a real judge. */}
+        <p className="archive-eyebrow">CUSG Justices (student government)</p>
         <h1 className="archive-headline">Where the Court Has Been</h1>
         <p style={{ color: "var(--ink-soft)" }}>
           A record of hearings the court -- and anyone else who went -- actually attended and wrote up.
@@ -113,13 +117,17 @@ export default function Archive() {
                 style={{ transform: `rotate(${rotation}deg)` }}
               >
                 <div className="archive-card-body">
-                  <div className={`archive-card-photo archive-accent-gradient-${accent}`} aria-hidden="true" />
+                  {/* Oct 2026 review, Phase 4 item 9: removed -- there
+                      was never a real photo possible here (no such
+                      field on an Archive entry), so this was always
+                      just a decorative gradient square with no
+                      information value. */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h2 style={{ margin: "0 0 0.2rem" }}>
                       <Link to={`/hearings/${e.hearing_id}`}>{e.hearing_type_display?.split(":")[0] || "Hearing"}</Link>
                     </h2>
                     <p className="archive-entry-meta" style={{ margin: "0 0 0.4rem" }}>
-                      {e.hearing_date} &middot; Case {e.hearing_case_number}
+                      {formatHearingDate(e.hearing_date)} &middot; Case {e.hearing_case_number}
                     </p>
                     <HearingTypeTag
                       label={e.hearing_type_display?.split(":")[0] || "Hearing"}

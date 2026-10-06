@@ -169,6 +169,35 @@ def test_recommendation_board_is_public_to_read_but_needs_login_to_write(client)
     assert board[0]["hearing_case_number"] == "2026CR000123"
 
 
+def test_recommendation_includes_justice_photo_url_only_when_one_exists(client):
+    """Oct 2026 review, Phase 4 item 9: lets the Recommendations page
+    show a real photo instead of always rendering an empty placeholder
+    -- see RecommendationOut.justice_photo_url."""
+    import io
+
+    from PIL import Image
+
+    headers = _auth(client, "joshua@test.local")
+    no_photo = client.post(
+        "/api/recommendations", json={"hearing_id": "hearing-1", "note": "Before any photo."}, headers=headers,
+    )
+    assert no_photo.json()["justice_photo_url"] is None
+
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), color=(10, 20, 30)).save(buf, format="JPEG")
+    uploaded = client.put(
+        "/api/justices/me/photo", headers=headers, files={"file": ("me.jpg", buf.getvalue(), "image/jpeg")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    with_photo = client.post(
+        "/api/recommendations", json={"hearing_id": "hearing-1", "note": "After uploading a photo."}, headers=headers,
+    )
+    assert with_photo.json()["justice_photo_url"] == f"/api/justices/{uploaded.json()['id']}/photo"
+    served = client.get(with_photo.json()["justice_photo_url"])
+    assert served.status_code == 200
+
+
 def test_recommendations_filterable_by_hearing_id_for_the_detail_page_callout(client):
     headers = _auth(client, "joshua@test.local")
     client.post("/api/recommendations", json={"hearing_id": "hearing-1", "note": "first reason"}, headers=headers)

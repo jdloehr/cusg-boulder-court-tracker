@@ -139,16 +139,10 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   font-size: 0.85rem;
   color: var(--navy);
 }
-.nav-signin-pill {
-  border: 1px solid var(--navy);
-  border-radius: 999px;
-  padding: 0.35rem 0.9rem;
-  display: inline-block;
-  font-size: 0.85rem;
-  color: var(--navy);
-  text-decoration: none;
-}
-.nav-signin-pill:hover { color: #fff; background: var(--navy); }
+/* Oct 2026 review, Phase 4 item 1: plain small text link, replacing
+   the bordered pill -- de-emphasized relative to the main nav. */
+.nav-signin-link { font-size: 0.85rem; color: var(--ink-soft); text-decoration: none; }
+.nav-signin-link:hover { color: var(--navy); text-decoration: underline; }
 
 /* Oct 2026 review, Phase 3 item 1: hidden above 720px -- .site-nav
    fits fine as a single row there, unchanged from before this. */
@@ -422,6 +416,9 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
 .hearing-row .time { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 0.85rem; padding-top: 0.1rem; }
 .hearing-row .main .type { font-weight: 600; color: var(--navy); display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .hearing-row .main .meta { font-size: 0.82rem; color: var(--ink-soft); margin-top: 0.15rem; }
+/* Oct 2026 review, Phase 4 item 4: the case name, between the type tag
+   and the case-number/court .meta line. */
+.hearing-row-case-name { font-weight: 500; margin-top: 0.1rem; }
 
 /* Phase-6.2 doc, Section 4: a compact chip next to the hearing type,
    not a full-width strip -- short and clickable, easy to tell apart
@@ -640,6 +637,9 @@ a.hearing-tag:hover, a.hearing-tag:focus-visible { text-decoration: underline; t
 /* --- Detail view --- */
 
 .detail-header { border-bottom: 2px solid var(--navy); padding-bottom: 0.9rem; margin-bottom: 1.25rem; }
+/* Oct 2026 review, Phase 4 item 4: the hearing type, demoted from the
+   <h1> itself (now the case name) to a subtitle right underneath. */
+.detail-subtitle { margin: -0.3rem 0 0.6rem; color: var(--ink-soft); font-size: 1rem; }
 .fact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem 1.5rem; margin: 1.25rem 0; }
 .fact-grid dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); }
 .fact-grid dd { margin: 0.15rem 0 0; font-size: 0.95rem; }
@@ -768,28 +768,6 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   border: 1px solid var(--line);
 }
 
-.pull-quote {
-  text-align: center;
-  padding: 1rem 1rem;
-  margin: 2.5rem auto;
-  max-width: 45rem;
-}
-.pull-quote-divider {
-  width: 4rem;
-  height: 2px;
-  background: var(--accent);
-  border: none;
-  margin: 0 auto 1.25rem;
-}
-.pull-quote-divider.below { margin: 1.25rem auto 0; }
-.pull-quote p {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 1.3rem;
-  color: var(--navy);
-  margin: 0;
-}
-
 /* Breaks out of `main`'s max-width to run edge-to-edge, then re-applies
    the same max-width/padding to its inner content so the text still
    aligns with the rest of the page. */
@@ -875,7 +853,10 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 }
 .rec-lead-meta { position: relative; color: #c9d2da; font-size: 0.88rem; margin: 0 0 1.25rem; }
 .rec-lead-byline { position: relative; display: flex; align-items: center; gap: 0.75rem; margin-top: 1.5rem; }
-.rec-avatar { width: 3rem; height: 3rem; border-radius: 6px; background: var(--navy-light); flex-shrink: 0; }
+/* Oct 2026 review, Phase 4 item 9: now a real <img> when a photo
+   exists (Recommendations.jsx), not always an empty placeholder --
+   object-fit keeps a non-square photo from looking squished. */
+.rec-avatar { width: 3rem; height: 3rem; border-radius: 6px; background: var(--navy-light); flex-shrink: 0; object-fit: cover; }
 .rec-avatar-sm { width: 1.6rem; height: 1.6rem; border-radius: 4px; }
 
 .rec-section-label {
@@ -987,21 +968,7 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 /* Page-redesign doc, Page 4: Learn -- clean/reference-like, sidebar plus
    a numbered card grid. */
 .learn-header { margin-bottom: 1.25rem; }
-.learn-eyebrow { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.05em; color: var(--ink-soft); margin: 0 0 0.4rem; }
 .learn-headline { font-size: 2rem; margin: 0 0 0.5rem; }
-
-.learn-pill-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
-.learn-pill {
-  font-size: 0.85rem;
-  padding: 0.4rem 0.9rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--paper-raised);
-  color: var(--navy);
-  cursor: pointer;
-}
-.learn-pill:hover { border-color: var(--accent); }
-.learn-pill.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); font-weight: 600; }
 
 .learn-body { display: grid; grid-template-columns: 13rem 1fr; gap: 2rem; align-items: start; }
 .learn-sidebar { display: flex; flex-direction: column; gap: 1.75rem; position: sticky; top: 1rem; }

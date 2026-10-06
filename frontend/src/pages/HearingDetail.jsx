@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
-import { COURT_INFO, COURT_LOCATION_TAG } from "../courtInfo.js";
+import { COURT_INFO, COURT_LOCATION_TAG, isLocalCourt } from "../courtInfo.js";
 import JusticeLink from "../components/JusticeLink.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
 import DocketSearchHint from "../components/DocketSearchHint.jsx";
+import { caseName, formatHearingDate } from "../textUtils.js";
 
 const ATTENDANCE_LABELS = {
   attending: "Attending",
@@ -35,8 +36,20 @@ export default function HearingDetail() {
       </p>
 
       <div className="detail-header">
-        <h1>{hearing.hearing_type_raw}</h1>
-        {hearing.court_location !== "boulder_county" && (
+        {/* Oct 2026 review, Phase 4 item 4: docs/EXCLUSION_LOGIC.md
+            already says party_names is "stored and displayed exactly
+            as parsed" -- it just wasn't actually rendered anywhere.
+            Juvenile cases never reach this page at all (auto-excluded
+            at the query level), so this never touches one; a DR case
+            that passes the type filter was already fully visible here
+            otherwise (date, time, courtroom, case number), so showing
+            its party names too isn't a new category of disclosure. */}
+        <h1>{caseName(hearing) || hearing.hearing_type_raw}</h1>
+        {caseName(hearing) && <p className="detail-subtitle">{hearing.hearing_type_raw}</p>}
+        {/* Oct 2026 review, Phase 4 item 7: a Longmont (or boulder_
+            district) hearing is still local, not a different
+            jurisdiction -- see courtInfo.js::isLocalCourt. */}
+        {!isLocalCourt(hearing.court_location) && (
           <span className="badge badge-federal">{COURT_LOCATION_TAG[hearing.court_location] || hearing.court_location}</span>
         )}
         {hearing.news_mentions?.length > 0 && <span className="badge badge-news">In the news</span>}
@@ -59,6 +72,13 @@ export default function HearingDetail() {
       )}
       {hearing.status === "changed" && <p className="banner">{hearing.change_note}</p>}
 
+      {hearing.hearing_type_category === "jury_trial" && (
+        <p className="disclaimer">
+          Jury trials are often cancelled or resolved by a plea deal close to the scheduled date --
+          check the docket the morning of before heading over.
+        </p>
+      )}
+
       <p className="blurb">{hearing.hearing_type_display}</p>
 
       {hearing.curated_blurb && (
@@ -71,7 +91,7 @@ export default function HearingDetail() {
       <dl className="fact-grid">
         <div>
           <dt>Date</dt>
-          <dd>{new Date(hearing.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</dd>
+          <dd>{formatHearingDate(hearing.date)}</dd>
         </div>
         <div>
           <dt>Time</dt>
@@ -313,8 +333,11 @@ function CourtAttendance({ hearing, admin, onChange }) {
   return (
     <div className="card">
       <h3>Court attendance</h3>
+      {/* Oct 2026 review, Phase 4 item 3: spells out what "the court"
+          means here on first mention -- users shouldn't mistake a
+          student Justice for a real judge. */}
       <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
-        Who from the court plans to be here.
+        Which CUSG Justices (student government) plan to be here.
       </p>
       <table className="data-table">
         <tbody>

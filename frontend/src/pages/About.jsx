@@ -30,14 +30,52 @@ export default function About() {
 
       <div className="card">
         <h3>Courthouse locations</h3>
+        {/* Oct 2026 review, Phase 4 item 8: a real map link per
+            address (Google's own documented URL scheme -- no API key
+            needed for a plain search link) instead of this app trying
+            to describe a specific route or bus line, which it has no
+            way to keep accurate over time. One generic line each on
+            getting there/parking, deliberately not naming a specific
+            route, garage, or price this app can't verify or keep
+            current. */}
         <dl className="fact-grid">
           <div>
             <dt>Boulder County Justice Center</dt>
-            <dd>1777 6th St, Boulder, CO 80302</dd>
+            <dd>
+              1777 6th St, Boulder, CO 80302
+              {" · "}
+              <a
+                href="https://www.google.com/maps/search/?api=1&query=1777+6th+St%2C+Boulder%2C+CO+80302"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Map
+              </a>
+              <br />
+              <span style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+                Reachable by RTD bus or bike from campus; a free visitor lot and nearby street parking
+                are both available -- check posted signage for time limits.
+              </span>
+            </dd>
           </div>
           <div>
             <dt>Boulder County Combined Court -- Longmont</dt>
-            <dd>1035 Kimbark St, Longmont, CO 80501</dd>
+            <dd>
+              1035 Kimbark St, Longmont, CO 80501
+              {" · "}
+              <a
+                href="https://www.google.com/maps/search/?api=1&query=1035+Kimbark+St%2C+Longmont%2C+CO+80501"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Map
+              </a>
+              <br />
+              <span style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+                Further out, best reached by car or RTD bus; a public lot and metered street parking
+                are both available nearby -- check posted signage for time limits.
+              </span>
+            </dd>
           </div>
         </dl>
       </div>

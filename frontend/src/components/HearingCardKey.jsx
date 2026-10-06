@@ -18,10 +18,10 @@ export default function HearingCardKey() {
         <span className="badge badge-fits-schedule">&#10003; Fits your schedule</span>
         <span>matches your own saved free time</span>
       </span>
-      <span className="hearing-card-key-item">
-        <span className="badge badge-learn-topic">Learn about this</span>
-        <span>a general explainer for this kind of hearing/case</span>
-      </span>
+      {/* Oct 2026 review, Phase 4 item 7: the "Learn about this" badge
+          itself was removed from every row (the detail page already
+          links to its matching Learn topic), so this legend entry no
+          longer explains anything a visitor can actually see here. */}
       <span className="hearing-card-key-item">
         <span className="badge badge-teaching-note">Justice's Note</span>
         <span>a Justice wrote something about this exact case</span>

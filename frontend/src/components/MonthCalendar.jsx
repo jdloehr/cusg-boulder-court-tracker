@@ -4,7 +4,7 @@ import { api, getStoredAdmin } from "../api.js";
 import { weekdayAbbr } from "../availabilityMatch.js";
 import { TAG_COLOR_LEGEND } from "../hearingTagColors.js";
 import HearingTypeTag from "./HearingTypeTag.jsx";
-import { firstSentence } from "../textUtils.js";
+import { caseName, firstSentence } from "../textUtils.js";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MAX_DOTS_PER_DAY = 3;
@@ -305,7 +305,13 @@ function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability, recom
                         <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />
                       </td>
                       <td>
-                        <a href={`/hearings/${h.id}`}>{h.case_number}</a>
+                        {/* Oct 2026 review, Phase 4 item 4: the case
+                            name leads; the case number stays visible
+                            underneath. */}
+                        <a href={`/hearings/${h.id}`}>{caseName(h) || h.case_number}</a>
+                        {caseName(h) && (
+                          <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)" }}>Case {h.case_number}</div>
+                        )}
                       </td>
                       <td style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>
                         {h.courtroom ? `Courtroom ${h.courtroom}` : ""}
@@ -387,7 +393,7 @@ function HighVolumeDaySummary({ hearings, recommendedHearingIds, search, onSearc
           {notable.map((h) => (
             <p key={h.id} style={{ margin: "0.2rem 0" }}>
               <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />{" "}
-              <a href={`/hearings/${h.id}`}>{h.case_number}</a>
+              <a href={`/hearings/${h.id}`}>{caseName(h) || h.case_number}</a>
               {recommendedHearingIds.has(h.id) && " ★"}
               {h.news_mentions?.length > 0 && " • in the news"}
             </p>
@@ -420,7 +426,7 @@ function HighVolumeDaySummary({ hearings, recommendedHearingIds, search, onSearc
           {filtered.slice(0, SEARCH_RESULT_CAP).map((h) => (
             <p key={h.id} style={{ margin: "0.2rem 0", fontSize: "0.88rem" }}>
               <HearingTypeTag label={firstSentence(h.hearing_type_display)} color={h.tag_color} hearingId={h.id} />{" "}
-              <a href={`/hearings/${h.id}`}>{h.case_number}</a>
+              <a href={`/hearings/${h.id}`}>{caseName(h) || h.case_number}</a>
               {h.courtroom ? ` · Courtroom ${h.courtroom}` : ""}
             </p>
           ))}

@@ -8,9 +8,9 @@ import DataStatusBar from "../components/DataStatusBar.jsx";
 import HearingCardKey from "../components/HearingCardKey.jsx";
 import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
-import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS, COURT_LOCATION_TAG } from "../courtInfo.js";
+import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS, COURT_LOCATION_TAG, isLocalCourt } from "../courtInfo.js";
 import { cellsToFreeSlotsByDay, hearingMatchesSlots } from "../availabilitySlots.js";
-import { firstSentence } from "../textUtils.js";
+import { caseName, firstSentence, formatHearingDate } from "../textUtils.js";
 import { useVisitorAvailability } from "../useVisitorAvailability.js";
 
 // Calendar-view doc: a two-option pill switch, List selected by default.
@@ -194,11 +194,15 @@ export default function HearingList() {
 
   return (
     <>
-      <h1>Upcoming Hearings</h1>
+      {/* Oct 2026 review, Phase 4 item 2: "Calendar" consistently for
+          this page -- the main nav link, Home's own CTA button, and
+          this title all used a different name before. */}
+      <h1>Calendar</h1>
       <p className="disclaimer">
         Jury trials and oral arguments/motions hearings in Boulder-area courts, in person, worth
         sitting in on -- plus anything getting real local news coverage. Details can change; confirm
-        before you go.
+        before you go. Jury trials especially are often cancelled or resolved by a plea deal close to
+        the date, so check the docket the morning of.
       </p>
 
       <DataStatusBar onRefreshed={() => setRefreshTick((t) => t + 1)} />
@@ -286,13 +290,7 @@ export default function HearingList() {
 
           {grouped.map(([date, dayHearings]) => (
             <section key={date}>
-              <h2 className="date-group-heading">
-                {new Date(date + "T00:00:00").toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </h2>
+              <h2 className="date-group-heading">{formatHearingDate(date)}</h2>
               {dayHearings.map((h) => (
                 <HearingRow
                   key={h.id}
@@ -328,6 +326,10 @@ function HearingRow({ hearing, isRecommended, availability, fitsVisitorSchedule 
           <HearingTypeTag label={firstSentence(hearing.hearing_type_display)} color={hearing.tag_color} />
           {availability && <AvailabilityMeter summary={availability} />}
         </div>
+        {/* Oct 2026 review, Phase 4 item 4: the case name, built from
+            party_names -- see textUtils.js::caseName -- same
+            information the detail page's own title now leads with. */}
+        {caseName(hearing) && <div className="hearing-row-case-name">{caseName(hearing)}</div>}
         <div className="meta">
           {CASE_CATEGORY_LABELS[hearing.case_category] || hearing.case_category} &middot; Case{" "}
           {hearing.case_number} &middot; {COURT_LOCATION_LABELS[hearing.court_location] || hearing.court_location}
@@ -335,13 +337,23 @@ function HearingRow({ hearing, isRecommended, availability, fitsVisitorSchedule 
         </div>
       </div>
       <div className="badges">
-        {hearing.court_location !== "boulder_county" && (
+        {/* Oct 2026 review, Phase 4 item 7: a Longmont (or boulder_
+            district) hearing is still a local Boulder-area court, not
+            a different jurisdiction -- the .meta line above already
+            names it in plain text; the black badge treatment is now
+            reserved for an actually different court (federal, state
+            appellate). */}
+        {!isLocalCourt(hearing.court_location) && (
           <span className="badge badge-federal">{COURT_LOCATION_TAG[hearing.court_location] || hearing.court_location}</span>
         )}
         {isRecommended && <span className="badge badge-news">&#9733; Recommended</span>}
         {fitsVisitorSchedule && <span className="badge badge-fits-schedule">&#10003; Fits your schedule</span>}
         {hasNews && <span className="badge badge-news">In the news</span>}
-        {hearing.learn_topics?.length > 0 && <span className="badge badge-learn-topic">Learn about this</span>}
+        {/* Oct 2026 review, Phase 4 item 7: removed -- the detail page
+            already links to its matching Learn topic (and shows this
+            same badge there), so this per-row copy added no
+            information a visitor couldn't already get by opening the
+            hearing, just extra badge clutter on every row. */}
         {hearing.teaching_notes?.length > 0 && <span className="badge badge-teaching-note">Justice's Note</span>}
         {hearing.status === "changed" && <span className="badge badge-changed">Time/place changed</span>}
         {hearing.status === "cancelled" && <span className="badge badge-cancelled">Cancelled</span>}
