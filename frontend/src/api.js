@@ -63,6 +63,7 @@ export const api = {
     return request(`/api/hearings${qs ? `?${qs}` : ""}`);
   },
   getHearing: (id) => request(`/api/hearings/${id}`),
+  getWeeklyPick: () => request("/api/hearings/weekly-pick"),
   submitDetails: (hearingId, payload) =>
     request(`/api/hearings/${hearingId}/submissions`, { method: "POST", body: JSON.stringify(payload) }),
   icsUrl: (id) => `${API_BASE}/api/hearings/${id}/ics`,

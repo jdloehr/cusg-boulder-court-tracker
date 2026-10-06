@@ -14,10 +14,23 @@ import { firstSentence } from "../textUtils.js";
 // verified alongside them per the doc's own open item 3.
 export default function Home() {
   const [hearings, setHearings] = useState(null);
+  const [pick, setPick] = useState(null);
   const [recommendedHearingIds, setRecommendedHearingIds] = useState(new Set());
 
   useEffect(() => {
     api.listHearings({}).then(setHearings).catch(() => setHearings([]));
+    // Oct 2026 review, Phase 2 item 2: real bug -- this used to search
+    // only the `hearings` list above (the default GET /api/hearings
+    // view: in-person, next 14 days only) for is_weekly_pick, so an
+    // Editor's real pick on a remote hearing or one further out
+    // silently vanished from that search and the page fell back to a
+    // heuristic (soonest hearing with a blurb) under the exact same
+    // "This Week's Pick" label -- showing something nobody actually
+    // picked, with no sign it wasn't the real pick. GET /api/hearings/
+    // weekly-pick searches every hearing directly instead, and a null
+    // result now means no card at all, not a heuristic standing in
+    // under the same label.
+    api.getWeeklyPick().then(setPick).catch(() => setPick(null));
     api
       .listRecommendations()
       .then((recs) => setRecommendedHearingIds(new Set(recs.map((r) => r.hearing_id))))
@@ -26,15 +39,6 @@ export default function Home() {
       });
   }, []);
 
-  // Page-redesign doc: "This Week's Pick" is now a real Editor choice
-  // (Hearing.is_weekly_pick, set from the hearing detail page), not just
-  // a heuristic. Falls back to the old heuristic -- soonest hearing with
-  // a curated blurb, else just the soonest hearing -- when no one has
-  // explicitly picked anything yet, so the spotlight never goes empty.
-  // `hearings` is already sorted chronologically by GET /api/hearings.
-  const pick = hearings
-    ? hearings.find((h) => h.is_weekly_pick) || hearings.find((h) => h.curated_blurb) || hearings[0]
-    : null;
   const weeklyList = hearings ? hearings.slice(0, 8) : [];
 
   return (

@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import Home from "./pages/Home.jsx";
 import HearingList from "./pages/HearingList.jsx";
 import HearingDetail from "./pages/HearingDetail.jsx";
@@ -31,6 +31,24 @@ import { clearAdmin, getStoredAdmin } from "./api.js";
 function JusticeIdRedirect() {
   const { id } = useParams();
   return <Navigate to={`/justices#justice-${id}`} replace />;
+}
+
+// Oct 2026 review, Phase 2 item 4: an unmatched route used to render a
+// blank <main> with no explanation at all -- a dead end for a stale
+// bookmark, a typo'd URL, or a broken external link, with no way back
+// in without using the browser's own back button or the header nav.
+function NotFound() {
+  return (
+    <article>
+      <h1>Page not found</h1>
+      <p>That page doesn't exist, or the link might be out of date.</p>
+      <p>
+        <Link to="/hearings">Go to the Calendar</Link>
+        {" · "}
+        <Link to="/about">Visiting a Courtroom</Link>
+      </p>
+    </article>
+  );
 }
 
 // Phase-6.2 doc, Section 3: moved out of the footer into the header's far
@@ -109,6 +127,7 @@ export default function App() {
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/request-invite" element={<RequestInvite />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
 

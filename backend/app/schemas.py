@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime
-from typing import Optional
+from datetime import date, datetime, timezone
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, PlainSerializer, field_validator, model_validator
 
 from app.auth import validate_password_strength
 from app.availability import NUM_SLOTS, WEEKDAY_ABBRS
@@ -30,6 +30,35 @@ def validate_email_format(value: str) -> str:
     if not _EMAIL_RE.match(stripped):
         raise ValueError("Enter a valid email address")
     return stripped
+
+
+def _serialize_utc_datetime(value: datetime) -> str:
+    """Oct 2026 review, Phase 2 item 1 (real bug, confirmed against
+    production): every datetime this app stores comes from
+    datetime.utcnow() (app/models.py's column defaults, and every
+    router that stamps a timestamp) -- naive, but always UTC wall-clock
+    time. Pydantic's default serializer just calls .isoformat() on that
+    naive value, which carries no timezone suffix at all; a browser's
+    `new Date("2026-10-05T14:30:00")` then parses it as *local* time,
+    not UTC (per the ECMA-262 Date Time String Format spec) -- 6-7
+    hours off for anyone not in UTC. Explicitly treating a naive value
+    as UTC (and correctly converting an already-aware one, rather than
+    overwriting its real offset) before formatting makes every
+    datetime this API returns end in "Z", which every browser's Date
+    parser (and toLocaleString()) correctly treats as a real UTC
+    instant."""
+    aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+# Oct 2026 review, Phase 2 item 1: the one shared serializer every
+# datetime *output* field below uses -- see _serialize_utc_datetime's
+# own docstring. `when_used="json"` leaves Python-side access (e.g. a
+# test comparing two datetime objects directly) completely unaffected;
+# only the JSON actually sent over the wire changes.
+UTCDatetime = Annotated[datetime, PlainSerializer(_serialize_utc_datetime, return_type=str, when_used="json")]
+
+
 from app.models import (
     AcademicPeriodType,
     AppearanceType,
@@ -92,7 +121,7 @@ class NewsMentionOut(BaseModel):
     article_url: str
     source_name: str
     headline: str
-    published_at: Optional[datetime]
+    published_at: Optional[UTCDatetime]
     match_status: MatchStatus
     source_type: Optional[SourceType] = None
     hearing: Optional[NewsMentionHearingSummaryOut] = None
@@ -104,7 +133,7 @@ class CommunitySubmissionOut(BaseModel):
     summary_text: Optional[str]
     judge_name: Optional[str]
     status: SubmissionStatus
-    submitted_at: datetime
+    submitted_at: UTCDatetime
     # submitter_context is deliberately excluded -- reviewer-only, see
     # app/models.py::CommunitySubmission.
 
@@ -136,7 +165,7 @@ class AttendanceOut(BaseModel):
     title: Optional[str] = None
     status: AttendanceStatus
     note: Optional[str] = None
-    updated_at: datetime
+    updated_at: UTCDatetime
 
 
 class AttendanceIn(BaseModel):
@@ -183,7 +212,7 @@ class RecommendationOut(BaseModel):
     justice_display_name: str
     justice_title: Optional[str] = None
     note: Optional[str] = None
-    created_at: datetime
+    created_at: UTCDatetime
     is_pinned: bool = False
 
 
@@ -302,8 +331,8 @@ class LearnTopicOut(BaseModel):
     has_uploaded_video: bool = False
     external_links: list[ExternalLinkOut] = []
     created_by_display_name: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDatetime
+    updated_at: UTCDatetime
 
 
 class CaseTeachingNoteIn(BaseModel):
@@ -338,8 +367,8 @@ class CaseTeachingNoteOut(BaseModel):
     has_uploaded_video: bool = False
     external_links: list[ExternalLinkOut] = []
     created_by_display_name: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDatetime
+    updated_at: UTCDatetime
 
 
 class CopyToArchiveIn(BaseModel):
@@ -376,8 +405,8 @@ class HearingOut(BaseModel):
     curated_blurb: Optional[str]
     status: HearingStatus
     change_note: Optional[str]
-    first_seen_at: datetime
-    last_verified_at: datetime
+    first_seen_at: UTCDatetime
+    last_verified_at: UTCDatetime
     attendance: list[AttendanceOut] = []
     news_mentions: list[NewsMentionOut] = []
     community_submissions: list[CommunitySubmissionOut] = []
@@ -582,8 +611,8 @@ class SubscriptionConfirmInfoOut(BaseModel):
 class DataStatusOut(BaseModel):
     """Phase-2 doc, Section 1: "Last updated HH:MM today" + refresh-button
     state, computed from real JobRun rows."""
-    last_updated_at: Optional[datetime]
-    next_refresh_available_at: Optional[datetime]
+    last_updated_at: Optional[UTCDatetime]
+    next_refresh_available_at: Optional[UTCDatetime]
     refresh_cooldown_minutes: int
 
 
@@ -768,7 +797,7 @@ class ArchiveEntryOut(BaseModel):
     # Set only for entries created via the "Mark Attendance" path after
     # this field existed -- see ArchiveEntry.submitted_by_justice_id.
     submitted_by_justice_id: Optional[str] = None
-    created_at: datetime
+    created_at: UTCDatetime
     # Oct 2026 review item 9: a non-Justice submission starts pending
     # and only becomes publicly listable once an Editor approves it --
     # see routers/archive.py. Default 'approved' matches every entry
@@ -810,7 +839,7 @@ class InviteOut(BaseModel):
     response."""
     email: str
     display_name: str
-    expires_at: datetime
+    expires_at: UTCDatetime
     invite_link: str
 
 
@@ -846,7 +875,7 @@ class AllowlistEntryOut(BaseModel):
     email: str
     display_name: str
     title: Optional[str] = None
-    created_at: datetime
+    created_at: UTCDatetime
 
 
 class RequestInviteIn(BaseModel):
@@ -867,7 +896,7 @@ class InviteInfoOut(BaseModel):
     email: str
     display_name: str
     title: Optional[str] = None
-    expires_at: datetime
+    expires_at: UTCDatetime
 
 
 class InviteAcceptIn(BaseModel):
@@ -957,7 +986,7 @@ class JusticeAvailabilityOut(BaseModel):
     # availability response EditJusticeProfile.jsx already calls, rather
     # than a second endpoint just for sync status.
     google_calendar_connected: bool = False
-    google_calendar_last_synced_at: Optional[datetime] = None
+    google_calendar_last_synced_at: Optional[UTCDatetime] = None
     google_calendar_last_sync_error: Optional[str] = None
 
 
@@ -1075,6 +1104,6 @@ class ReportQueueOut(BaseModel):
     target_id: str
     reason: Optional[str] = None
     resolved: bool
-    created_at: datetime
+    created_at: UTCDatetime
     target_summary: Optional[str] = None
     target_url: Optional[str] = None

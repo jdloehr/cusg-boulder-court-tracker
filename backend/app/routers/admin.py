@@ -419,6 +419,14 @@ def set_weekly_pick(hearing_id: str, db: Session = Depends(get_db),
     hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
     if not hearing:
         raise HTTPException(404, "Hearing not found")
+    # Oct 2026 review, Phase 2 item 2: "This Week's Pick" is a spotlight
+    # meant to get someone to actually go sit in on a hearing -- a
+    # remote one isn't something a visitor can show up and watch, so
+    # it was never a sensible answer to "what should I go see this
+    # week," even though nothing previously stopped an Editor from
+    # picking one by mistake.
+    if hearing.appearance_type != AppearanceType.in_person:
+        raise HTTPException(400, "Only an in-person hearing can be the weekly pick -- visitors can't attend a remote one.")
     db.query(Hearing).filter(Hearing.is_weekly_pick.is_(True)).update({"is_weekly_pick": False})
     hearing.is_weekly_pick = True
     _log(db, admin, "set_weekly_pick", "hearing", hearing.id, hearing.case_number)

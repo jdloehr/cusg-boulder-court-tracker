@@ -141,6 +141,87 @@ def test_hearing_defaults_to_not_the_pick(ctx):
     assert b["is_weekly_pick"] is False
 
 
+def test_set_weekly_pick_rejects_a_remote_hearing(ctx):
+    """Oct 2026 review, Phase 2 item 2: "This Week's Pick" is a
+    spotlight meant to get someone to go sit in on a hearing -- a
+    remote one isn't something a visitor can show up and watch."""
+    client, Session = ctx
+    db = Session()
+    db.add(_hearing(id="hearing-remote", case_number="2026CR000003", appearance_type=AppearanceType.remote))
+    db.commit()
+    db.close()
+
+    r = client.post("/api/admin/hearings/hearing-remote/set-weekly-pick", headers=_auth(client))
+    assert r.status_code == 400
+    assert client.get("/api/hearings/hearing-remote").json()["is_weekly_pick"] is False
+
+
+# --- GET /api/hearings/weekly-pick --------------------------------------------
+
+def test_weekly_pick_endpoint_returns_null_when_nothing_is_picked(ctx):
+    client, _Session = ctx
+    r = client.get("/api/hearings/weekly-pick")
+    assert r.status_code == 200
+    assert r.json() is None
+
+
+def test_weekly_pick_endpoint_returns_the_real_pick(ctx):
+    client, _Session = ctx
+    client.post("/api/admin/hearings/hearing-a/set-weekly-pick", headers=_auth(client))
+    r = client.get("/api/hearings/weekly-pick")
+    assert r.status_code == 200
+    assert r.json()["id"] == "hearing-a"
+
+
+def test_weekly_pick_endpoint_finds_a_pick_outside_the_default_lists_date_window(ctx):
+    """Real bug this fixes: GET /api/hearings only shows the next 14
+    days by default -- Home.jsx used to search *that* list for
+    is_weekly_pick, so a real pick further out silently vanished from
+    the search and the page fell back to a heuristic under the same
+    label. This endpoint has no such window."""
+    client, Session = ctx
+    db = Session()
+    db.add(_hearing(id="hearing-far-out", case_number="2026CR000004", date=date(2027, 3, 1)))
+    db.commit()
+    db.close()
+
+    client.post("/api/admin/hearings/hearing-far-out/set-weekly-pick", headers=_auth(client))
+
+    # Confirms the bug scenario: the far-out pick is NOT in the default list.
+    default_list_ids = {h["id"] for h in client.get("/api/hearings").json()}
+    assert "hearing-far-out" not in default_list_ids
+
+    # But the dedicated endpoint finds it directly either way.
+    r = client.get("/api/hearings/weekly-pick")
+    assert r.json()["id"] == "hearing-far-out"
+
+
+def test_weekly_pick_endpoint_hides_a_pick_that_was_since_excluded(ctx):
+    client, Session = ctx
+    client.post("/api/admin/hearings/hearing-a/set-weekly-pick", headers=_auth(client))
+
+    db = Session()
+    hearing = db.query(Hearing).filter(Hearing.id == "hearing-a").first()
+    hearing.is_excluded = True
+    db.commit()
+    db.close()
+
+    assert client.get("/api/hearings/weekly-pick").json() is None
+
+
+def test_weekly_pick_endpoint_hides_a_pick_that_was_since_cancelled(ctx):
+    client, Session = ctx
+    client.post("/api/admin/hearings/hearing-a/set-weekly-pick", headers=_auth(client))
+
+    db = Session()
+    hearing = db.query(Hearing).filter(Hearing.id == "hearing-a").first()
+    hearing.status = HearingStatus.cancelled
+    db.commit()
+    db.close()
+
+    assert client.get("/api/hearings/weekly-pick").json() is None
+
+
 # --- Recommendation pin -------------------------------------------------------
 
 def test_pin_recommendation(ctx):

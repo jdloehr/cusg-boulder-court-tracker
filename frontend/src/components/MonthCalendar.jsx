@@ -91,13 +91,20 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
     const firstOfMonth = isoDate(year, month, 1);
     const lastOfMonth = isoDate(year, month + 1, 0);
     const params = { date_from: firstOfMonth, date_to: lastOfMonth, court_location: courtLocation || undefined };
-    // Month view's whole point is seeing everything scheduled -- only
-    // narrow to one type if the shared filter explicitly picked one
-    // (not the List view's own narrower "" default).
-    if (hearingTypeCategory && hearingTypeCategory !== "__all__") {
-      params.hearing_type_category = hearingTypeCategory;
-    } else {
+    // Oct 2026 review, Phase 2 item 5: real bug -- this used to force
+    // show_all_types=true whenever the shared filter sat on its
+    // default (""), even though the filter dropdown's own option text
+    // (shared with HearingList.jsx) says that default is "Jury trial +
+    // oral argument/motions (default)," not "show everything." Month
+    // view now honors the exact same default GET /api/hearings itself
+    // applies when neither hearing_type_category nor show_all_types is
+    // sent (see routers/public.py::list_hearings) -- the same logic
+    // HearingList.jsx's own list view already relies on, just mirrored
+    // here instead of forcing a different, contradictory default.
+    if (hearingTypeCategory === "__all__") {
       params.show_all_types = "true";
+    } else if (hearingTypeCategory) {
+      params.hearing_type_category = hearingTypeCategory;
     }
     if (caseCategory) params.case_category = caseCategory;
     api
@@ -298,7 +305,7 @@ function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability, recom
       {hearings.length > 0 && (
         <p style={{ marginTop: "0.5rem" }}>
           <a href={`/hearings?view=list&date_from=${selectedDate}&date_to=${selectedDate}`}>
-            View full day on the docket &rarr;
+            View full day on the docket (every hearing type) &rarr;
           </a>
         </p>
       )}

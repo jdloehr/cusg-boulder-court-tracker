@@ -128,6 +128,46 @@ def list_hearings(
     return [_with_learn_topics(HearingOut.from_orm_hearing(h), h, topics) for h in filtered]
 
 
+# Oct 2026 review, Phase 2 item 2: registered *before* GET
+# /{hearing_id} below -- FastAPI matches routes in registration order,
+# and "/weekly-pick" would otherwise be swallowed by {hearing_id}'s
+# single-path-segment pattern (treating "weekly-pick" as a hearing id
+# and 404ing), same reasoning as routers/archive.py's own
+# /review-queue/pending-before-/{entry_id} comment.
+@router.get("/hearings/weekly-pick", response_model=Optional[HearingOut])
+def get_weekly_pick(db: Session = Depends(get_db)):
+    """Page-redesign doc: Home.jsx's "This Week's Pick" card.
+
+    Real bug: Home.jsx used to search only the default GET /api/
+    hearings list (is_weekly_pick=True within that response) for the
+    pick -- but that list excludes remote hearings and anything more
+    than 14 days out by default. An Editor-set pick on a hearing
+    outside that window silently vanished from the list Home.jsx was
+    searching, and the page fell back to a client-side heuristic
+    (soonest hearing with a curated blurb) rendered under the exact
+    same "This Week's Pick" label -- showing something that was never
+    actually chosen as the pick, with no indication it wasn't. This
+    endpoint searches every hearing directly instead of relying on
+    whatever window/filters the general list happens to apply --
+    there's only ever at most one is_weekly_pick=True row (see
+    set_weekly_pick's own comment in routers/admin.py), so this is
+    always a single trivial lookup regardless of how many hearings
+    exist. Excludes a pick that's since been cancelled or excluded by
+    a later docket pull, same as every other public hearing view."""
+    hearing = (
+        db.query(Hearing)
+        .filter(
+            Hearing.is_weekly_pick.is_(True),
+            Hearing.is_excluded.is_(False),
+            Hearing.status != HearingStatus.cancelled,
+        )
+        .first()
+    )
+    if not hearing:
+        return None
+    return _with_learn_topics(HearingOut.from_orm_hearing(hearing), hearing, load_all_learn_topics(db))
+
+
 @router.get("/hearings/{hearing_id}", response_model=HearingOut)
 def get_hearing(hearing_id: str, db: Session = Depends(get_db)):
     hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
