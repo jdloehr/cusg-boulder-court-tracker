@@ -153,6 +153,7 @@ export default function App() {
             <NavLink to="/about">First visit?</NavLink>
             <NavLink to="/learn">Learn</NavLink>
             <NavLink to="/recommendations">Picks</NavLink>
+            <NavLink to="/justices">Meet the Justices</NavLink>
             <NavLink to="/subscribe">Subscribe</NavLink>
           </nav>
           <AccountNavLink />
