@@ -374,14 +374,30 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   font-size: 1.6rem;
   margin: 0 0 0.75rem;
 }
+.justice-quote-block { margin: 0 0 1.25rem; }
+.justice-quote-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  margin: 0 0 0.35rem;
+  padding-left: 1rem;
+}
 .justice-pull-quote {
   font-family: var(--font-serif);
   font-style: italic;
   font-size: 1.1rem;
   line-height: 1.5;
-  margin: 0 0 1.25rem;
+  margin: 0;
   padding-left: 1rem;
   border-left: 2px solid var(--line);
+}
+.justice-empty-note {
+  font-style: italic;
+  color: var(--ink-soft);
+  margin: 0 0 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
 }
 .justice-bio {
   font-size: 1rem;

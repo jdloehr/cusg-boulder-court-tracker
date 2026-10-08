@@ -5,6 +5,7 @@ import json
 import re
 from datetime import date, datetime, timezone
 from typing import Annotated, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, PlainSerializer, field_validator, model_validator
 
@@ -154,6 +155,7 @@ class JusticeOut(BaseModel):
     why_care: Optional[str] = None
     fun_fact: Optional[str] = None
     photo_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
 
 
 class AttendanceOut(BaseModel):
@@ -944,6 +946,21 @@ class JusticeProfileIn(BaseModel):
     year_or_major: Optional[str] = None
     why_care: Optional[str] = None
     fun_fact: Optional[str] = None
+    linkedin_url: Optional[str] = None
+
+    @field_validator("linkedin_url")
+    @classmethod
+    def _validate_linkedin_url(cls, value):
+        if not value:
+            return None
+        value = value.strip()
+        if len(value) > 300:
+            raise ValueError("Must be under 300 characters")
+        parsed = urlparse(value)
+        host = parsed.netloc.lower()
+        if parsed.scheme != "https" or not (host == "linkedin.com" or host.endswith(".linkedin.com")):
+            raise ValueError("Must be a linkedin.com link (starting with https://)")
+        return value
 
     @field_validator("bio", "why_care")
     @classmethod

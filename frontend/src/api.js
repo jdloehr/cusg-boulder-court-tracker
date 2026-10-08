@@ -203,6 +203,7 @@ export const api = {
     request("/api/admin/justice-allowlist", { method: "POST", headers: authHeaders(), body: JSON.stringify(payload) }),
   removeFromAllowlist: (id) =>
     request(`/api/admin/justice-allowlist/${id}`, { method: "DELETE", headers: authHeaders() }),
+  removeJustice: (id) => request(`/api/admin/justices/${id}`, { method: "DELETE", headers: authHeaders() }),
   getJustice: (id) => request(`/api/justices/${id}`),
   updateMyProfile: (payload) =>
     request("/api/justices/me/profile", { method: "PATCH", headers: authHeaders(), body: JSON.stringify(payload) }),

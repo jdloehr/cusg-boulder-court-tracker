@@ -56,10 +56,18 @@ from app.models import (
     AdminInvite,
     AdminRole,
     AdminUser,
+    ArchiveEntry,
+    AvailabilityOverride,
     AvailabilityOwnerType,
+    AvailabilitySlot,
+    CaseTeachingNote,
     GoogleCalendarConnection,
+    GoogleCalendarOAuthState,
     Hearing,
+    HearingAttendance,
+    HearingRecommendation,
     JusticeAllowlistEntry,
+    LearnTopic,
     PasswordResetToken,
 )
 from app.photo import InvalidPhotoError, process_profile_photo
@@ -108,7 +116,7 @@ def _justice_out(j: AdminUser) -> JusticeOut:
     return JusticeOut(
         id=j.id, display_name=j.display_name or j.email, title=j.title,
         bio=j.bio, year_or_major=j.year_or_major, why_care=j.why_care, fun_fact=j.fun_fact,
-        photo_url=_photo_url(j),
+        photo_url=_photo_url(j), linkedin_url=j.linkedin_url,
     )
 
 
@@ -198,6 +206,49 @@ def remove_from_allowlist(entry_id: str, db: Session = Depends(get_db),
     if not entry:
         raise HTTPException(404, "Not found")
     db.delete(entry)
+    db.commit()
+    return {"status": "removed"}
+
+
+@router.delete("/api/admin/justices/{justice_id}")
+def remove_justice(justice_id: str, db: Session = Depends(get_db),
+                    admin: AdminUser = Depends(require_editor)):
+    """Removes a Justice account entirely -- for a duplicate created by a
+    second invite-accept, or someone who's left the court. None of this
+    account's foreign keys cascade at the DB level, so every dependent
+    row needs its own explicit cleanup first: delete what's justice-
+    specific (attendance, recommendations, reset tokens, calendar sync),
+    and null out the byline on anything they authored that should survive
+    them (an archive entry, a learn topic, a case teaching note).
+
+    Refuses to remove the account making the request, so an Editor can't
+    accidentally lock themselves out."""
+    justice = db.query(AdminUser).filter(AdminUser.id == justice_id).first()
+    if not justice:
+        raise HTTPException(404, "Not found")
+    if justice.id == admin.id:
+        raise HTTPException(400, "Can't remove your own account")
+
+    db.query(HearingAttendance).filter(HearingAttendance.justice_id == justice_id).delete()
+    db.query(HearingRecommendation).filter(HearingRecommendation.justice_id == justice_id).delete()
+    db.query(PasswordResetToken).filter(PasswordResetToken.admin_user_id == justice_id).delete()
+    db.query(GoogleCalendarConnection).filter(GoogleCalendarConnection.admin_user_id == justice_id).delete()
+    db.query(GoogleCalendarOAuthState).filter(GoogleCalendarOAuthState.admin_user_id == justice_id).delete()
+    db.query(AvailabilitySlot).filter(
+        AvailabilitySlot.owner_type == AvailabilityOwnerType.justice,
+        AvailabilitySlot.owner_id == justice_id,
+    ).delete()
+    db.query(AvailabilityOverride).filter(
+        AvailabilityOverride.owner_type == AvailabilityOwnerType.justice,
+        AvailabilityOverride.owner_id == justice_id,
+    ).delete()
+    db.query(ArchiveEntry).filter(ArchiveEntry.submitted_by_justice_id == justice_id).update(
+        {"submitted_by_justice_id": None}
+    )
+    db.query(LearnTopic).filter(LearnTopic.created_by_id == justice_id).update({"created_by_id": None})
+    db.query(CaseTeachingNote).filter(CaseTeachingNote.created_by_id == justice_id).update({"created_by_id": None})
+
+    db.delete(justice)
     db.commit()
     return {"status": "removed"}
 
@@ -364,6 +415,8 @@ def update_my_profile(payload: JusticeProfileIn, db: Session = Depends(get_db),
         justice.why_care = payload.why_care
     if payload.fun_fact is not None:
         justice.fun_fact = payload.fun_fact
+    if payload.linkedin_url is not None:
+        justice.linkedin_url = payload.linkedin_url
     db.commit()
     db.refresh(justice)
     return _justice_out(justice)

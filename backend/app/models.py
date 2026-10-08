@@ -765,6 +765,10 @@ class AdminUser(Base):
     year_or_major: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     why_care: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     fun_fact: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Meet-the-Justices redesign: optional, shown as a small link on the
+    # public profile. Validated at the schema level (JusticeProfileIn) to
+    # actually be a linkedin.com URL, not just any link.
+    linkedin_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     # Real photo upload (Section 6.3's explicit choice over an avatar
     # picker). Stored directly in Postgres rather than a separate file/
     # object-storage service -- this project has no such service

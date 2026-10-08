@@ -15,6 +15,7 @@ export default function EditJusticeProfile() {
   const [yearOrMajor, setYearOrMajor] = useState("");
   const [whyCare, setWhyCare] = useState("");
   const [funFact, setFunFact] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -44,6 +45,7 @@ export default function EditJusticeProfile() {
       setYearOrMajor(j.year_or_major || "");
       setWhyCare(j.why_care || "");
       setFunFact(j.fun_fact || "");
+      setLinkedinUrl(j.linkedin_url || "");
     });
     loadAvailability();
 
@@ -90,6 +92,7 @@ export default function EditJusticeProfile() {
     try {
       const updated = await api.updateMyProfile({
         bio: bio || null, year_or_major: yearOrMajor || null, why_care: whyCare || null, fun_fact: funFact || null,
+        linkedin_url: linkedinUrl || null,
       });
       setJustice(updated);
       setStatus({ ok: true, message: "Profile saved." });
@@ -163,6 +166,12 @@ export default function EditJusticeProfile() {
         <div>
           <label htmlFor="funFact">Fun fact / interests</label>
           <input id="funFact" value={funFact} onChange={(e) => setFunFact(e.target.value)} maxLength={300} />
+        </div>
+        <div>
+          <label htmlFor="linkedinUrl">LinkedIn (optional)</label>
+          <input id="linkedinUrl" type="url" placeholder="https://www.linkedin.com/in/your-name" value={linkedinUrl}
+                 onChange={(e) => setLinkedinUrl(e.target.value)} maxLength={300} />
+          <p style={{ fontSize: "0.78rem", color: "var(--ink-soft)" }}>Must be a linkedin.com link.</p>
         </div>
         <button className="btn" type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save profile"}
