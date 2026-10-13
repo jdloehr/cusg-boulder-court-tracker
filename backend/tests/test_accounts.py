@@ -334,6 +334,32 @@ def test_justice_can_view_and_edit_own_profile(ctx):
     assert single.json()["bio"] == "Third-year, interested in appellate practice."
 
 
+def test_justice_can_set_a_linkedin_url(ctx):
+    client, _Session = ctx
+    headers = _auth(client, "joshua@test.local", "justice-pw-123")
+    r = client.patch("/api/justices/me/profile", json={
+        "linkedin_url": "https://www.linkedin.com/in/joshua-loehr",
+    }, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["linkedin_url"] == "https://www.linkedin.com/in/joshua-loehr"
+
+    mine = next(j for j in client.get("/api/justices").json() if j["display_name"] == "Joshua Loehr")
+    assert mine["linkedin_url"] == "https://www.linkedin.com/in/joshua-loehr"
+
+
+@pytest.mark.parametrize("bad_url", [
+    "http://www.linkedin.com/in/joshua-loehr",  # not https
+    "https://notlinkedin.com/in/joshua-loehr",  # lookalike host, not a real linkedin.com subdomain
+    "https://evil.com/linkedin.com",
+    "javascript:alert(1)",
+])
+def test_rejects_a_linkedin_url_that_is_not_really_linkedin(ctx, bad_url):
+    client, _Session = ctx
+    headers = _auth(client, "joshua@test.local", "justice-pw-123")
+    r = client.patch("/api/justices/me/profile", json={"linkedin_url": bad_url}, headers=headers)
+    assert r.status_code == 422
+
+
 def test_non_justice_cannot_edit_a_profile(ctx):
     client, Session = ctx
     db = Session()

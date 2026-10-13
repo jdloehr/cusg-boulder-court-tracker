@@ -911,7 +911,72 @@ function JusticeInvites({ admin }) {
 
       <hr style={{ margin: "2rem 0" }} />
 
+      <JusticeRoster />
+
+      <hr style={{ margin: "2rem 0" }} />
+
       <JusticeAllowlist />
+    </div>
+  );
+}
+
+// Removing an account here is for cleaning up a mistake (a duplicate
+// from being invited twice, a stub that was never filled in) -- not a
+// day-to-day action, so there's no edit here, just a roster and a
+// Remove button with a confirm step.
+function JusticeRoster() {
+  const [justices, setJustices] = useState(null);
+  const [error, setError] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    api.listJustices().then(setJustices).catch((e) => setError(e.message));
+  }, []);
+
+  async function onRemove(j) {
+    if (!window.confirm(`Remove ${j.display_name}'s account? This can't be undone.`)) return;
+    setBusyId(j.id);
+    setError(null);
+    try {
+      await api.removeJustice(j.id);
+      setJustices((prev) => prev.filter((other) => other.id !== j.id));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (error) return <p className="message-error">{error}</p>;
+  if (!justices) return <p>Loading&hellip;</p>;
+
+  return (
+    <div>
+      <h2>Current Justices</h2>
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Title</th>
+            <th>Profile filled out?</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {justices.map((j) => (
+            <tr key={j.id}>
+              <td>{j.display_name}</td>
+              <td>{j.title || "--"}</td>
+              <td>{j.bio || j.why_care || j.year_or_major || j.photo_url ? "Yes" : "Not yet"}</td>
+              <td>
+                <button className="btn-footer-signout" disabled={busyId === j.id} onClick={() => onRemove(j)}>
+                  {busyId === j.id ? "Removing…" : "Remove"}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

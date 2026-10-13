@@ -100,7 +100,8 @@ export default function Justices() {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
-        const hasAnyContent = j.bio || j.why_care || j.year_or_major || interests.length > 0;
+        const hasFacts = j.year_or_major || interests.length > 0 || j.linkedin_url;
+        const hasAnyContent = j.bio || j.why_care || hasFacts;
 
         return (
           <section
@@ -142,29 +143,47 @@ export default function Justices() {
                 </p>
               )}
               {j.why_care && (
-                <p className={`justice-pull-quote justice-pull-quote-${accent}`}>&ldquo;{j.why_care}&rdquo;</p>
-              )}
-              {j.bio && <p className="justice-bio">{j.bio}</p>}
-              {j.year_or_major && (
-                <dl className="justice-facts">
-                  <div>
-                    <dt>Year / Major</dt>
-                    <dd>{j.year_or_major}</dd>
-                  </div>
-                </dl>
-              )}
-              {interests.length > 0 && (
-                <div className="justice-pills">
-                  {interests.map((interest) => (
-                    <span key={interest} className={`justice-pill justice-pill-${accent}`}>
-                      {interest}
-                    </span>
-                  ))}
+                <div className="justice-quote-block">
+                  <p className="justice-quote-label">Why this role matters to them</p>
+                  <p className={`justice-pull-quote justice-pull-quote-${accent}`}>&ldquo;{j.why_care}&rdquo;</p>
                 </div>
               )}
-              {!hasAnyContent && (
-                <p style={{ color: "var(--ink-soft)" }}>This Justice has not filled out their profile yet.</p>
+              {j.bio && <p className="justice-bio">{j.bio}</p>}
+              {hasFacts && (
+                <dl className="justice-facts">
+                  {j.year_or_major && (
+                    <div>
+                      <dt>Year / Major</dt>
+                      <dd>{j.year_or_major}</dd>
+                    </div>
+                  )}
+                  {interests.length > 0 && (
+                    <div>
+                      <dt>Interests</dt>
+                      <dd>
+                        <div className="justice-pills">
+                          {interests.map((interest) => (
+                            <span key={interest} className={`justice-pill justice-pill-${accent}`}>
+                              {interest}
+                            </span>
+                          ))}
+                        </div>
+                      </dd>
+                    </div>
+                  )}
+                  {j.linkedin_url && (
+                    <div>
+                      <dt>LinkedIn</dt>
+                      <dd>
+                        <a href={j.linkedin_url} target="_blank" rel="noreferrer">
+                          View profile &#8599;
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
               )}
+              {!hasAnyContent && <p className="justice-empty-note">This Justice hasn&rsquo;t filled out their profile yet.</p>}
             </div>
           </section>
         );

@@ -220,6 +220,10 @@ POSTGRES_MIGRATIONS = [
     # status=pending in routers/archive.py, overriding the default --
     # same pattern as is_confirmed above.
     "ALTER TABLE archive_entries ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'approved';",
+
+    # Meet-the-Justices redesign: optional LinkedIn link on the
+    # pre-existing `admin_users` table.
+    "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS linkedin_url VARCHAR(300);",
 ]
 
 
