@@ -85,7 +85,7 @@ export default function Justices() {
   return (
     <article>
       <h1>Meet the Justices</h1>
-      <p className="disclaimer">CUSG Justices (student government), the current roster.</p>
+      <p className="disclaimer">Justices (student government), the current roster.</p>
 
       {justices.map((j, index) => {
         const isMe = admin?.isJustice && admin.id === j.id;

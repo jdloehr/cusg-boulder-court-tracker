@@ -16,7 +16,7 @@ from app.academic_calendar import current_period
 from app.auth import generate_secure_token, hash_token
 from app.availability import parse_duration_minutes, parse_hearing_time
 from app.availability_slots import load_owner_cells, replace_owner_slots
-from app.config import FRONTEND_URL, REFRESH_COOLDOWN_MINUTES
+from app.config import FRONTEND_URL, REFRESH_COOLDOWN_MINUTES, SITE_NAME
 from app.jobs.digest import send_email
 from app.jobs.google_calendar_sync import MOUNTAIN_TZ
 from app.db import SessionLocal, get_db
@@ -227,7 +227,7 @@ def submit_community_details(hearing_id: str, payload: CommunitySubmissionIn, re
     )
     db.add(submission)
     db.commit()
-    return {"status": "received", "message": "Thanks -- a member of the CUSG team will review this before it appears."}
+    return {"status": "received", "message": "Thanks -- a member of the team will review this before it appears."}
 
 
 def _ics_escape_text(value: str) -> str:
@@ -308,7 +308,8 @@ def hearing_ics(hearing_id: str, db: Session = Depends(get_db)):
     ics = "\r\n".join([
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//CUSG Boulder Court Tracker//EN",
+        "PRODID:-//Court Passport//EN",
+        f"X-WR-CALNAME:{SITE_NAME}",
         "BEGIN:VEVENT",
         f"UID:{_ics_escape_text(hearing.id)}@cusg-court-tracker",
         f"DTSTAMP:{now_stamp}",
@@ -421,7 +422,7 @@ def _send_subscription_confirmation(db: Session, sub: Subscription, token: Optio
         db.commit()
     confirm_url = f"{FRONTEND_URL}/subscriptions/confirm/{token}"
     send_email(
-        sub.email, "Confirm your CUSG Boulder Court Tracker subscription",
+        sub.email, f"Confirm your {SITE_NAME} subscription",
         "One more step -- confirm this email subscription to start receiving mail. If you didn't "
         f"request this, ignore this message and nothing further will happen:\n{confirm_url}",
     )

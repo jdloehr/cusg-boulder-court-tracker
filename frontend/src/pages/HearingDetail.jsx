@@ -337,7 +337,7 @@ function CourtAttendance({ hearing, admin, onChange }) {
           means here on first mention -- users shouldn't mistake a
           student Justice for a real judge. */}
       <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
-        Which CUSG Justices (student government) plan to be here.
+        Which Justices (student government) plan to be here.
       </p>
       <table className="data-table">
         <tbody>
@@ -616,7 +616,7 @@ function ArchiveSubmission({ hearing, admin }) {
         message:
           res.status === "approved"
             ? "Added to the Archive."
-            : "Submitted -- a member of the CUSG team will review it before it appears in the Archive.",
+            : "Submitted -- a member of the team will review it before it appears in the Archive.",
       });
       setReflection("");
       setJudgeName("");
@@ -633,7 +633,7 @@ function ArchiveSubmission({ hearing, admin }) {
       <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
         {isJustice
           ? "You'll be added as an attendee. A reflection is optional."
-          : "Reviewed by the CUSG team under your name before it appears -- see the Archive."}
+          : "Reviewed by the team under your name before it appears -- see the Archive."}
       </p>
       <form className="form-grid" onSubmit={onSubmit}>
         <div>

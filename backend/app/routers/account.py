@@ -49,7 +49,7 @@ from app.availability_slots import (
     replace_owner_slots,
     resolve_free_slots_for_date,
 )
-from app.config import FRONTEND_URL, INVITE_EXPIRE_HOURS, PASSWORD_RESET_EXPIRE_HOURS
+from app.config import FRONTEND_URL, INVITE_EXPIRE_HOURS, PASSWORD_RESET_EXPIRE_HOURS, SITE_NAME
 from app.db import get_db
 from app.jobs.digest import send_email
 from app.models import (
@@ -145,7 +145,7 @@ def _issue_invite(db: Session, *, email: str, display_name: str, title: str | No
     db.commit()
 
     link = f"{FRONTEND_URL}/accept-invite/{token}"
-    send_email(email, "Set up your CUSG Boulder Court Tracker account", email_body.format(link=link))
+    send_email(email, f"Set up your {SITE_NAME} account", email_body.format(link=link))
     return InviteOut(email=email, display_name=display_name, expires_at=expires_at, invite_link=link)
 
 
@@ -159,7 +159,7 @@ def create_invite(payload: InviteCreateIn, db: Session = Depends(get_db),
         db, email=payload.email, display_name=payload.display_name, title=payload.title,
         invited_by=admin.email,
         email_body=(
-            f"{admin.display_name or admin.email} has invited you to set up your CUSG Justice "
+            f"{admin.display_name or admin.email} has invited you to set up your {SITE_NAME} Justice "
             f"account as {payload.display_name}.\n\nSet your password here (expires in "
             f"{INVITE_EXPIRE_HOURS} hours, one-time use):\n{{link}}"
         ),
@@ -272,11 +272,11 @@ def request_invite(payload: RequestInviteIn, request: Request, db: Session = Dep
             db, email=entry.email, display_name=entry.display_name, title=entry.title,
             invited_by=entry.added_by_email,
             email_body=(
-                "You're on the CUSG Justice list -- set your password here (expires in "
+                f"You're on the {SITE_NAME} Justice list -- set your password here (expires in "
                 f"{INVITE_EXPIRE_HOURS} hours, one-time use):\n{{link}}"
             ),
         )
-    return {"status": "ok", "message": "If that email is on the CUSG Justice list, a signup link has been sent."}
+    return {"status": "ok", "message": f"If that email is on the {SITE_NAME} Justice list, a signup link has been sent."}
 
 
 def _load_valid_invite(db: Session, token: str) -> AdminInvite:
@@ -366,7 +366,7 @@ def forgot_password(payload: ForgotPasswordIn, request: Request, db: Session = D
         db.commit()
         link = f"{FRONTEND_URL}/reset-password/{token}"
         send_email(
-            user.email, "Reset your CUSG Boulder Court Tracker password",
+            user.email, f"Reset your {SITE_NAME} password",
             f"Reset your password here (expires in {PASSWORD_RESET_EXPIRE_HOURS} hours, "
             f"one-time use):\n{link}\n\nIf you didn't request this, ignore this email.",
         )

@@ -151,7 +151,7 @@ export const api = {
     }),
   activityLog: () => request("/api/admin/activity-log", { headers: authHeaders() }),
 
-  // --- CUSG Justice features: setting/recommending requires a Justice login; reading is public ---
+  // --- Justice features: setting/recommending requires a Justice login; reading is public ---
   listJustices: () => request("/api/justices"),
   setAttendance: (hearingId, payload) =>
     request(`/api/hearings/${hearingId}/attendance`, {

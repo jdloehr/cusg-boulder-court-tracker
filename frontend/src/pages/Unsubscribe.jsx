@@ -43,7 +43,7 @@ export default function Unsubscribe() {
         <p className="message-error">
           Couldn't unsubscribe: {status.message}. If this keeps happening, reach out through the{" "}
           <a href="https://www.colorado.edu/cusg/about-us/judicial-branch" target="_blank" rel="noreferrer">
-            CUSG Judicial Branch's official contact info
+            University of Colorado Judicial Branch's official contact info
           </a>
           .
         </p>

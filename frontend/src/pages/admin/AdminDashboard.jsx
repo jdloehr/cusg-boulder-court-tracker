@@ -872,7 +872,7 @@ function JusticeInvites({ admin }) {
     <div>
       <h2>Invite a Justice</h2>
       <p className="disclaimer">
-        Not open self-registration -- only the 7-8 real CUSG Justices should ever have accounts.
+        Not open self-registration -- only the 7-8 real Justices should ever have accounts.
         Enter their real name and email; they'll get a one-time link (expires in 48 hours) to set
         their own password and fill out their public profile. Signing in as a Justice also grants
         full curation-tool access.

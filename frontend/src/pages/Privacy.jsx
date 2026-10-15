@@ -48,7 +48,7 @@ export default function Privacy() {
           email subscription can be removed anytime via the unsubscribe link in any digest email. A
           Justice can edit or delete their own profile fields and photo at will. To request removal of
           anything else you've submitted (an Archive entry, a case-detail submission), contact the
-          CUSG Judicial Branch through its{" "}
+          University of Colorado Judicial Branch through its{" "}
           <a href="https://www.colorado.edu/cusg/about-us/judicial-branch" target="_blank" rel="noreferrer">
             official page
           </a>

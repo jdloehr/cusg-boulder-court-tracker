@@ -27,8 +27,9 @@ import pyotp
 import qrcode
 
 from app.auth import hash_token
+from app.config import SITE_NAME
 
-ISSUER = "CUSG Boulder Court Tracker"
+ISSUER = SITE_NAME
 BACKUP_CODE_COUNT = 8
 
 

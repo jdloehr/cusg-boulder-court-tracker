@@ -55,7 +55,7 @@ export default function AcceptInvite() {
 
   return (
     <article>
-      <h1>Set up your CUSG Justice account</h1>
+      <h1>Set up your Justice account</h1>
       <p className="disclaimer">
         You've been invited as <strong>{invite.title ? `${invite.title} ${invite.display_name}` : invite.display_name}</strong>{" "}
         ({invite.email}). Choose a password to finish setting up your account.

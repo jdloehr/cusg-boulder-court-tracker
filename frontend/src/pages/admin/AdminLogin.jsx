@@ -47,10 +47,10 @@ export default function AdminLogin() {
 
   return (
     <article>
-      <h1>CUSG Team Login</h1>
+      <h1>Team Login</h1>
       <p className="disclaimer">
-        For CUSG Court Justices and the curation team (Editors and Contributors) only.
-        Browsing the tracker doesn't require an account.
+        For Justices and the curation team (Editors and Contributors) only.
+        Browsing the site doesn't require an account.
       </p>
       <form className="form-grid" onSubmit={onSubmit}>
         <div>
@@ -79,7 +79,7 @@ export default function AdminLogin() {
         <Link to="/forgot-password">Forgot your password?</Link>
       </p>
       <p style={{ marginTop: "0.4rem", fontSize: "0.85rem" }}>
-        New CUSG Justice, no account yet? <Link to="/request-invite">Request your signup link</Link>.
+        New Justice, no account yet? <Link to="/request-invite">Request your signup link</Link>.
       </p>
     </article>
   );

@@ -25,7 +25,7 @@ export default function ForgotPassword() {
   return (
     <article>
       <h1>Reset your password</h1>
-      <p className="disclaimer">For CUSG Justices and curation-team accounts.</p>
+      <p className="disclaimer">For Justices and curation-team accounts.</p>
       {message ? (
         <p className="message-success">{message}</p>
       ) : (

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api.js";
+import { SITE_NAME } from "../../site.js";
 
-// Self-service provisioning, added on request: a known CUSG Justice can
+// Self-service provisioning, added on request: a known Justice can
 // get their own signup link without needing an existing Editor/Justice
 // to invite them first. Still gated -- an Editor has to have already
 // added this email to the allow-list (Justice Accounts tab in the
@@ -20,7 +21,7 @@ export default function RequestInvite() {
       const res = await api.requestInvite(email);
       setMessage(res.message);
     } catch {
-      setMessage("If that email is on the CUSG Justice list, a signup link has been sent.");
+      setMessage(`If that email is on the ${SITE_NAME} Justice list, a signup link has been sent.`);
     } finally {
       setBusy(false);
     }
@@ -28,9 +29,9 @@ export default function RequestInvite() {
 
   return (
     <article>
-      <h1>Request your CUSG Justice account</h1>
+      <h1>Request your Justice account</h1>
       <p className="disclaimer">
-        For the 7-8 current CUSG Court Justices. Enter the email an Editor already has on
+        For the 7-8 current Justices. Enter the email an Editor already has on
         file for you, and a one-time signup link will be sent there.
       </p>
       {message ? (

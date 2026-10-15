@@ -24,6 +24,7 @@ import RequestInvite from "./pages/admin/RequestInvite.jsx";
 import AboutProject from "./pages/AboutProject.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import { clearAdmin, getStoredAdmin } from "./api.js";
+import { SITE_NAME } from "./site.js";
 
 // Phase-6.2 doc, Section 1: individual Justice profile pages are gone --
 // every profile now lives inline on /justices. This keeps any old
@@ -129,13 +130,8 @@ export default function App() {
     <>
       <header className="site-header">
         <div className="inner">
-          {/* Oct 2026 review, Phase 4 item 2: "CUSG Court" kept, with
-              "Boulder Court Tracker" as a subtitle -- .wordmark small
-              already had styling for exactly this, just never
-              actually rendered. */}
           <NavLink to="/" className="wordmark">
-            CUSG Court
-            <small>Boulder Court Tracker</small>
+            {SITE_NAME}
           </NavLink>
           <MobileMenuButton open={menuOpen} onToggle={() => setMenuOpen((v) => !v)} buttonRef={menuButtonRef} />
           {/* Closes on navigation: any click on a link inside bubbles
@@ -192,7 +188,7 @@ export default function App() {
 
       <footer className="site-footer">
         <p>
-          CUSG Boulder Court Tracker is a planning aid, not an authoritative record. Hearing dates,
+          {SITE_NAME} is a planning aid, not an authoritative record. Hearing dates,
           times, and courtrooms can change or be cancelled with little notice -- always confirm on the{" "}
           <a href="https://www.coloradojudicial.gov/dockets" target="_blank" rel="noreferrer">
             official Colorado Judicial Branch docket search
@@ -213,7 +209,7 @@ export default function App() {
         <p className="site-footer-affiliation">
           A project of the{" "}
           <a href="https://www.colorado.edu/cusg/about-us/judicial-branch" target="_blank" rel="noreferrer">
-            CUSG Judicial Branch
+            University of Colorado Judicial Branch
           </a>
           .
         </p>

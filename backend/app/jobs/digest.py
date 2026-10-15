@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.academic_calendar import current_period
 from app.availability import hearing_matches_slots
 from app.availability_slots import load_free_slots_by_day
-from app.config import EMAIL_BACKEND, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME, FRONTEND_URL, SENDGRID_API_KEY
+from app.config import DIGEST_NAME, EMAIL_BACKEND, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME, FRONTEND_URL, SENDGRID_API_KEY
 from app.models import (
     AcademicPeriodType,
     AdminUser,
@@ -138,13 +138,15 @@ def hearings_matching_subscription(db: Session, sub: Subscription) -> list[Heari
 def render_digest(hearings: list[Hearing], quiet_week: bool, period_label: str | None) -> str:
     if quiet_week:
         lines = [
+            DIGEST_NAME,
+            "",
             f"CU is on {period_label or 'break'} this week, so this digest is short.",
             "Court proceedings continue regardless -- here's what's on the docket if you're still around:",
             "",
         ]
         hearings = hearings[:5]
     else:
-        lines = ["Upcoming Boulder-area hearings worth watching:", ""]
+        lines = [DIGEST_NAME, "", "Upcoming Boulder-area hearings worth watching:", ""]
 
     if not hearings:
         lines.append("Nothing matching your filters this week.")
@@ -194,7 +196,7 @@ def run_weekly_digest(db: Session, today: date | None = None) -> DigestSummary:
 
     for sub in subs:
         matching = hearings_matching_subscription(db, sub)
-        subject = "CUSG Boulder Court Tracker: quiet week" if quiet_week else "CUSG Boulder Court Tracker: this week's hearings"
+        subject = f"{DIGEST_NAME}: quiet week" if quiet_week else f"{DIGEST_NAME}: this week's hearings"
         unsubscribe_url = _unsubscribe_url(sub.unsubscribe_token)
         body = render_digest(matching, quiet_week, period_label)
         body += f"\n\nUnsubscribe: {unsubscribe_url}"

@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
+import { SITE_NAME } from "../site.js";
 
 export default function Welcome() {
   return (
     <article>
-      <h1>Welcome to the CUSG Boulder Court Tracker</h1>
+      <h1>Welcome to {SITE_NAME}</h1>
       <p className="disclaimer">
         A quick tour -- this page is always here (the site footer, or just bookmark it) if you want to
         come back to it.
@@ -13,7 +14,7 @@ export default function Welcome() {
         <h3>What this is</h3>
         <p>
           A planning tool for finding real, upcoming, in-person Boulder-area court proceedings worth
-          sitting in on -- built for the CUSG Court, and open to any pre-law student or anyone
+          sitting in on -- built for the University of Colorado Judicial Branch, and open to any pre-law student or anyone
           else interested in the field of law. Every hearing listed comes from the actual Colorado
           court docket (or, for federal and Colorado appellate cases, a real, currently-scheduled
           case), pulled and checked automatically most days.
@@ -58,7 +59,7 @@ export default function Welcome() {
       </div>
 
       <div className="card">
-        <h3>For CUSG Justices</h3>
+        <h3>For Justices</h3>
         <p>
           Every hearing has a <strong>Court attendance</strong> section where a logged-in Justice can
           set their own status (attending / maybe / not attending, with an optional note) -- everyone
@@ -95,7 +96,7 @@ export default function Welcome() {
           write-up: what the proceeding actually covered, who was on the bench, and what stood out.
           These publish immediately (no review queue) and live on the public{" "}
           <Link to="/archive">Archive &amp; Reflections</Link> page, organized by case and proceeding
-          type -- a running record of what CUSG has actually gone and watched.
+          type -- a running record of what the court has actually gone and watched.
         </p>
       </div>
 

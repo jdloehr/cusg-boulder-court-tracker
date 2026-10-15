@@ -6,7 +6,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import ALLOWED_ORIGINS, ENVIRONMENT
+from app.config import ALLOWED_ORIGINS, ENVIRONMENT, SITE_NAME
 from app.db import init_db
 from app.routers import account, admin, archive, google_calendar, justices, learn, public, reports
 from app.security_headers import SecurityHeadersMiddleware
@@ -32,7 +32,7 @@ _docs_kwargs = (
     {"docs_url": None, "redoc_url": None, "openapi_url": None}
     if ENVIRONMENT == "production" else {}
 )
-app = FastAPI(title="CUSG Boulder Court Tracker API", **_docs_kwargs)
+app = FastAPI(title=f"{SITE_NAME} API", **_docs_kwargs)
 
 # Security headers on every response (added before CORS so CORS's own
 # preflight/actual-request headers still get layered on top correctly by

@@ -133,7 +133,11 @@ SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
 # (or an address on a verified domain) -- SendGrid rejects a send from
 # any address it hasn't verified.
 EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM_ADDRESS", "")
-EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "CUSG Boulder Court Tracker")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Court Passport")
+
+# --- Site identity -----------------------------------------------------------
+SITE_NAME = os.environ.get("SITE_NAME", "Court Passport")
+DIGEST_NAME = os.environ.get("DIGEST_NAME", "The Court Passport Digest")
 
 # --- Failure alerting (Section 8; upgraded to real email by the Phase 8
 # news-search rebuild) ---------------------------------------------------
