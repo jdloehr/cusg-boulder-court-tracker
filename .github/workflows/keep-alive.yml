@@ -1,0 +1,25 @@
+name: Backend keep-alive
+
+# Render's free web service plan spins down after a period of
+# inactivity and takes 50+ seconds to wake back up on the next real
+# request (see the dashboard's own "Your free instance will spin down
+# with inactivity" notice). Pinging the health endpoint regularly keeps
+# it from ever going idle long enough to spin down in the first place,
+# so a real visitor rarely has to eat that wait.
+#
+# Not a guarantee: GitHub Actions' schedule trigger isn't perfectly
+# precise and can be delayed, especially under high GitHub-wide load,
+# so an occasional cold start can still happen -- this only reduces how
+# often it does. Runs entirely on GitHub's free Actions minutes (this
+# repo is public), same reasoning as every job in scheduled-jobs.yml.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}  # manual "Run workflow" button for testing
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -sf https://cusg-court-tracker-api.onrender.com/api/health
