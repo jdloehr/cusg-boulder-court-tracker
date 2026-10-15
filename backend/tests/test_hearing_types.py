@@ -1,4 +1,4 @@
-from app.hearing_types import TAG_COLORS, _RULES, classify_hearing_type
+from app.hearing_types import TAG_COLORS, _RULES, classify_hearing_type, is_temporary_restraining_order
 from app.models import HearingTypeCategory
 
 
@@ -46,6 +46,18 @@ def test_competency_hearing_is_recognized_as_other_not_flagged():
 def test_blank_hearing_type_is_flagged():
     result = classify_hearing_type("")
     assert result.recognized is False
+
+
+def test_temporary_restraining_order_is_recognized_and_flagged_for_exclusion():
+    for raw in ["Temporary Restraining Order Hearing", "TRO Hearing", "temporary   restraining order"]:
+        result = classify_hearing_type(raw)
+        assert result.category == HearingTypeCategory.other, raw
+        assert result.recognized is True, raw
+        assert is_temporary_restraining_order(raw) is True, raw
+
+    # Permanent Restraining Order is a real, distinct hearing type -- must
+    # not be caught by the temporary-only check.
+    assert is_temporary_restraining_order("Permanent Restraining Order Hearing") is False
 
 
 # --- Calendar-view doc: tag_color grouping -----------------------------------

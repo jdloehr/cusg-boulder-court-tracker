@@ -6,9 +6,10 @@ That fixture is a SYNTHETIC file I wrote by hand, matching the exact column
 format documented in Section 2.1. It is NOT real docket data; case numbers,
 names, and dates are made up. It exists to exercise every branch of the
 pipeline deterministically (jury trial, oral argument/motions, juvenile
-exclusion, blank appearance type, an unrecognized case-number prefix, an
-unrecognized hearing-type string, an exact-duplicate row, and a same-case
-same-type-different-date pair) -- including a few edge cases that were
+exclusion, Temporary Restraining Order exclusion, blank appearance type,
+an unrecognized case-number prefix, an unrecognized hearing-type string,
+an exact-duplicate row, and a same-case same-type-different-date pair)
+-- including a few edge cases that were
 only *discovered* by later running this same pipeline against the real
 live export (see docs/DATA_SOURCE_FINDINGS.md) and are reproduced here in
 miniature so they stay covered by a fast, deterministic test.
@@ -46,7 +47,7 @@ def test_build_export_url_uses_configured_court_codes_and_date_range():
 
 def test_parse_docket_csv_decodes_every_row():
     rows = parse_docket_csv(FIXTURE)
-    assert len(rows) == 11
+    assert len(rows) == 12
 
     by_case = {r.case_number: r for r in rows}
 
@@ -58,6 +59,9 @@ def test_parse_docket_csv_decodes_every_row():
 
     juvenile = by_case["2026JV000045"]
     assert juvenile.case_category == CaseCategory.juvenile
+
+    tro = by_case["2026DR000333"]
+    assert tro.hearing_type_category == HearingTypeCategory.other.value
 
     unrecognized_prefix = by_case["2026XY000777"]
     assert unrecognized_prefix.case_category == CaseCategory.other
@@ -112,20 +116,26 @@ def test_default_filter_matches_section_5_1():
     assert "2026DR000221" not in included
     assert "2026M009981" not in included
     assert "2026PR000089" not in included
+    # Temporary Restraining Order Hearing -> not our two focus types either
+    assert "2026DR000333" not in included
 
 
-def test_run_docket_pull_inserts_all_rows_and_excludes_juvenile(db):
+def test_run_docket_pull_inserts_all_rows_and_excludes_juvenile_and_tro(db):
     job = run_docket_pull(db, window_days=45, csv_text=FIXTURE)
     assert job.success is True
-    assert job.rows_seen == 11
-    assert job.rows_upserted == 11
+    assert job.rows_seen == 12
+    assert job.rows_upserted == 12
 
     all_hearings = db.query(Hearing).all()
-    assert len(all_hearings) == 11
+    assert len(all_hearings) == 12
 
     juvenile = db.query(Hearing).filter(Hearing.case_number == "2026JV000045").first()
     assert juvenile.is_excluded is True
     assert "Juvenile" in juvenile.exclusion_reason
+
+    tro = db.query(Hearing).filter(Hearing.case_number == "2026DR000333").first()
+    assert tro.is_excluded is True
+    assert "Temporary Restraining Order" in tro.exclusion_reason
 
 
 def test_run_docket_pull_dedupes_exact_duplicate_rows_in_one_pull(db):
@@ -137,7 +147,7 @@ def test_run_docket_pull_dedupes_exact_duplicate_rows_in_one_pull(db):
         "Boulder County Justice Center,IN PERSON,C\n"
     )
     job = run_docket_pull(db, window_days=45, csv_text=duplicated_csv)
-    assert job.rows_seen == 12  # the duplicate line is still parsed...
+    assert job.rows_seen == 13  # the duplicate line is still parsed...
     matches = db.query(Hearing).filter(Hearing.case_number == "2026CR001452").all()
     assert len(matches) == 1  # ...but collapses onto the same stored row
     assert matches[0].status == HearingStatus.scheduled  # not marked "changed" -- nothing differs
@@ -152,7 +162,7 @@ def test_run_docket_pull_keeps_distinct_same_day_type_occurrences_separate(db):
         "Boulder County Justice Center,IN PERSON,C\n"
     )
     job = run_docket_pull(db, window_days=45, csv_text=two_day_trial_csv)
-    assert job.rows_seen == 12
+    assert job.rows_seen == 13
     matches = db.query(Hearing).filter(Hearing.case_number == "2026CR001452").all()
     assert len(matches) == 2
     assert {m.date for m in matches} == {date(2026, 9, 22), date(2026, 9, 23)}

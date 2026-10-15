@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.alerting import alert_job_failure
 from app.case_categories import decode_case_category
 from app.config import COURT_LOCATION_CODES, DOCKET_EXPORT_URL, DOCKET_PULL_WINDOW_DAYS
-from app.hearing_types import classify_hearing_type
+from app.hearing_types import classify_hearing_type, is_temporary_restraining_order
 from app.livestream import default_livestream
 from app.models import (
     AppearanceType,
@@ -264,6 +264,13 @@ def upsert_row(db: Session, row: ParsedRow, now: datetime, touched_ids: set[str]
     existing = match_existing_hearing(db, row, exclude_ids=touched_ids)
     if existing is None:
         livestream_type, livestream_url = default_livestream(row.court_location)
+        is_juvenile = row.case_category == CaseCategory.juvenile
+        is_tro = is_temporary_restraining_order(row.hearing_type_raw)
+        exclusion_reasons = []
+        if is_juvenile:
+            exclusion_reasons.append("Juvenile case")
+        if is_tro:
+            exclusion_reasons.append("Temporary Restraining Order hearing")
         hearing = Hearing(
             source=HearingSource.state_docket_export,
             case_number=row.case_number,
@@ -281,9 +288,9 @@ def upsert_row(db: Session, row: ParsedRow, now: datetime, touched_ids: set[str]
             livestream_source_type=livestream_type,
             livestream_url=livestream_url,
             appearance_type=row.appearance_type,
-            is_excluded=(row.case_category == CaseCategory.juvenile),
-            exclusion_reason=("Juvenile case (Section 4 default exclusion)"
-                               if row.case_category == CaseCategory.juvenile else None),
+            is_excluded=bool(exclusion_reasons),
+            exclusion_reason=(" and ".join(exclusion_reasons) + " (Section 4 default exclusion)"
+                               if exclusion_reasons else None),
             status=HearingStatus.scheduled,
             first_seen_at=now,
             last_verified_at=now,

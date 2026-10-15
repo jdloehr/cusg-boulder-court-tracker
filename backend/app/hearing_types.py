@@ -33,6 +33,12 @@ from dataclasses import dataclass
 
 from app.models import HearingTypeCategory
 
+# Shared with is_temporary_restraining_order() below -- defined once so
+# the _RULES entry (for display/classification) and docket_pull.py's
+# default-exclusion check (for whether the row is public at all) can
+# never drift apart into two different definitions of "a TRO hearing".
+_TRO_PATTERN = re.compile(r"\btemporary\s*restraining\b|\btro\b", re.I)
+
 PLAIN_LANGUAGE = {
     HearingTypeCategory.jury_trial: (
         "Jury Trial: a full trial where a jury of citizens decides the "
@@ -115,6 +121,16 @@ _RULES: list[tuple[re.Pattern, HearingTypeCategory, str | None, str]] = [
     (re.compile(r"\bpermanent\s*restraining\b", re.I), HearingTypeCategory.other,
      "Permanent Restraining Order Hearing: the court decides whether to "
      "make a restraining order permanent.", "family_probate"),
+    # Excluded from the public list by default (see
+    # docket_pull.py::upsert_row) -- same reasoning as a juvenile case:
+    # a protective-order matter involves a private individual's safety
+    # situation, not the kind of proceeding this site surfaces for
+    # observation. Still recognized/classified here, not schema drift,
+    # so it displays correctly on the rare path it is surfaced (e.g. an
+    # Editor un-excludes one).
+    (_TRO_PATTERN, HearingTypeCategory.other,
+     "Temporary Restraining Order Hearing: the court decides whether to "
+     "grant a short-term protective order while the case is pending.", "family_probate"),
     (re.compile(r"\bpermanent\s*planning\b", re.I), HearingTypeCategory.other,
      "Permanent Planning Hearing: a dependency/juvenile-court hearing on a "
      "child's long-term placement plan.", "family_probate"),
@@ -202,6 +218,13 @@ class HearingTypeResult:
     display: str
     recognized: bool
     tag_color: str = "other"
+
+
+def is_temporary_restraining_order(raw: str) -> bool:
+    """Used by docket_pull.py to default-exclude TRO hearings from the
+    public list, same as a juvenile case -- see the _RULES entry above
+    for why."""
+    return bool(_TRO_PATTERN.search((raw or "").strip()))
 
 
 def classify_hearing_type(raw: str) -> HearingTypeResult:
