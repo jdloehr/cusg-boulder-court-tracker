@@ -1473,6 +1473,7 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   margin-left: -50vw;
   margin-right: -50vw;
   width: 100vw;
+  overflow: hidden;
   background-color: var(--ochre);
   background-image: radial-gradient(rgba(27, 42, 56, 0.11) 1.8px, transparent 2px);
   background-size: 24px 24px;
@@ -1482,6 +1483,20 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 .calendar-header-band h1, .calendar-header-band p { max-width: 1080px; margin-left: auto; margin-right: auto; }
 .calendar-header-band h1 { color: var(--navy); font-size: clamp(2rem, 5vw, 3.2rem); }
 .calendar-header-stamp { float: right; margin: 0 0 1rem 1rem; }
+
+/* Court Passport redesign: decorative stamps are the one element most
+   likely to crowd a narrow phone screen -- hidden below 480px rather
+   than shrunk further, since they carry no information (aria-hidden)
+   and the headline/copy they'd otherwise overlap always matters more. */
+@media (max-width: 480px) {
+  .calendar-header-stamp,
+  .hero-stamp,
+  .archive-header-stamp,
+  .archive-card-stamp,
+  .rec-card-cta svg {
+    display: none;
+  }
+}
 
 .month-nav { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 1rem; }
 .month-nav-label { margin: 0; min-width: 11rem; }
