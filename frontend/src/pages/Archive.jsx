@@ -3,8 +3,18 @@ import { Link } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import JusticeLink from "../components/JusticeLink.jsx";
+import MountainStrip from "../components/MountainStrip.jsx";
 import ReportLink from "../components/ReportLink.jsx";
+import StampMotif from "../components/StampMotif.jsx";
 import { formatHearingDate } from "../textUtils.js";
+
+// Archive-only: a short "SEPT 12"-style label for each entry's stamp,
+// kept local since nothing else on the site needs this exact format.
+function stampDateLabel(dateISO) {
+  if (!dateISO) return "";
+  const date = new Date(`${dateISO}T00:00:00`);
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase();
+}
 
 const STAGE_LABELS = {
   opening_statements: "Opening Statements",
@@ -65,15 +75,16 @@ export default function Archive() {
   return (
     <article>
       <header className="archive-header">
+        <StampMotif size={120} color="var(--paper)" fillOpacity="rgba(250,248,243,0)" line1="FILED" line2="ARCHIVE" rotation={12} className="archive-header-stamp" />
         {/* Oct 2026 review, Phase 4 item 3: the first mention of "the
             Court" on this page now spells out what that means -- users
             shouldn't mistake a student Justice for a real judge. */}
-        <p className="archive-eyebrow">CUSG Justices (student government)</p>
+        <p className="archive-eyebrow">Justices (student government)</p>
         <h1 className="archive-headline">Where the Court Has Been</h1>
-        <p style={{ color: "var(--ink-soft)" }}>
-          A record of hearings the court -- and anyone else who went -- actually attended and wrote up.
+        <p className="archive-header-subhead">
+          A running record of what we've watched, who we saw, and what we took away from it.
         </p>
-        <div className="archive-gradient-bar" />
+        <MountainStrip backColor="#784436" slab1Color="#AF6B54" slab2Color="#C4866B" slab3Color="#6B3C2F" />
       </header>
 
       <div className="filter-bar">
@@ -116,6 +127,16 @@ export default function Archive() {
                 className={`archive-card archive-accent-border-${accent}`}
                 style={{ transform: `rotate(${rotation}deg)` }}
               >
+                <span className={`archive-card-tape archive-accent-${accent}`} aria-hidden="true" />
+                <StampMotif
+                  size={90}
+                  color={`var(--${accent})`}
+                  fillOpacity="rgba(255,255,255,0.94)"
+                  line1="SEEN"
+                  line2={stampDateLabel(e.hearing_date)}
+                  rotation={12}
+                  className="archive-card-stamp"
+                />
                 <div className="archive-card-body">
                   {/* Oct 2026 review, Phase 4 item 9: removed -- there
                       was never a real photo possible here (no such

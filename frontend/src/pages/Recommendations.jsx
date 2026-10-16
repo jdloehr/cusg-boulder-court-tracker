@@ -4,6 +4,8 @@ import { api, getStoredAdmin } from "../api.js";
 import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import JusticeLink from "../components/JusticeLink.jsx";
 import ReportLink from "../components/ReportLink.jsx";
+import StampMotif from "../components/StampMotif.jsx";
+import { DIGEST_NAME } from "../site.js";
 import { formatHearingDate } from "../textUtils.js";
 
 // Page-redesign doc: "What the Court Is Watching" -- an editorial digest
@@ -46,17 +48,17 @@ export default function Recommendations() {
       <div className="rec-masthead">
         <div className="rec-masthead-row">
           <div>
+            <p className="rec-masthead-digest-name">{DIGEST_NAME}</p>
             {/* Oct 2026 review, Phase 4 item 3: the first mention of
                 "the Court" on this page now spells out what that
                 means -- users shouldn't mistake a student Justice for
                 a real judge. */}
-            <p className="rec-masthead-eyebrow">CUSG Justices (student government)</p>
-            <h1 className="rec-masthead-headline">What CUSG Justices Are Watching</h1>
+            <p className="rec-masthead-eyebrow">Justices (student government)</p>
+            <h1 className="rec-masthead-headline">What the Court Is Watching</h1>
           </div>
-          <p className="rec-masthead-subhead">
-            Hand-picked by the Justices -- hearings worth the rest of the court's attention, with a
-            reason why.
-          </p>
+          <div className="rec-masthead-badge">
+            <span>Hand-picked by the Justices</span>
+          </div>
         </div>
       </div>
 
@@ -84,13 +86,16 @@ export default function Recommendations() {
               />
             ))}
             <div className="rec-card rec-card-cta">
-              <h3>Have a case in mind?</h3>
-              <p>Justices can recommend any hearing from its own detail page, with a reason why.</p>
-              {!admin?.isJustice && (
-                <Link to="/admin/login" className="btn btn-navy">
-                  Justice Sign In
-                </Link>
-              )}
+              <div className="rec-card-cta-copy">
+                <h3>Have a case in mind?</h3>
+                <p>Justices can recommend any hearing from its own detail page, with a reason why.</p>
+                {!admin?.isJustice && (
+                  <Link to="/admin/login" className="btn">
+                    Justice Sign In
+                  </Link>
+                )}
+              </div>
+              <StampMotif size={100} color="var(--paper)" fillOpacity="rgba(250,248,243,0.06)" line1="PICK" line2="BENCH" rotation={10} />
             </div>
           </div>
         </>
@@ -113,7 +118,7 @@ function LeadCard({ rec, admin, onUnpin, onRemove }) {
         &middot; {formatHearingDate(rec.hearing_date)} &middot; Case {rec.hearing_case_number}
       </p>
       <p>
-        <Link to={`/hearings/${rec.hearing_id}`} className="btn">
+        <Link to={`/hearings/${rec.hearing_id}`} className="btn btn-gold">
           View Hearing Details
         </Link>
       </p>

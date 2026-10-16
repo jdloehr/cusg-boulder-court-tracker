@@ -1088,14 +1088,40 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 /* Page-redesign doc, Page 2: Recommendations -- an editorial digest
    masthead, a dark "Lead Recommendation" card, and an asymmetric grid
    of everything else. */
-.rec-masthead { border-bottom: 3px solid var(--navy); padding-bottom: 1.25rem; margin-bottom: 2rem; }
-.rec-masthead-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 1.5rem; flex-wrap: wrap; }
+.rec-masthead { border-bottom: 5px solid var(--navy); padding-bottom: 1.5rem; margin-bottom: 2.5rem; }
+.rec-masthead-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; flex-wrap: wrap; }
+.rec-masthead-digest-name {
+  font-family: var(--font-serif); font-style: italic; font-weight: 600;
+  font-size: 1.1rem; color: var(--accent); margin: 0 0 0.5rem;
+}
 .rec-masthead-eyebrow {
   font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--accent); font-weight: 600; margin: 0 0 0.4rem;
+  color: var(--ink-soft); font-weight: 600; margin: 0 0 0.4rem;
 }
-.rec-masthead-headline { font-size: 2.1rem; margin: 0; }
-.rec-masthead-subhead { max-width: 22rem; text-align: right; color: var(--ink-soft); margin: 0; }
+.rec-masthead-headline { font-size: clamp(2.1rem, 5vw, 3.6rem); line-height: 0.98; letter-spacing: -0.02em; margin: 0; }
+.rec-masthead-badge {
+  flex-shrink: 0;
+  background: var(--ochre);
+  color: var(--navy);
+  border: 3px solid var(--navy);
+  border-radius: 50%;
+  width: 9rem;
+  height: 9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  transform: rotate(8deg);
+  box-shadow: 4px 4px 0 var(--navy);
+}
+.rec-masthead-badge span {
+  transform: rotate(-8deg);
+  font-family: var(--font-serif);
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1.15;
+  padding: 0 0.75rem;
+}
 
 .rec-lead {
   position: relative;
@@ -1178,34 +1204,58 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 .rec-card-byline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
 .rec-card-cta {
   grid-column: span 2;
-  background: var(--accent-soft);
+  background: var(--terracotta-deep);
+  color: var(--paper);
+  background-image: repeating-linear-gradient(135deg, rgba(250,248,243,0.11) 0, rgba(250,248,243,0.11) 2px, transparent 2px, transparent 16px);
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.5rem;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
+.rec-card-cta h3 { color: var(--paper); }
+.rec-card-cta-copy { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.rec-card-cta svg { flex-shrink: 0; }
 
 @media (max-width: 800px) {
   .rec-grid { grid-template-columns: 1fr; }
   .rec-card-big, .rec-card-cta { grid-column: span 1; }
   .rec-masthead-row { flex-direction: column; align-items: flex-start; }
-  .rec-masthead-subhead { text-align: left; max-width: none; }
+  .rec-masthead-badge { width: 6rem; height: 6rem; }
+  .rec-card-cta { flex-direction: column; align-items: flex-start; }
 }
 
 /* Page-redesign doc, Page 3: Archive -- a warm, hand-placed "paper
    scrapbook" timeline. Accent color/rotation are computed per entry
    index in Archive.jsx, not stored -- these classes just apply
    whichever accent name that logic picks. */
-.archive-header { margin-bottom: 1.5rem; }
+/* Court Passport redesign: full-bleed terracotta-deep header band with
+   a rotated stamp and the mountain strip along the bottom, matching
+   the mockup. */
+.archive-header {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--terracotta-deep);
+  padding: 3.5rem 1.25rem 5rem;
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+.archive-header-stamp { position: absolute; right: 2rem; top: 2.5rem; opacity: 0.55; }
 .archive-eyebrow {
   font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--terracotta); font-weight: 600; margin: 0 0 0.4rem;
+  color: var(--paper); font-weight: 600; margin: 0 0 0.4rem; position: relative;
 }
-.archive-headline { font-family: var(--font-serif); font-style: italic; margin: 0 0 0.5rem; }
-.archive-gradient-bar {
-  width: 96px; height: 4px; border-radius: 999px; margin-top: 1rem;
-  background: linear-gradient(to right, var(--terracotta), var(--ochre), var(--plum));
+.archive-headline {
+  font-family: var(--font-serif); font-style: italic; font-weight: 700;
+  font-size: clamp(2.2rem, 5vw, 3.6rem); color: var(--paper); margin: 0 0 0.75rem; position: relative;
 }
+.archive-header-subhead { color: #F2E4DD; max-width: 32rem; margin: 0 auto; position: relative; }
+.archive-header > svg:last-child { position: absolute; left: 0; right: 0; bottom: 0; }
 
 .archive-timeline { position: relative; max-width: 760px; margin: 2rem auto 0; }
 .archive-timeline::before {
@@ -1226,14 +1276,29 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   border-radius: 50%;
 }
 .archive-card {
+  position: relative;
+  overflow: visible;
   background: var(--paper-raised);
-  border-width: 1px;
+  border-width: 2px;
   border-style: solid;
-  border-radius: var(--radius);
-  box-shadow: 0 3px 10px rgba(27, 42, 56, 0.06);
-  padding: 1.25rem;
+  border-radius: 6px;
+  box-shadow: 5px 5px 0 var(--hairline);
+  padding: 2rem 1.75rem 1.5rem;
 }
-.archive-card-body { display: flex; gap: 1rem; }
+/* Court Passport redesign: a rotated tape strip across the top edge and
+   a small "SEEN" stamp in the corner -- matches the mockup's hand-
+   placed scrapbook feel. */
+.archive-card-tape {
+  position: absolute;
+  left: 2rem;
+  top: -0.9rem;
+  width: 6rem;
+  height: 1.75rem;
+  opacity: 0.78;
+  transform: rotate(-4deg);
+}
+.archive-card-stamp { position: absolute; right: 1.25rem; top: -1.75rem; }
+.archive-card-body { display: flex; gap: 1rem; padding-right: 5.5rem; }
 .archive-card-photo { width: 4.5rem; height: 4.5rem; border-radius: 6px; flex-shrink: 0; }
 .archive-card-quote { font-family: var(--font-serif); font-style: italic; color: var(--navy); margin: 0.6rem 0; }
 .archive-card-byline {
