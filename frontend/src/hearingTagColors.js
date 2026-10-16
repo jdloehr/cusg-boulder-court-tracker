@@ -15,3 +15,16 @@ export const TAG_COLOR_LEGEND = [
   { key: "family_probate", label: "Family / Probate" },
   { key: "other", label: "Other" },
 ];
+
+// Court Passport redesign: the month calendar's *visible* swatch legend
+// collapses to the 4 colors the redesign actually uses (trial/arraignment/
+// scheduling/family_probate/other all share one neutral dot color -- see
+// hearingTypeVisuals.js) -- a display simplification only. TAG_COLOR_LEGEND
+// above stays full-fidelity for anywhere that still needs a distinct label
+// per real tag_color (e.g. the day sidebar's per-type hearing counts).
+export const SIMPLIFIED_TAG_COLOR_LEGEND = [
+  { key: "jury_trial", label: "Jury Trial" },
+  { key: "oral_argument", label: "Oral Argument" },
+  { key: "sentencing", label: "Sentencing" },
+  { key: "other", label: "Other" },
+];

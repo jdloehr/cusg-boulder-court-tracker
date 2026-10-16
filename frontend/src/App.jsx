@@ -25,6 +25,7 @@ import AboutProject from "./pages/AboutProject.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import { clearAdmin, getStoredAdmin } from "./api.js";
 import { SITE_NAME } from "./site.js";
+import CourtPassportMark from "./components/CourtPassportMark.jsx";
 
 // Phase-6.2 doc, Section 1: individual Justice profile pages are gone --
 // every profile now lives inline on /justices. This keeps any old
@@ -62,7 +63,7 @@ function AccountNavLink() {
   const admin = getStoredAdmin();
   const navigate = useNavigate();
 
-  if (!admin) return <NavLink to="/admin/login" className="nav-signin-link">Justice Sign In</NavLink>;
+  if (!admin) return <NavLink to="/admin/login" className="nav-signin-pill">Justice Sign In</NavLink>;
 
   const label = admin.displayName || admin.email;
   return (
@@ -129,8 +130,18 @@ export default function App() {
   return (
     <>
       <header className="site-header">
+        {/* Court Passport redesign: a 4-color top stripe -- the same
+            accent cycle used throughout the site (terracotta/gold/sage/
+            plum) -- purely decorative, pure CSS, no new component. */}
+        <div className="site-header-stripe" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
         <div className="inner">
           <NavLink to="/" className="wordmark">
+            <CourtPassportMark size={40} />
             {SITE_NAME}
           </NavLink>
           <MobileMenuButton open={menuOpen} onToggle={() => setMenuOpen((v) => !v)} buttonRef={menuButtonRef} />
@@ -186,33 +197,48 @@ export default function App() {
         </Routes>
       </main>
 
+      {/* Court Passport redesign: scalloped top edge (radial-gradient
+          strip, pure CSS) above a full-bleed navy footer block, matching
+          the mockups -- real site content (disclaimer/links/affiliation),
+          not the mockups' own placeholder "note on perspective" copy. */}
+      <div className="site-footer-scallop" aria-hidden="true" />
       <footer className="site-footer">
-        <p>
-          {SITE_NAME} is a planning aid, not an authoritative record. Hearing dates,
-          times, and courtrooms can change or be cancelled with little notice -- always confirm on the{" "}
-          <a href="https://www.coloradojudicial.gov/dockets" target="_blank" rel="noreferrer">
-            official Colorado Judicial Branch docket search
-          </a>{" "}
-          before attending.
-        </p>
-        {/* Oct 2026 review, Phase 4 item 1: Archive and Meet the
-            Justices moved here from the main nav above (Welcome was
-            already here) -- still one click away, just not competing
-            for header space with the main 5 links. */}
-        <p className="site-footer-links">
-          <NavLink to="/welcome">Welcome</NavLink> &middot; <NavLink to="/archive">Archive</NavLink>{" "}
-          &middot; <NavLink to="/justices">Meet the Justices</NavLink> &middot;{" "}
-          <NavLink to="/subscribe">Subscribe</NavLink> &middot;{" "}
-          <NavLink to="/about">Visiting a Courtroom</NavLink> &middot;{" "}
-          <NavLink to="/about-project">About</NavLink> &middot; <NavLink to="/privacy">Privacy</NavLink>
-        </p>
-        <p className="site-footer-affiliation">
-          A project of the{" "}
-          <a href="https://www.colorado.edu/cusg/about-us/judicial-branch" target="_blank" rel="noreferrer">
-            University of Colorado Judicial Branch
-          </a>
-          .
-        </p>
+        <div className="site-footer-inner">
+          <div className="site-footer-brand">
+            <div className="site-footer-wordmark">
+              <CourtPassportMark size={44} dark />
+              {SITE_NAME}
+            </div>
+            <p className="site-footer-affiliation">
+              A project of the{" "}
+              <a href="https://www.colorado.edu/cusg/about-us/judicial-branch" target="_blank" rel="noreferrer">
+                University of Colorado Judicial Branch
+              </a>
+              .
+            </p>
+          </div>
+          <div className="site-footer-info">
+            <p>
+              {SITE_NAME} is a planning aid, not an authoritative record. Hearing dates,
+              times, and courtrooms can change or be cancelled with little notice -- always confirm on the{" "}
+              <a href="https://www.coloradojudicial.gov/dockets" target="_blank" rel="noreferrer">
+                official Colorado Judicial Branch docket search
+              </a>{" "}
+              before attending.
+            </p>
+            {/* Oct 2026 review, Phase 4 item 1: Archive and Meet the
+                Justices moved here from the main nav above (Welcome was
+                already here) -- still one click away, just not competing
+                for header space with the main 5 links. */}
+            <p className="site-footer-links">
+              <NavLink to="/welcome">Welcome</NavLink> &middot; <NavLink to="/archive">Archive</NavLink>{" "}
+              &middot; <NavLink to="/justices">Meet the Justices</NavLink> &middot;{" "}
+              <NavLink to="/subscribe">Subscribe</NavLink> &middot;{" "}
+              <NavLink to="/about">Visiting a Courtroom</NavLink> &middot;{" "}
+              <NavLink to="/about-project">About</NavLink> &middot; <NavLink to="/privacy">Privacy</NavLink>
+            </p>
+          </div>
+        </div>
       </footer>
     </>
   );

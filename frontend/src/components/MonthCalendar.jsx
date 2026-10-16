@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
 import { weekdayAbbr } from "../availabilityMatch.js";
-import { TAG_COLOR_LEGEND } from "../hearingTagColors.js";
+import { SIMPLIFIED_TAG_COLOR_LEGEND, TAG_COLOR_LEGEND } from "../hearingTagColors.js";
 import HearingTypeTag from "./HearingTypeTag.jsx";
 import { caseName, firstSentence } from "../textUtils.js";
 
@@ -337,7 +337,7 @@ function DaySidebar({ selectedDate, hearings, isJustice, teamAvailability, recom
 
       <div className="day-sidebar-legend">
         <p className="day-sidebar-label">Hearing types</p>
-        {TAG_COLOR_LEGEND.map((t) => (
+        {SIMPLIFIED_TAG_COLOR_LEGEND.map((t) => (
           <span className="day-sidebar-legend-item" key={t.key}>
             <span className={`day-sidebar-legend-swatch tag-dot-${t.key}`} aria-hidden="true" />
             {t.label}

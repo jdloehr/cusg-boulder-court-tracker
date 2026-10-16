@@ -1,4 +1,4 @@
-/* CUSG Boulder Court Tracker -- design system
+/* Court Passport -- design system
  * Section 3: "closer to a clean civic/legal-reference tool than a flashy
  * app -- a law journal's website crossed with a modern events calendar."
  * Serif headings (credibility), sans body/tables (scannable), muted
@@ -47,6 +47,22 @@
   --sage: #8A9A6E;
   --ochre: #C9973A;
   --plum: #8B6F97;
+
+  /* Court Passport redesign: new tokens added alongside the ones above
+     rather than overwriting them in place. The mockups specify
+     terracotta/ochre hex values a few points off these (#AF6B54 vs
+     #B4694F, #C29541 vs #C9973A) -- close enough that repointing them
+     site-wide would be an untracked visual shift on the Archive/
+     Justices pages' ACCENT_CYCLE for a gap too small to be meaningful,
+     so those two keep their existing values. sage/plum are already
+     exact matches. These are the genuinely new additions: */
+  --terracotta-deep: #955645;  /* text-on-terracotta-block contrast */
+  --plum-deep: #5A4665;        /* text-on-plum-block contrast */
+  --muted: #6B7280;            /* the "Other" hearing-type fallback + general muted text */
+  --hairline: #E3DFD4;         /* lighter than --line (#dcd6c9), which is already used
+                                   dozens of places -- this is only for the redesign's
+                                   new nav/footer/card hairlines, not a site-wide repoint */
+  --about-band-blue: #1C8EF9;  /* homepage About section only */
 }
 
 * { box-sizing: border-box; }
@@ -102,6 +118,15 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   color: var(--navy);
   border-bottom: 1px solid var(--line);
 }
+/* Court Passport redesign: 4 equal-width blocks, the same accent cycle
+   used throughout the site (Archive/Justices' ACCENT_CYCLE), so the
+   header carries the same palette before a visitor reads a word. */
+.site-header-stripe { display: flex; width: 100%; height: 6px; }
+.site-header-stripe span { flex: 1; }
+.site-header-stripe span:nth-child(1) { background: var(--terracotta); }
+.site-header-stripe span:nth-child(2) { background: var(--ochre); }
+.site-header-stripe span:nth-child(3) { background: var(--sage); }
+.site-header-stripe span:nth-child(4) { background: var(--plum); }
 .site-header .inner {
   max-width: 1200px;
   margin: 0 auto;
@@ -113,6 +138,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   gap: 0.5rem 1.5rem;
 }
 .wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   font-family: var(--font-serif);
   font-weight: 700;
   font-size: 1.3125rem;
@@ -120,29 +148,28 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   text-decoration: none;
   letter-spacing: -0.01em;
 }
-.wordmark small {
-  display: block;
-  font-family: var(--font-sans);
-  font-weight: 400;
-  font-size: 0.68rem;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-  margin-top: 0.15rem;
-}
 .site-nav { display: flex; gap: 1.5rem; font-size: 0.92rem; align-items: center; }
 .site-nav a { color: var(--navy); text-decoration: none; }
 .site-nav a:hover { color: var(--accent); }
-.site-nav a.active { color: var(--accent); font-weight: 600; }
+.site-nav a.active { color: var(--accent); font-weight: 700; border-bottom: 3px solid var(--accent); padding-bottom: 0.3rem; }
 
 .nav-account-link, .nav-account-link a {
   font-size: 0.85rem;
   color: var(--navy);
 }
-/* Oct 2026 review, Phase 4 item 1: plain small text link, replacing
-   the bordered pill -- de-emphasized relative to the main nav. */
-.nav-signin-link { font-size: 0.85rem; color: var(--ink-soft); text-decoration: none; }
-.nav-signin-link:hover { color: var(--navy); text-decoration: underline; }
+/* Court Passport redesign: filled navy pill, replacing the Oct 2026
+   review's plain de-emphasized text link -- the mockups' explicit
+   treatment for this link. */
+.nav-signin-pill {
+  background: var(--navy);
+  color: var(--paper);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 0.6rem 1.1rem;
+}
+.nav-signin-pill:hover { background: var(--navy-light); color: var(--paper); }
 
 /* Oct 2026 review, Phase 3 item 1: hidden above 720px -- .site-nav
    fits fine as a single row there, unchanged from before this. */
@@ -182,26 +209,58 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; width: 100%; }
 
+/* Court Passport redesign: a scalloped strip (radial-gradient dots
+   matching the paper background, repeated across a navy bar) sitting
+   directly above the full-bleed navy footer block -- same technique as
+   the mockups' own inline approach. */
+.site-footer-scallop {
+  width: 100%;
+  height: 14px;
+  background-color: var(--navy);
+  background-image: radial-gradient(circle at 10px 0px, var(--paper) 6px, transparent 6.5px);
+  background-size: 20px 14px;
+  background-repeat: repeat-x;
+}
 .site-footer {
-  border-top: 1px solid var(--line);
-  padding: 1.5rem 1.25rem;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-  text-align: center;
+  background: var(--navy);
+  color: #C9D0D6;
+  padding: 3rem 1.25rem 3.5rem;
+}
+.site-footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 2rem;
+  align-items: start;
+}
+.site-footer-brand { display: flex; flex-direction: column; gap: 0.875rem; }
+.site-footer-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--paper);
+  letter-spacing: -0.01em;
 }
 /* Phase-4 doc, Section 3: affiliation credit, text-only (no CU Boulder
    logo/wordmark/trademarked colors -- see docs/ARCHITECTURE.md). */
 .site-footer-affiliation {
-  margin-top: 0.6rem;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
+.site-footer-affiliation a { color: #C9D0D6; }
+.site-footer-info { display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.85rem; }
+.site-footer-info a { color: #C9D0D6; }
 
 /* Phase-6.2 doc, Section 3: the pages the shorter header nav no longer
    carries (Welcome, Subscribe, Visiting a Courtroom, About) -- still one
    click away here so nothing becomes unreachable. */
-.site-footer-links {
-  margin-top: 0.6rem;
-  font-size: 0.82rem;
+.site-footer-links { font-size: 0.85rem; }
+
+@media (max-width: 720px) {
+  .site-footer-inner { grid-template-columns: 1fr; }
 }
 
 .btn-footer-signout {
@@ -613,14 +672,18 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   white-space: nowrap;
 }
 a.hearing-tag:hover, a.hearing-tag:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
-.tag-jury_trial { background: hsl(210, 55%, 92%); color: hsl(210, 60%, 32%); }
-.tag-oral_argument { background: hsl(175, 40%, 90%); color: hsl(175, 55%, 26%); }
-.tag-trial { background: hsl(265, 40%, 94%); color: hsl(265, 40%, 40%); }
-.tag-sentencing { background: hsl(355, 50%, 94%); color: hsl(355, 50%, 36%); }
-.tag-arraignment { background: hsl(32, 50%, 91%); color: hsl(32, 55%, 32%); }
-.tag-scheduling { background: hsl(210, 15%, 93%); color: hsl(210, 12%, 40%); }
-.tag-family_probate { background: hsl(320, 35%, 94%); color: hsl(320, 35%, 38%); }
-.tag-other { background: hsl(30, 10%, 91%); color: var(--ink-soft); }
+/* Court Passport redesign: hex values here match
+   hearingTypeVisuals.js's HEARING_TYPE_VISUALS exactly -- no JS->CSS
+   token pipeline exists, so a future color change must be made in both
+   places. trial/arraignment/scheduling/family_probate/other all share
+   the one neutral "Other" treatment (see that file's comment for why). */
+.tag-jury_trial { background: #E3E7EB; color: var(--navy); }
+.tag-oral_argument { background: #E8ECDC; color: #465331; }
+.tag-sentencing { background: #EDE7F0; color: var(--plum-deep); }
+.tag-trial, .tag-arraignment, .tag-scheduling, .tag-family_probate, .tag-other {
+  background: #E9EAEC;
+  color: var(--muted);
+}
 /* Phase-6.2 doc, Section 5/7: outlined (not solid-fill, unlike every
    other badge here) and teal -- outside the site's red/amber/navy
    spectrum -- so a visitor's personal "fits your schedule" signal never
@@ -720,28 +783,41 @@ a.hearing-tag:hover, a.hearing-tag:focus-visible { text-decoration: underline; t
 
 /* --- Buttons --- */
 
+/* Court Passport redesign: primary amber button with a hard navy
+   offset shadow (no blur) -- the mockups' own exact treatment. Applies
+   site-wide since buttons are a shared primitive, not page-scoped. */
 .btn {
   display: inline-block;
   font-size: 0.88rem;
-  font-weight: 500;
+  font-weight: 600;
   padding: 0.5rem 0.9rem;
-  border-radius: var(--radius);
+  border-radius: 10px;
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
   cursor: pointer;
   text-decoration: none;
+  box-shadow: 4px 4px 0 var(--navy);
 }
-.btn:hover { background: #8a4c17; border-color: #8a4c17; color: #fff; }
-.btn-secondary { background: transparent; color: var(--navy); border-color: var(--line); }
-.btn-secondary:hover { border-color: var(--navy); color: var(--navy); background: #fff; }
+.btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.btn-secondary {
+  background: var(--paper);
+  color: var(--navy);
+  border: 2px solid var(--navy);
+  box-shadow: none;
+}
+.btn-secondary:hover { background: #fff; color: var(--navy); }
 /* Phase-6.2 doc, Section 3: the homepage hero's primary CTA -- solid
    navy, distinct from the amber .btn used for "in the news"/CTAs
    elsewhere, so the hero's own two buttons (navy + outlined) read as a
    clear primary/secondary pair. */
-.btn-navy { border-color: var(--navy); background: var(--navy); color: #fff; }
+.btn-navy { border-color: var(--navy); background: var(--navy); color: #fff; box-shadow: none; }
 .btn-navy:hover { background: var(--navy-light); border-color: var(--navy-light); color: #fff; }
-.btn-danger { border-color: #a33; background: #a33; }
+/* Court Passport redesign: gold/amber button for a dark (navy) panel --
+   e.g. Recommendations' Lead card CTA -- no shadow, matching the mockup. */
+.btn-gold { border-color: var(--ochre); background: var(--ochre); color: var(--navy); box-shadow: none; }
+.btn-gold:hover { background: #ad8636; border-color: #ad8636; color: var(--navy); }
+.btn-danger { border-color: #a33; background: #a33; box-shadow: none; }
 .btn-danger:hover { background: #822; border-color: #822; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -1212,14 +1288,12 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 .month-grid-dots { display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; }
 .month-grid-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; display: inline-block; padding: 0; border: none; cursor: pointer; }
 .month-grid-overflow { font-size: 0.62rem; color: var(--ink-soft); font-weight: 600; }
-.tag-dot-jury_trial { background: hsl(210, 60%, 32%); }
-.tag-dot-oral_argument { background: hsl(175, 55%, 26%); }
-.tag-dot-trial { background: hsl(265, 40%, 40%); }
-.tag-dot-sentencing { background: hsl(355, 50%, 36%); }
-.tag-dot-arraignment { background: hsl(32, 55%, 32%); }
-.tag-dot-scheduling { background: hsl(210, 25%, 42%); }
-.tag-dot-family_probate { background: hsl(320, 35%, 38%); }
-.tag-dot-other { background: var(--ink-soft); }
+.tag-dot-jury_trial { background: var(--navy); }
+.tag-dot-oral_argument { background: var(--sage); }
+.tag-dot-sentencing { background: var(--plum); }
+.tag-dot-trial, .tag-dot-arraignment, .tag-dot-scheduling, .tag-dot-family_probate, .tag-dot-other {
+  background: var(--muted);
+}
 
 .day-sidebar { position: sticky; top: 1rem; }
 .day-sidebar-label {
