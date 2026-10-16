@@ -8,6 +8,7 @@ import DataStatusBar from "../components/DataStatusBar.jsx";
 import HearingCardKey from "../components/HearingCardKey.jsx";
 import HearingTypeTag from "../components/HearingTypeTag.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
+import StampMotif from "../components/StampMotif.jsx";
 import { CASE_CATEGORY_LABELS, COURT_LOCATION_LABELS, COURT_LOCATION_TAG, isLocalCourt } from "../courtInfo.js";
 import { cellsToFreeSlotsByDay, hearingMatchesSlots } from "../availabilitySlots.js";
 import { caseName, firstSentence, formatHearingDate } from "../textUtils.js";
@@ -194,16 +195,21 @@ export default function HearingList() {
 
   return (
     <>
-      {/* Oct 2026 review, Phase 4 item 2: "Calendar" consistently for
-          this page -- the main nav link, Home's own CTA button, and
-          this title all used a different name before. */}
-      <h1>Calendar</h1>
-      <p className="disclaimer">
-        Jury trials and oral arguments/motions hearings in Boulder-area courts, in person, worth
-        sitting in on -- plus anything getting real local news coverage. Details can change; confirm
-        before you go. Jury trials especially are often cancelled or resolved by a plea deal close to
-        the date, so check the docket the morning of.
-      </p>
+      {/* Court Passport redesign: gold header band with a dot pattern
+          and a rotated stamp, matching the mockup. Oct 2026 review,
+          Phase 4 item 2: "Calendar" consistently for this page -- the
+          main nav link, Home's own CTA button, and this title all used
+          a different name before. */}
+      <div className="calendar-header-band">
+        <StampMotif size={110} color="var(--navy)" fillOpacity="rgba(250,248,243,0.35)" line1="OPEN" line2="COURT" rotation={-10} className="calendar-header-stamp" />
+        <h1>Calendar</h1>
+        <p className="disclaimer">
+          Jury trials and oral arguments/motions hearings in Boulder-area courts, in person, worth
+          sitting in on -- plus anything getting real local news coverage. Details can change; confirm
+          before you go. Jury trials especially are often cancelled or resolved by a plea deal close to
+          the date, so check the docket the morning of.
+        </p>
+      </div>
 
       <DataStatusBar onRefreshed={() => setRefreshTick((t) => t + 1)} />
       <AcademicCalendarBanner />

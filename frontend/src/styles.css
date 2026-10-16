@@ -916,13 +916,13 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 
 .role-tag { font-size: 0.7rem; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 2px; background: var(--navy); color: #fff; }
 
-/* --- Phase-6.2 doc, Section 3: homepage --- */
+/* --- Court Passport redesign: homepage --- */
 
 .hero {
   position: relative;
   overflow: hidden;
   margin: 0 0 2rem;
-  padding: 2.5rem 0;
+  padding: 2.5rem 0 4rem;
 }
 .hero-inner {
   position: relative;
@@ -933,16 +933,21 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   align-items: start;
 }
 .hero-eyebrow {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  margin: 0 0 0.6rem;
+  color: var(--navy);
+  border: 1.5px solid var(--navy);
+  border-radius: 999px;
+  padding: 0.4rem 1rem 0.4rem 0.45rem;
+  margin: 0 0 1rem;
 }
 .hero-headline {
-  font-size: 2.6rem;
-  line-height: 1.1;
+  font-size: clamp(2.6rem, 6vw, 5.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.02em;
   margin: 0 0 1rem;
 }
 .hero-intro {
@@ -956,6 +961,8 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   flex-wrap: wrap;
   margin-top: 1.25rem;
 }
+.hero-spotlight-wrap { position: relative; }
+.hero-stamp { position: absolute; right: 1.5rem; top: -2.5rem; z-index: 2; }
 .hero-spotlight-label {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -965,8 +972,82 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 }
 .hero-spotlight {
   margin-bottom: 0;
-  box-shadow: 0 8px 24px rgba(27, 42, 56, 0.08);
-  border: 1px solid var(--line);
+  box-shadow: 4px 4px 0 var(--navy);
+  border: 2px solid var(--navy);
+}
+
+/* Court Passport redesign: 3 full-bleed color blocks, large faint
+   numerals -- the one place numerals appear as decoration. Breaks out
+   of `main`'s max-width the same way .about-band-wrap already does. */
+.how-it-works {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.how-it-works-step {
+  position: relative;
+  overflow: hidden;
+  padding: 3.5rem 3rem 3.75rem;
+  min-height: 20rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  color: var(--navy);
+}
+.how-it-works-step h2 { font-size: 2.1rem; margin: 0.5rem 0 0; }
+.how-it-works-step p { font-size: 1.05rem; line-height: 1.6; max-width: 20rem; position: relative; }
+.how-it-works-numeral {
+  position: absolute;
+  right: 1rem;
+  bottom: -3.5rem;
+  font-family: var(--font-serif);
+  font-weight: 900;
+  font-size: 13rem;
+  line-height: 1;
+  color: var(--navy);
+  opacity: 0.09;
+}
+.how-it-works-step-1 { background: var(--terracotta-deep); color: var(--paper); }
+.how-it-works-step-1 .how-it-works-numeral { color: var(--paper); }
+.how-it-works-step-2 { background: var(--ochre); }
+.how-it-works-step-3 { background: var(--sage); }
+
+/* Court Passport redesign: plum pull-quote band with a mountain strip
+   along the bottom edge. */
+.pull-quote-band {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  background: var(--plum-deep);
+  padding: 5rem 1.25rem 6rem;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+.pull-quote-band blockquote {
+  margin: 0;
+  max-width: 50rem;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  line-height: 1.4;
+  color: var(--paper);
+}
+.pull-quote-band svg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 /* Breaks out of `main`'s max-width to run edge-to-edge, then re-applies
@@ -980,16 +1061,24 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
   margin-right: -50vw;
   width: 100vw;
   margin-top: 3rem;
+  background: var(--about-band-blue);
+  padding: 3rem 1.25rem;
 }
 .about-band {
   background: var(--navy);
   color: #f2efe8;
-  padding: 3rem 1.25rem;
-  max-width: 1080px;
+  padding: 2.5rem 2.25rem;
+  max-width: 48rem;
   margin: 0 auto;
+  border-radius: 18px;
+  box-shadow: 6px 6px 0 rgba(27, 42, 56, 0.35);
 }
-.about-band h2 { color: #fff; }
+.about-band h2 { color: #fff; margin-top: 0; }
 .about-band p { max-width: 42rem; line-height: 1.7; font-size: 1.02rem; }
+
+@media (max-width: 800px) {
+  .how-it-works { grid-template-columns: 1fr; }
+}
 
 @media (max-width: 800px) {
   .hero-inner { grid-template-columns: 1fr; }
@@ -1227,10 +1316,38 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 }
 .view-toggle button.active { background: var(--navy); color: var(--paper); }
 
-.month-nav { display: flex; align-items: center; gap: 0.75rem; margin: 1rem 0; }
+/* Court Passport redesign: Calendar page's gold header band, dot
+   pattern + stamp, matching the mockup. */
+.calendar-header-band {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  background-color: var(--ochre);
+  background-image: radial-gradient(rgba(27, 42, 56, 0.11) 1.8px, transparent 2px);
+  background-size: 24px 24px;
+  padding: 2.5rem 1.25rem 3rem;
+  margin-bottom: 1.5rem;
+}
+.calendar-header-band h1, .calendar-header-band p { max-width: 1080px; margin-left: auto; margin-right: auto; }
+.calendar-header-band h1 { color: var(--navy); font-size: clamp(2rem, 5vw, 3.2rem); }
+.calendar-header-stamp { float: right; margin: 0 0 1rem 1rem; }
+
+.month-nav { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 1rem; }
 .month-nav-label { margin: 0; min-width: 11rem; }
 
 .month-calendar-layout { display: grid; grid-template-columns: 1fr 20rem; gap: 1.5rem; align-items: start; }
+/* Court Passport redesign: matches the mockup's "month card overlapping
+   the band" -- navy border, hard offset shadow. */
+.month-card {
+  background: var(--paper-raised);
+  border: 2px solid var(--navy);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 6px 6px 0 var(--navy);
+}
 
 .month-grid {
   display: grid;

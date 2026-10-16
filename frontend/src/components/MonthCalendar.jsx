@@ -166,21 +166,6 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
 
   return (
     <div>
-      <div className="month-nav">
-        <button className="btn btn-secondary" onClick={() => goToMonth(new Date(year, month - 1, 1))} aria-label="Previous month">
-          &lsaquo;
-        </button>
-        <h2 className="month-nav-label">
-          {viewedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-        </h2>
-        <button className="btn btn-secondary" onClick={() => goToMonth(new Date(year, month + 1, 1))} aria-label="Next month">
-          &rsaquo;
-        </button>
-        <button className="btn btn-secondary" onClick={() => goToMonth(new Date())}>
-          Today
-        </button>
-      </div>
-
       {error && <p className="message-error">Couldn't load hearings: {error}</p>}
 
       {!error && hearings === null && (
@@ -194,6 +179,24 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
       )}
 
       {!error && hearings !== null && <div className="month-calendar-layout">
+        {/* Court Passport redesign: the grid + its own nav live inside
+            a navy-bordered, hard-shadowed card -- matches the mockup's
+            "month card overlapping the band." */}
+        <div className="month-card">
+        <div className="month-nav">
+          <button className="btn btn-secondary" onClick={() => goToMonth(new Date(year, month - 1, 1))} aria-label="Previous month">
+            &lsaquo;
+          </button>
+          <h2 className="month-nav-label">
+            {viewedMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+          </h2>
+          <button className="btn btn-secondary" onClick={() => goToMonth(new Date(year, month + 1, 1))} aria-label="Next month">
+            &rsaquo;
+          </button>
+          <button className="btn btn-secondary" onClick={() => goToMonth(new Date())}>
+            Today
+          </button>
+        </div>
         {/* Oct 2026 review, Phase 3 item 3: role="grid" removed -- the
             WAI-ARIA grid pattern requires real roving-tabindex/arrow-key
             cell navigation, which this never implemented, and an axe
@@ -239,6 +242,7 @@ export default function MonthCalendar({ hearingTypeCategory, caseCategory, court
               </button>
             );
           })}
+        </div>
         </div>
         </div>
 
