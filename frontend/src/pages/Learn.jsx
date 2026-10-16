@@ -2,7 +2,17 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import HearingTypeIcon from "../components/HearingTypeIcon.jsx";
+import MountainStrip from "../components/MountainStrip.jsx";
 import { CASE_CATEGORY_LABELS } from "../courtInfo.js";
+
+// jury_trial -> navy (hearingTypeVisuals.js), oral_argument_motions ->
+// sage. A LearnTopic can only ever target these 2 real categories (see
+// app/models.py::HearingTypeCategory), so this page never needs
+// Sentencing/Closing Arguments treatment at all.
+const HEARING_TYPE_CARD_COLOR = {
+  jury_trial: "navy",
+  oral_argument_motions: "sage",
+};
 
 // Only the two hearing-type buckets a topic can meaningfully target --
 // "other"/"unrecognized" aren't real categories to write an explainer
@@ -43,10 +53,12 @@ export default function Learn() {
           label (a meaningless numeral -- there's only ever one Learn
           page, nothing it's "0 of"). */}
       <header className="learn-header">
-        <h1 className="learn-headline">Understand What You're About to Watch</h1>
-        <p style={{ color: "var(--ink-soft)" }}>
-          Written by CUSG Justices, for anyone new to a courtroom.
+        <h1 className="learn-headline">Learn the room before you walk in</h1>
+        <p className="learn-header-subhead">
+          Short guides on what happens in a courtroom, what to wear, where to sit, and how to
+          write up what you saw -- written by Justices, for anyone new to a courtroom.
         </p>
+        <MountainStrip backColor="#6F7F55" slab1Color="#465331" slab2Color="#5B6944" slab3Color="#3B4829" />
       </header>
 
       {/* Oct 2026 review, Phase 4 item 10: removed this whole chip row
@@ -60,7 +72,7 @@ export default function Learn() {
             {Object.entries(HEARING_TYPE_LABELS).map(([k, label]) => (
               <button
                 key={k}
-                className={`learn-sidebar-link ${hearingTypeCategory === k ? "active" : ""}`}
+                className={`learn-type-pill learn-type-pill-${HEARING_TYPE_CARD_COLOR[k]} ${hearingTypeCategory === k ? "active" : ""}`}
                 onClick={() => toggle(hearingTypeCategory, setHearingTypeCategory, k)}
               >
                 <HearingTypeIcon type={k} /> {label}
@@ -89,24 +101,43 @@ export default function Learn() {
               <p>No Learn topics match these filters yet.</p>
             </div>
           )}
-          {topics?.map((t, i) => (
-            <div className="learn-card" key={t.id}>
-              <p className="learn-card-numeral">{String(i + 1).padStart(2, "0")}</p>
-              <h2 className="learn-card-heading">{t.title}</h2>
-              <p className="learn-card-excerpt">{excerpt(t.body_text)}</p>
-              <div className="learn-card-meta">
-                {(t.video_url || t.has_uploaded_video) && (
-                  <span className="learn-card-meta-item">&#9654; Video included</span>
+          {topics?.map((t) => {
+            const color = HEARING_TYPE_CARD_COLOR[t.applies_to_hearing_type_category] || null;
+            return (
+              <div className={`learn-card ${color ? `learn-card-${color}` : ""}`} key={t.id}>
+                {color && (
+                  <div className="learn-card-header">
+                    <span className="learn-card-icon">
+                      <HearingTypeIcon type={t.applies_to_hearing_type_category} />
+                    </span>
+                    <h2 className="learn-card-heading">{t.title}</h2>
+                  </div>
                 )}
-                {t.external_links.length > 0 && (
-                  <span className="learn-card-meta-item">
-                    {t.external_links.length} resource{t.external_links.length === 1 ? "" : "s"} linked
-                  </span>
-                )}
+                <div className="learn-card-body">
+                  {!color && <h2 className="learn-card-heading">{t.title}</h2>}
+                  <p className="learn-card-excerpt">{excerpt(t.body_text)}</p>
+                  <div className="learn-card-meta">
+                    {(t.video_url || t.has_uploaded_video) && (
+                      <span className="learn-card-meta-item">&#9654; Video included</span>
+                    )}
+                    {t.external_links.length > 0 && (
+                      <span className="learn-card-meta-item">
+                        {t.external_links.length} resource{t.external_links.length === 1 ? "" : "s"} linked
+                      </span>
+                    )}
+                  </div>
+                  <Link to={`/learn/${t.id}`}>Read the full guide &rarr;</Link>
+                </div>
               </div>
-              <Link to={`/learn/${t.id}`}>Read the full guide &rarr;</Link>
+            );
+          })}
+          {topics && topics.length > 0 && (
+            <div className="learn-card learn-card-checklist">
+              <h3>Your first visit checklist</h3>
+              <p>Photo ID, quiet phone, a notebook, and thirty minutes to spare for security.</p>
+              <Link to="/about" className="btn">Open the checklist</Link>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </article>

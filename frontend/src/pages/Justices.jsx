@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api, getStoredAdmin } from "../api.js";
+import MountainStrip from "../components/MountainStrip.jsx";
 
 // Meet the Justices redesign: cycles through the Archive page's
 // existing accent set (not a second, competing color system) so two
@@ -84,8 +85,15 @@ export default function Justices() {
 
   return (
     <article>
-      <h1>Meet the Justices</h1>
-      <p className="disclaimer">Justices (student government), the current roster.</p>
+      {/* Court Passport redesign: no mockup page exists for Justices,
+          per the task's own instruction to "apply the same system" --
+          a plum header band with the mountain strip, matching the
+          treatment every other page's header band gets. */}
+      <div className="justices-header-band">
+        <h1>Meet the Justices</h1>
+        <p className="disclaimer">Justices (student government), the current roster.</p>
+        <MountainStrip backColor="#6E5679" slab1Color="#8B6F97" slab2Color="#A38AAE" slab3Color="#7B6286" />
+      </div>
 
       {justices.map((j, index) => {
         const isMe = admin?.isJustice && admin.id === j.id;

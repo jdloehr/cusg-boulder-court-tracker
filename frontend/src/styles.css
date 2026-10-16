@@ -360,6 +360,26 @@ main { flex: 1; max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem;
   color: var(--accent);
 }
 
+/* Court Passport redesign: plum header band with the mountain strip --
+   no mockup page exists for Justices, so this matches the treatment
+   every other page's header band gets. */
+.justices-header-band {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--plum-deep);
+  padding: 3rem 1.25rem 5rem;
+  margin-bottom: 2.5rem;
+  text-align: center;
+}
+.justices-header-band h1 { color: var(--paper); margin-bottom: 0.5rem; }
+.justices-header-band .disclaimer { color: #E8DFEC; }
+.justices-header-band > svg:last-child { position: absolute; left: 0; right: 0; bottom: 0; }
+
 /* Phase-6.2 doc, Section 1: one continuous page listing every Justice
    inline, alternating photo side per entry, instead of a click-through
    directory of circular tiles.
@@ -1322,8 +1342,30 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 
 /* Page-redesign doc, Page 4: Learn -- clean/reference-like, sidebar plus
    a numbered card grid. */
-.learn-header { margin-bottom: 1.25rem; }
-.learn-headline { font-size: 2rem; margin: 0 0 0.5rem; }
+/* Court Passport redesign: sage header band with the mountain strip,
+   matching the mockup. */
+.learn-header {
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--sage);
+  padding: 3rem 1.25rem 5rem;
+  margin-bottom: 2rem;
+}
+.learn-headline {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--navy);
+  max-width: 36rem;
+  margin: 0 auto 0.75rem;
+}
+.learn-header-subhead { color: var(--navy); max-width: 32rem; margin: 0 auto; }
+.learn-header > svg:last-child { position: absolute; left: 0; right: 0; bottom: 0; }
 
 .learn-body { display: grid; grid-template-columns: 13rem 1fr; gap: 2rem; align-items: start; }
 .learn-sidebar { display: flex; flex-direction: column; gap: 1.75rem; position: sticky; top: 1rem; }
@@ -1339,14 +1381,55 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 .learn-sidebar-link-plain { padding-left: 1.5rem; }
 .learn-sidebar-link:hover, .learn-sidebar-link.active { color: var(--accent); font-weight: 600; }
 
-.learn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
-.learn-card { padding: 1.5rem; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); }
-.learn-card:nth-child(2n) { border-right: none; }
-.learn-card-numeral { font-family: var(--font-mono); font-size: 0.85rem; color: var(--ink-soft); margin: 0 0 0.3rem; }
-.learn-card-heading { font-size: 1.15rem; margin: 0 0 0.5rem; }
-.learn-card-excerpt { color: var(--ink-soft); font-size: 0.92rem; line-height: 1.55; margin: 0 0 0.75rem; }
-.learn-card-meta { display: flex; gap: 1rem; font-size: 0.78rem; color: var(--ink-soft); margin-bottom: 0.6rem; flex-wrap: wrap; }
+/* Court Passport redesign: colored pill filters for the 2 real
+   hearing-type categories a Learn topic can target (see Learn.jsx's
+   HEARING_TYPE_CARD_COLOR comment for why only these 2 exist). */
+.learn-type-pill {
+  display: flex; align-items: center; gap: 0.5rem;
+  width: fit-content; text-align: left; border: none; cursor: pointer;
+  padding: 0.5rem 1rem 0.5rem 0.75rem; border-radius: 999px;
+  font-size: 0.88rem; font-weight: 600; margin-bottom: 0.5rem;
+}
+.learn-type-pill-navy { background: #E3E7EB; color: var(--navy); }
+.learn-type-pill-sage { background: #E8ECDC; color: #465331; }
+.learn-type-pill.active { outline: 2px solid currentColor; outline-offset: 1px; }
+
+.learn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.learn-card {
+  background: var(--paper-raised);
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.learn-card-navy { border-color: var(--navy); }
+.learn-card-sage { border-color: var(--sage); }
+.learn-card-header { display: flex; align-items: center; gap: 0.875rem; padding: 1.25rem 1.5rem; }
+.learn-card-navy .learn-card-header { background: var(--navy); color: var(--paper); }
+.learn-card-sage .learn-card-header { background: var(--sage); color: var(--navy); }
+.learn-card-icon {
+  width: 2.5rem; height: 2.5rem; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.learn-card-navy .learn-card-icon { background: var(--paper); color: var(--navy); }
+.learn-card-sage .learn-card-icon { background: var(--navy); color: var(--sage); }
+.learn-card-body { padding: 1.25rem 1.5rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; flex: 1; }
+.learn-card-heading { font-size: 1.15rem; margin: 0; }
+.learn-card-excerpt { color: var(--ink-soft); font-size: 0.92rem; line-height: 1.55; margin: 0; }
+.learn-card-meta { display: flex; gap: 1rem; font-size: 0.78rem; color: var(--ink-soft); flex-wrap: wrap; }
 .learn-card-meta-item { display: inline-flex; align-items: center; gap: 0.3rem; }
+.learn-card-checklist {
+  grid-column: 1 / -1;
+  background: var(--navy);
+  color: var(--paper);
+  padding: 1.75rem;
+  gap: 0.75rem;
+  justify-content: center;
+}
+.learn-card-checklist h3 { color: var(--paper); margin: 0; }
+.learn-card-checklist p { color: #D3D9DE; margin: 0; }
+.learn-card-checklist .btn { width: fit-content; }
 
 @media (max-width: 800px) {
   .learn-body { grid-template-columns: 1fr; }
