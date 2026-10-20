@@ -277,11 +277,14 @@ def _validate_body_text(value: str, field_name: str, max_length: int = 5000) -> 
 
 class LearnTopicIn(BaseModel):
     """Phase 9 doc: create/replace-everything-but-video for a LearnTopic.
-    At least one of the two matching dimensions must be set -- enforced
-    here (a ValueError from a model_validator becomes a 422, same as any
-    other field_validator failure) rather than in the DB, since "matches
-    nothing" isn't a shape the database itself can express as a
-    constraint without a lot of ceremony for one rule."""
+    Both matching dimensions are genuinely optional -- a topic with
+    neither set is a legitimate, intentional "general" guide (courtroom
+    manners, reading a docket, writing up what you saw) that isn't tied
+    to one hearing type or case category. app/learn.py::topics_matching_
+    hearing already treats an unset dimension as "matches any value," so
+    a topic with both unset simply matches every hearing -- the correct
+    behavior for genuinely general content, not an edge case to guard
+    against."""
     title: str
     applies_to_hearing_type_category: Optional[HearingTypeCategory] = None
     applies_to_case_category: Optional[CaseCategory] = None
@@ -310,12 +313,6 @@ class LearnTopicIn(BaseModel):
         if len(value) > MAX_EXTERNAL_LINKS:
             raise ValueError(f"At most {MAX_EXTERNAL_LINKS} external links")
         return value
-
-    @model_validator(mode="after")
-    def _at_least_one_dimension(self):
-        if not self.applies_to_hearing_type_category and not self.applies_to_case_category:
-            raise ValueError("Set at least one of hearing type or case category, or this topic would never match anything")
-        return self
 
 
 class LearnTopicUpdateIn(BaseModel):

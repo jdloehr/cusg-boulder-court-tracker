@@ -106,6 +106,19 @@ def test_no_matching_topic_returns_empty(db):
     assert matching_learn_topics(db, hearing) == []
 
 
+def test_topic_with_neither_dimension_set_matches_every_hearing(db):
+    """Both dimensions are genuinely optional -- a topic with neither set
+    is a legitimate general guide (courtroom manners, reading a docket),
+    not dead content. See LearnTopic's docstring in app/models.py."""
+    db.add(LearnTopic(id="t5", title="Courtroom Manners", body_text="General guide."))
+    db.add(_hearing(id="h-a", case_number="A", hearing_type_category=HearingTypeCategory.jury_trial, case_category=CaseCategory.criminal))
+    db.add(_hearing(id="h-b", case_number="B", hearing_type_category=HearingTypeCategory.oral_argument_motions, case_category=CaseCategory.civil))
+    db.commit()
+    for hearing_id in ("h-a", "h-b"):
+        hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
+        assert [t.id for t in matching_learn_topics(db, hearing)] == ["t5"]
+
+
 # --- Full-stack TestClient tests --------------------------------------------
 
 @pytest.fixture()
@@ -163,11 +176,13 @@ def test_create_learn_topic_requires_login_at_all(ctx):
     assert r.status_code == 401
 
 
-def test_create_learn_topic_rejects_neither_dimension_set(ctx):
+def test_create_learn_topic_with_neither_dimension_set_is_a_general_topic(ctx):
     client, _Session = ctx
-    r = client.post("/api/admin/learn-topics", json={"title": "Dead content", "body_text": "Matches nothing."},
+    r = client.post("/api/admin/learn-topics", json={"title": "Courtroom Manners", "body_text": "General guide."},
                      headers=_auth(client))
-    assert r.status_code == 422
+    assert r.status_code == 201, r.text
+    assert r.json()["applies_to_hearing_type_category"] is None
+    assert r.json()["applies_to_case_category"] is None
 
 
 def test_create_and_list_learn_topic(ctx):
@@ -187,14 +202,15 @@ def test_create_and_list_learn_topic(ctx):
     assert filtered == []
 
 
-def test_update_learn_topic_clearing_both_dimensions_rejected(ctx):
+def test_update_learn_topic_can_clear_both_dimensions_to_make_it_general(ctx):
     client, _Session = ctx
     created = client.post("/api/admin/learn-topics", json={
         "title": "Jury Trials", "applies_to_hearing_type_category": "jury_trial", "body_text": "Explainer.",
     }, headers=_auth(client)).json()
     r = client.patch(f"/api/admin/learn-topics/{created['id']}",
                       json={"applies_to_hearing_type_category": None}, headers=_auth(client))
-    assert r.status_code == 400
+    assert r.status_code == 200, r.text
+    assert r.json()["applies_to_hearing_type_category"] is None
 
 
 def test_update_learn_topic_partial(ctx):

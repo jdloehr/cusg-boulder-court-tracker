@@ -959,10 +959,10 @@ class LearnTopic(Base):
     explainer); one with only applies_to_case_category set matches any
     case of that category regardless of hearing type; one with *both*
     set matches only that specific combination (e.g. "Criminal Jury
-    Trials specifically"). At least one of the two must be set -- an
-    entry matching nothing would be dead content -- enforced in
-    routers/learn.py, not the DB, same as this project's other
-    business-rule validations that don't map to a column constraint."""
+    Trials specifically"); one with *neither* set is a legitimate
+    general guide (courtroom manners, reading a docket) that matches
+    every hearing -- both dimensions are genuinely optional, not "at
+    least one required."""
     __tablename__ = "learn_topics"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

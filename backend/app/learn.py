@@ -26,11 +26,11 @@ def topics_matching_hearing(topics: list[LearnTopic], hearing: Hearing) -> list[
     therefore match more than one topic (e.g. a general "Jury Trial"
     explainer and a separate general "Criminal Cases" explainer both
     apply to one specific criminal jury trial) -- see the doc's own "zero
-    or more" framing. A topic with *both* dimensions unset would match
-    every hearing site-wide; routers/learn.py rejects creating one like
-    that, but this function doesn't re-check it, so an existing one
-    (however it got there) still simply matches everything, which is at
-    least an honest reflection of what got saved.
+    or more" framing. A topic with *both* dimensions unset matches every
+    hearing site-wide -- a legitimate, intentional way to write a
+    genuinely general guide (courtroom manners, reading a docket) that
+    isn't tied to one hearing type or case category, not an edge case to
+    guard against.
 
     Takes an already-loaded `topics` list and filters it in Python,
     rather than querying the database itself -- see

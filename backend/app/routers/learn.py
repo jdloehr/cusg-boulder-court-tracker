@@ -141,11 +141,6 @@ def update_learn_topic(topic_id: str, payload: LearnTopicUpdateIn, db: Session =
     for field, value in data.items():
         setattr(topic, field, value)
 
-    new_type = data.get("applies_to_hearing_type_category", topic.applies_to_hearing_type_category)
-    new_case = data.get("applies_to_case_category", topic.applies_to_case_category)
-    if not new_type and not new_case:
-        raise HTTPException(400, "Set at least one of hearing type or case category, or this topic would never match anything")
-
     topic.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(topic)
