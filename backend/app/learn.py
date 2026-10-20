@@ -20,25 +20,32 @@ def load_all_learn_topics(db: Session) -> list[LearnTopic]:
 
 
 def topics_matching_hearing(topics: list[LearnTopic], hearing: Hearing) -> list[LearnTopic]:
-    """A topic matches a hearing if every dimension the topic actually
-    specifies agrees with that hearing -- an unset dimension on the topic
-    means "matches any value," not "matches nothing." A hearing can
-    therefore match more than one topic (e.g. a general "Jury Trial"
-    explainer and a separate general "Criminal Cases" explainer both
-    apply to one specific criminal jury trial) -- see the doc's own "zero
-    or more" framing. A topic with *both* dimensions unset matches every
-    hearing site-wide -- a legitimate, intentional way to write a
-    genuinely general guide (courtroom manners, reading a docket) that
-    isn't tied to one hearing type or case category, not an edge case to
-    guard against.
+    """A topic matches a hearing if it specifies at least one dimension
+    and every dimension it actually specifies agrees with that hearing --
+    a *set* dimension must match; an unset one means "matches any value
+    on this axis," not "matches nothing." A hearing can therefore match
+    more than one topic (e.g. a general "Jury Trial" explainer and a
+    separate general "Criminal Cases" explainer both apply to one
+    specific criminal jury trial) -- see the doc's own "zero or more"
+    framing.
+
+    A topic with *both* dimensions unset ("General" in the admin UI --
+    courtroom manners, reading a docket, writing up what you saw) is
+    its own standalone kind of content, not a wildcard: it deliberately
+    matches *no* hearing here, so it never shows up as a "related
+    guide" on every single hearing detail page site-wide. It still
+    appears in the main Learn library listing (GET /api/learn-topics
+    has no such restriction) -- this function only governs per-hearing
+    matching.
 
     Takes an already-loaded `topics` list and filters it in Python,
     rather than querying the database itself -- see
     matching_learn_topics's docstring for why that distinction matters."""
     return [
         t for t in topics
-        if (t.applies_to_hearing_type_category is None
-            or t.applies_to_hearing_type_category == hearing.hearing_type_category)
+        if (t.applies_to_hearing_type_category is not None or t.applies_to_case_category is not None)
+        and (t.applies_to_hearing_type_category is None
+             or t.applies_to_hearing_type_category == hearing.hearing_type_category)
         and (t.applies_to_case_category is None or t.applies_to_case_category == hearing.case_category)
     ]
 

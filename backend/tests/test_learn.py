@@ -106,17 +106,20 @@ def test_no_matching_topic_returns_empty(db):
     assert matching_learn_topics(db, hearing) == []
 
 
-def test_topic_with_neither_dimension_set_matches_every_hearing(db):
+def test_topic_with_neither_dimension_set_matches_no_hearing(db):
     """Both dimensions are genuinely optional -- a topic with neither set
-    is a legitimate general guide (courtroom manners, reading a docket),
-    not dead content. See LearnTopic's docstring in app/models.py."""
+    ("General" in the admin UI -- courtroom manners, reading a docket) is
+    its own standalone kind of content, not a wildcard. It must NOT show
+    up as a "related guide" on every hearing site-wide; it only appears
+    in the main Learn library listing. See LearnTopic's docstring in
+    app/models.py."""
     db.add(LearnTopic(id="t5", title="Courtroom Manners", body_text="General guide."))
     db.add(_hearing(id="h-a", case_number="A", hearing_type_category=HearingTypeCategory.jury_trial, case_category=CaseCategory.criminal))
     db.add(_hearing(id="h-b", case_number="B", hearing_type_category=HearingTypeCategory.oral_argument_motions, case_category=CaseCategory.civil))
     db.commit()
     for hearing_id in ("h-a", "h-b"):
         hearing = db.query(Hearing).filter(Hearing.id == hearing_id).first()
-        assert [t.id for t in matching_learn_topics(db, hearing)] == ["t5"]
+        assert matching_learn_topics(db, hearing) == []
 
 
 # --- Full-stack TestClient tests --------------------------------------------

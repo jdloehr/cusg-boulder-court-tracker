@@ -959,10 +959,13 @@ class LearnTopic(Base):
     explainer); one with only applies_to_case_category set matches any
     case of that category regardless of hearing type; one with *both*
     set matches only that specific combination (e.g. "Criminal Jury
-    Trials specifically"); one with *neither* set is a legitimate
-    general guide (courtroom manners, reading a docket) that matches
-    every hearing -- both dimensions are genuinely optional, not "at
-    least one required."""
+    Trials specifically"); one with *neither* set ("General" in the
+    admin UI -- courtroom manners, reading a docket, writing up what
+    you saw) is its own standalone kind of content and matches *no*
+    hearing via this per-hearing lookup, only appearing in the main
+    Learn library listing -- both dimensions are genuinely optional,
+    not "at least one required," but leaving both unset opts out of
+    per-hearing matching entirely rather than matching everything."""
     __tablename__ = "learn_topics"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
