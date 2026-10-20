@@ -602,6 +602,9 @@ function LearnLibraryAdmin({ admin }) {
               {t.applies_to_case_category && (
                 <span className="badge badge-category">{CASE_CATEGORY_LABELS[t.applies_to_case_category]}</span>
               )}
+              {!t.applies_to_hearing_type_category && !t.applies_to_case_category && (
+                <span className="badge badge-category">General</span>
+              )}
             </h3>
             <p className="blurb">{t.body_text}</p>
             <VideoEmbed videoUrl={t.video_url} uploadedVideoUrl={t.has_uploaded_video ? api.learnTopicVideoUrl(t.id) : null} />
@@ -669,24 +672,28 @@ function LearnTopicForm({ topic, onDone, onCancel }) {
         <input id="ltTitle" required value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
       <div>
-        <label htmlFor="ltType">Applies to hearing type (optional)</label>
+        <label htmlFor="ltType">Hearing type</label>
         <select id="ltType" value={hearingType} onChange={(e) => setHearingType(e.target.value)}>
-          <option value="">Not type-specific</option>
+          <option value="">General (applies to every hearing type)</option>
           {Object.entries(LEARN_HEARING_TYPE_LABELS).map(([k, label]) => (
             <option key={k} value={k}>{label}</option>
           ))}
         </select>
       </div>
       <div>
-        <label htmlFor="ltCase">Applies to case category (optional)</label>
+        <label htmlFor="ltCase">Case category</label>
         <select id="ltCase" value={caseCategory} onChange={(e) => setCaseCategory(e.target.value)}>
-          <option value="">Not category-specific</option>
+          <option value="">General (applies to every case category)</option>
           {Object.entries(CASE_CATEGORY_LABELS)
             .filter(([k]) => k !== "juvenile")
             .map(([k, label]) => (
               <option key={k} value={k}>{label}</option>
             ))}
         </select>
+        <p style={{ fontSize: "0.78rem", color: "var(--ink-soft)", marginTop: "0.3rem" }}>
+          Leave both as "General" for a guide that isn't tied to a specific hearing type or case
+          category (courtroom manners, reading a docket, writing up what you saw).
+        </p>
       </div>
       <div>
         <label htmlFor="ltBody">Explainer text</label>
