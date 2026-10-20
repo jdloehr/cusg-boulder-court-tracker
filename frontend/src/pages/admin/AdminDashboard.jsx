@@ -570,8 +570,9 @@ function LearnLibraryAdmin({ admin }) {
       <h2>Learn library</h2>
       <p className="disclaimer">
         Reusable "what is this kind of hearing/case" explainers -- write one and it automatically
-        shows up on every matching hearing's own page, no per-hearing effort needed. Set at least one
-        of hearing type or case category so it actually matches something.
+        shows up on every matching hearing's own page, no per-hearing effort needed. Set a hearing
+        type and/or case category to match specific hearings, or leave both as General for a
+        standalone guide (courtroom manners, reading a docket) that isn't tied to a specific hearing.
       </p>
 
       {canEdit && editing === null && (
@@ -739,16 +740,11 @@ function LearnTopicForm({ topic, onDone, onCancel }) {
         )}
       </div>
       <div style={{ display: "flex", gap: "0.5rem" }}>
-        <button className="btn" type="submit" disabled={busy || !title.trim() || !bodyText.trim() || (!hearingType && !caseCategory)}>
+        <button className="btn" type="submit" disabled={busy || !title.trim() || !bodyText.trim()}>
           {busy ? "Saving…" : isEdit ? "Save changes" : "Create topic"}
         </button>
         <button className="btn btn-secondary" type="button" onClick={onCancel}>Cancel</button>
       </div>
-      {!hearingType && !caseCategory && (
-        <p style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-          Set at least one of hearing type or case category, or this topic won't match anything.
-        </p>
-      )}
       {error && <p className="message-error">{error}</p>}
     </form>
   );
