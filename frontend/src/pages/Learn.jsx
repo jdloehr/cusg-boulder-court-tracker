@@ -80,15 +80,13 @@ export default function Learn() {
       <div className="learn-body">
         <aside className="learn-sidebar">
           <div>
+            <p className="learn-sidebar-heading">By Hearing Type</p>
             <button
               className={`learn-type-pill learn-type-pill-muted ${generalOnly ? "active" : ""}`}
               onClick={toggleGeneral}
             >
               General guides
             </button>
-          </div>
-          <div>
-            <p className="learn-sidebar-heading">By Hearing Type</p>
             {Object.entries(HEARING_TYPE_LABELS).map(([k, label]) => (
               <button
                 key={k}
