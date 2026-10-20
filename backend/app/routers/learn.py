@@ -84,12 +84,24 @@ def list_learn_topics(
     db: Session = Depends(get_db),
     hearing_type_category: Optional[HearingTypeCategory] = None,
     case_category: Optional[CaseCategory] = None,
+    general_only: bool = False,
 ):
     q = db.query(LearnTopic)
-    if hearing_type_category:
-        q = q.filter(LearnTopic.applies_to_hearing_type_category == hearing_type_category)
-    if case_category:
-        q = q.filter(LearnTopic.applies_to_case_category == case_category)
+    # general_only is its own filter, not just "neither of the other two
+    # set" -- a visitor browsing "General" wants standalone guides
+    # (courtroom manners, reading a docket) specifically, same meaning
+    # as the admin UI's "General" option on both selects (see
+    # app/models.py::LearnTopic's docstring).
+    if general_only:
+        q = q.filter(
+            LearnTopic.applies_to_hearing_type_category.is_(None),
+            LearnTopic.applies_to_case_category.is_(None),
+        )
+    else:
+        if hearing_type_category:
+            q = q.filter(LearnTopic.applies_to_hearing_type_category == hearing_type_category)
+        if case_category:
+            q = q.filter(LearnTopic.applies_to_case_category == case_category)
     topics = q.order_by(LearnTopic.title).all()
     return [learn_topic_out(t) for t in topics]
 

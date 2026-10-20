@@ -205,6 +205,22 @@ def test_create_and_list_learn_topic(ctx):
     assert filtered == []
 
 
+def test_list_learn_topics_general_only_filter(ctx):
+    client, _Session = ctx
+    client.post("/api/admin/learn-topics", json={
+        "title": "Jury Trials", "applies_to_hearing_type_category": "jury_trial", "body_text": "Type-specific.",
+    }, headers=_auth(client))
+    client.post("/api/admin/learn-topics", json={
+        "title": "Courtroom Manners", "body_text": "General guide.",
+    }, headers=_auth(client))
+
+    general = client.get("/api/learn-topics?general_only=true").json()
+    assert [t["title"] for t in general] == ["Courtroom Manners"]
+
+    everything = client.get("/api/learn-topics").json()
+    assert len(everything) == 2
+
+
 def test_update_learn_topic_can_clear_both_dimensions_to_make_it_general(ctx):
     client, _Session = ctx
     created = client.post("/api/admin/learn-topics", json={

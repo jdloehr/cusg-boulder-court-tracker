@@ -1392,6 +1392,7 @@ table.data-table td { padding: 0.5rem; border-bottom: 1px solid var(--line); ver
 }
 .learn-type-pill-navy { background: #E3E7EB; color: var(--navy); }
 .learn-type-pill-sage { background: #E8ECDC; color: #465331; }
+.learn-type-pill-muted { background: #E9EAEC; color: var(--muted); }
 .learn-type-pill.active { outline: 2px solid currentColor; outline-offset: 1px; }
 
 .learn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }

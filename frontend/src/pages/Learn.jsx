@@ -30,21 +30,33 @@ function excerpt(text, max = 160) {
 export default function Learn() {
   const [hearingTypeCategory, setHearingTypeCategory] = useState("");
   const [caseCategory, setCaseCategory] = useState("");
+  const [generalOnly, setGeneralOnly] = useState(false);
   const [topics, setTopics] = useState(null);
   const [error, setError] = useState(null);
 
   function load() {
     api
-      .listLearnTopics({ hearing_type_category: hearingTypeCategory || undefined, case_category: caseCategory || undefined })
+      .listLearnTopics(
+        generalOnly
+          ? { general_only: true }
+          : { hearing_type_category: hearingTypeCategory || undefined, case_category: caseCategory || undefined }
+      )
       .then(setTopics)
       .catch((e) => setError(e.message));
   }
-  useEffect(load, [hearingTypeCategory, caseCategory]);
+  useEffect(load, [hearingTypeCategory, caseCategory, generalOnly]);
 
   const caseCategoryEntries = Object.entries(CASE_CATEGORY_LABELS).filter(([k]) => k !== "juvenile");
 
   function toggle(current, setter, value) {
     setter(current === value ? "" : value);
+    setGeneralOnly(false);
+  }
+
+  function toggleGeneral() {
+    setGeneralOnly((g) => !g);
+    setHearingTypeCategory("");
+    setCaseCategory("");
   }
 
   return (
@@ -67,6 +79,14 @@ export default function Learn() {
 
       <div className="learn-body">
         <aside className="learn-sidebar">
+          <div>
+            <button
+              className={`learn-type-pill learn-type-pill-muted ${generalOnly ? "active" : ""}`}
+              onClick={toggleGeneral}
+            >
+              General guides
+            </button>
+          </div>
           <div>
             <p className="learn-sidebar-heading">By Hearing Type</p>
             {Object.entries(HEARING_TYPE_LABELS).map(([k, label]) => (
