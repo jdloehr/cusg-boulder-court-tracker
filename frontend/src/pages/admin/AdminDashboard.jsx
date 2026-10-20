@@ -648,9 +648,16 @@ function LearnTopicForm({ topic, onDone, onCancel }) {
     setError(null);
     try {
       const payload = {
-        title, body_text: bodyText, video_url: videoUrl || undefined,
-        applies_to_hearing_type_category: hearingType || undefined,
-        applies_to_case_category: caseCategory || undefined,
+        // `|| null` (not `|| undefined`) deliberately -- JSON.stringify
+        // drops an `undefined` value entirely, so a PATCH meant to
+        // *clear* this field (editing an existing topic back down to
+        // General) would silently omit the key instead of sending it,
+        // and the backend's exclude_unset PATCH semantics then leave
+        // the old value untouched. An explicit `null` is a real
+        // instruction to clear it, same as any new value would be.
+        title, body_text: bodyText, video_url: videoUrl || null,
+        applies_to_hearing_type_category: hearingType || null,
+        applies_to_case_category: caseCategory || null,
         external_links: links,
       };
       const saved = isEdit ? await api.updateLearnTopic(topic.id, payload) : await api.createLearnTopic(payload);
